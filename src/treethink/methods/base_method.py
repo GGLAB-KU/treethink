@@ -339,7 +339,9 @@ class BaseMethod(ABC):
             logger.debug("Could not found any terminated leaves.")
             return None
         else:
-            logger.debug(f"Found {len(terminated_leaves)} many terminated leaves.")
+            logger.debug(
+                f"Found {len(terminated_leaves)} many terminated leaves."
+            )
 
         # Limit the number of termination nodes to process
         if len(terminated_leaves) >= max_repl:
@@ -473,7 +475,9 @@ class BaseMethod(ABC):
         ]
         snips = [self.parse_proof(proof) for proof in proof_paths]
 
-        logger.debug(f"Prepared {len(snips)} proofs for Async REPL verification.")
+        logger.debug(
+            f"Prepared {len(snips)} proofs for Async REPL verification."
+        )
         logger.trace(f"First proof snippet: {snips[0][:200]}...")
         # Async REPL check (concurrent!)
         try:
@@ -644,9 +648,7 @@ class BaseMethod(ABC):
 
         # Remove duplicate children based on their text property
         prev_child_count = len(node.children)
-        logger.trace(
-            f"Removing duplicate children: {node.children}"
-        )
+        logger.trace(f"Removing duplicate children: {node.children}")
         node.remove_duplicate_children()
         logger.debug(
             f"Removed duplicates: {prev_child_count - len(node.children)} duplicate(s) removed. {len(node.children)} unique child(ren) remain."

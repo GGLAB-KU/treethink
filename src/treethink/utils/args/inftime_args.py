@@ -71,7 +71,6 @@ class InferenceTimeArgs(BaseArgs):
     store_graph_stats: bool = True
     remove_duplicate_children: bool = False
 
-
     # REPL Proof Paths
     repl_args: LeanREPLArgs = None
     max_repl: int = 16

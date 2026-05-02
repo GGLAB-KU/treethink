@@ -173,9 +173,7 @@ class DynamicFinder(BaseFinder):
             logger.debug("Using custom prompter for DynamicFinder.")
             self.prompter = prompter
         else:
-            logger.debug(
-                "Using default prompter for DynamicFinder."
-            )
+            logger.debug("Using default prompter for DynamicFinder.")
             self.prompter = partial(
                 self.model.get_tokenizer().apply_chat_template,
                 tokenize=False,
@@ -190,7 +188,7 @@ class DynamicFinder(BaseFinder):
         else:
             logger.debug("Using default param_modifier function.")
             self.param_modifier = self._default_param_modifier
-        
+
         logger.info("DynamicFinder initialized.")
 
     def _default_param_modifier(self, node: Node) -> vllm.SamplingParams:
@@ -327,9 +325,7 @@ class AsyncVLLMFinder(BaseFinder):
             self._tokenizer = AutoTokenizer.from_pretrained(
                 model_config.model, trust_remote_code=True
             )
-            logger.debug(
-                "Tokenizer loaded successfully in AsyncVLLMFinder."
-            )
+            logger.debug("Tokenizer loaded successfully in AsyncVLLMFinder.")
         except Exception as e:
             logger.warning(
                 f"Failed to load tokenizer: {e}. Token counting disabled."
@@ -368,29 +364,31 @@ class AsyncVLLMFinder(BaseFinder):
 
         try:
             # Get number of children to generate (n parameter from sampling_params)
-            n_generations = getattr(self.sampling_params, 'n', 1)
-            
+            n_generations = getattr(self.sampling_params, "n", 1)
+
             # Create n separate generation tasks with n=1 each for better diversity
             # This is more effective than a single generation with n=N
             tasks = []
-            base_seed = getattr(self.sampling_params, 'seed', None)
-            
+            base_seed = getattr(self.sampling_params, "seed", None)
+
             for i in range(n_generations):
                 # Clone sampling params and set n=1 for each generation
                 sampling_params_single = self.sampling_params.clone()
                 sampling_params_single.n = 1
-                
+
                 # Use different seeds for diversity if seed is set
                 if base_seed is not None:
                     sampling_params_single.seed = base_seed + i * 1000
-                
+
                 request_id = f"node_{id(node)}_{i}"
-                task = self._generate_single(prompt, sampling_params_single, request_id)
+                task = self._generate_single(
+                    prompt, sampling_params_single, request_id
+                )
                 tasks.append(task)
-            
+
             # Run all generations in parallel
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             children = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
@@ -408,14 +406,12 @@ class AsyncVLLMFinder(BaseFinder):
                     children.append(_child_node)
 
             node.add_children(children=children)
-            logger.debug(
-                f"Added {len(children)} children to node {id(node)}."
-            )
+            logger.debug(f"Added {len(children)} children to node {id(node)}.")
 
         except Exception as e:
             logger.error(f"Async generation failed: {e}")
             logger.error(f"Current prompt: {prompt}")
-    
+
     async def _generate_single(self, prompt, sampling_params, request_id):
         """Generate a single completion asynchronously."""
         try:
@@ -497,7 +493,7 @@ class AsyncBatchVLLMFinder(BaseFinder):
         self._batch_lock = asyncio.Lock()
 
         logger.debug("AsyncBatchVLLMFinder initialized.")
-    
+
     async def _async_init_tokenizer(self):
         try:
             from transformers import AutoTokenizer
@@ -540,14 +536,16 @@ class AsyncBatchVLLMFinder(BaseFinder):
         prompt = self.prompter(messages)
 
         await self._ensure_tokenizer()
-        
+
         # Prepare base sampling params with token limit
         if self._tokenizer:
             prompt_tokens = len(self._tokenizer.encode(prompt))
             safe_max_tokens = self._max_model_len - prompt_tokens - 20
 
             if safe_max_tokens <= 0:
-                logger.error(f"Prompt too long, skipping expansion. See prompt:\n {prompt}")
+                logger.error(
+                    f"Prompt too long, skipping expansion. See prompt:\n {prompt}"
+                )
                 return
 
             base_sampling_params = self.sampling_params.clone()
@@ -562,30 +560,30 @@ class AsyncBatchVLLMFinder(BaseFinder):
 
         try:
             # Get number of children to generate (n parameter from sampling_params)
-            n_generations = getattr(base_sampling_params, 'n', 1)
-            
+            n_generations = getattr(base_sampling_params, "n", 1)
+
             # Create n separate generation tasks with n=1 each for better diversity
             tasks = []
-            base_seed = getattr(base_sampling_params, 'seed', None)
-            
+            base_seed = getattr(base_sampling_params, "seed", None)
+
             for i in range(n_generations):
                 # Clone sampling params and set n=1 for each generation
                 sampling_params_single = base_sampling_params.clone()
                 sampling_params_single.n = 1
-                
+
                 # Use different seeds for diversity if seed is set
                 if base_seed is not None:
                     sampling_params_single.seed = base_seed + i * 1000
-                
+
                 request_id = f"node_{id(node)}_{i}"
                 task = self._generate_single_for_node(
                     prompt, sampling_params_single, request_id
                 )
                 tasks.append(task)
-            
+
             # Run all generations in parallel
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             children = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
@@ -603,15 +601,15 @@ class AsyncBatchVLLMFinder(BaseFinder):
                     children.append(_child_node)
 
             node.add_children(children=children)
-            logger.debug(
-                f"Added {len(children)} children to node {id(node)}."
-            )
+            logger.debug(f"Added {len(children)} children to node {id(node)}.")
 
         except Exception as e:
             logger.error(f"Generation failed: {e}")
             raise
-    
-    async def _generate_single_for_node(self, prompt, sampling_params, request_id):
+
+    async def _generate_single_for_node(
+        self, prompt, sampling_params, request_id
+    ):
         """Generate a single completion asynchronously."""
         try:
             results = self.engine.generate(

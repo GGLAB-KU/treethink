@@ -38,6 +38,7 @@ You score the solution out of 20 and put your final score inside \\boxed{}.
 Do NOT attempt to solve the problem, only provide a score out of 20 inside \\boxed{}.
 """
 
+
 class BaseEvaluator(ABC):
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
@@ -433,6 +434,7 @@ class JudgeEvaluator(BaseEvaluator):
             return proof[start:]
         return proof[start:end]
 
+
 class TournamentEvaluator(BaseEvaluator):
     def __init__(
         self,
@@ -501,7 +503,7 @@ class TournamentEvaluator(BaseEvaluator):
     ):
         """Create a prompt for LLM to judge between two proofs."""
         prompt = "You are comparing two proof attempts. Choose which one is better.\n\n"
-        
+
         prompt += "# Proof A:\n"
         prompt += f"```lean\n{proof_a}\n```\n"
         if info_a:
@@ -513,7 +515,7 @@ class TournamentEvaluator(BaseEvaluator):
                 prompt += f"Solved Goals: {info_a['solved_goals']}\n"
             if info_a.get("error_message"):
                 prompt += f"Error: {info_a['error_message']}\n"
-        
+
         prompt += "\n# Proof B:\n"
         prompt += f"```lean\n{proof_b}\n```\n"
         if info_b:
@@ -525,28 +527,38 @@ class TournamentEvaluator(BaseEvaluator):
                 prompt += f"Solved Goals: {info_b['solved_goals']}\n"
             if info_b.get("error_message"):
                 prompt += f"Error: {info_b['error_message']}\n"
-        
+
         prompt += "\nWhich proof is better? Answer with either 'A' or 'B' in \\boxed{}."
-        
+
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
         ]
-        
+
         return self.prompter(messages)
 
-    def _extract_lean_info(self, snip: str, response, result_idx: int) -> Optional[dict]:
+    def _extract_lean_info(
+        self, snip: str, response, result_idx: int
+    ) -> Optional[dict]:
         """Extract tactic and goal information from Lean REPL response."""
         if not response or not getattr(response, "results", None):
             return None
-        
+
         result_obj = response.results[result_idx]
-        infotree = result_obj.response.get("infotree", None) if result_obj.response else None
-        
+        infotree = (
+            result_obj.response.get("infotree", None)
+            if result_obj.response
+            else None
+        )
+
         if not infotree:
-            error_message = result_obj.response.get("error", None) if result_obj.response else None
+            error_message = (
+                result_obj.response.get("error", None)
+                if result_obj.response
+                else None
+            )
             return {"error_message": error_message} if error_message else None
-        
+
         try:
             header, body = split_proof_header(snip)
             intervals = extract_data(infotree, body)
@@ -560,17 +572,17 @@ class TournamentEvaluator(BaseEvaluator):
             return None
 
     def _batch_compare_pairs(
-        self, 
-        pairs: List[Tuple[int, int]], 
-        nodes: List[Node], 
+        self,
+        pairs: List[Tuple[int, int]],
+        nodes: List[Node],
         method: BaseMethod,
         snips: List[str],
-        lean_infos: List[Optional[dict]]
+        lean_infos: List[Optional[dict]],
     ) -> List[int]:
         """Compare pairs of nodes in batch and return winner indices."""
         if not pairs:
             return []
-        
+
         # Prepare messages for all pairs
         messages = []
         for idx_a, idx_b in pairs:
@@ -581,19 +593,19 @@ class TournamentEvaluator(BaseEvaluator):
                 lean_infos[idx_b],
             )
             messages.append(message)
-        
+
         # Batch generate
         try:
             output = self.model.generate(
                 messages, self.sampling_params, use_tqdm=False
             )
-            
+
             if len(output) != len(messages):
                 logger.error(
                     f"vLLM generation mismatch: sent {len(messages)} messages, "
                     f"got {len(output)} outputs"
                 )
-            
+
             # Extract winners
             winners = []
             for i, (idx_a, idx_b) in enumerate(pairs):
@@ -601,26 +613,34 @@ class TournamentEvaluator(BaseEvaluator):
                     if i < len(output):
                         answer = output[i].outputs[0].text
                         extracted = extract_result(answer)
-                        
+
                         if extracted == "NO_BOXED_STRING_FOUND":
-                            logger.warning(f"No boxed answer found for pair ({idx_a}, {idx_b}), defaulting to A")
+                            logger.warning(
+                                f"No boxed answer found for pair ({idx_a}, {idx_b}), defaulting to A"
+                            )
                             winners.append(idx_a)
-                        elif extracted.strip().upper() == 'A':
+                        elif extracted.strip().upper() == "A":
                             winners.append(idx_a)
-                        elif extracted.strip().upper() == 'B':
+                        elif extracted.strip().upper() == "B":
                             winners.append(idx_b)
                         else:
-                            logger.warning(f"Invalid answer '{extracted}' for pair ({idx_a}, {idx_b}), defaulting to A")
+                            logger.warning(
+                                f"Invalid answer '{extracted}' for pair ({idx_a}, {idx_b}), defaulting to A"
+                            )
                             winners.append(idx_a)
                     else:
-                        logger.warning(f"Missing output for pair ({idx_a}, {idx_b}), defaulting to A")
+                        logger.warning(
+                            f"Missing output for pair ({idx_a}, {idx_b}), defaulting to A"
+                        )
                         winners.append(idx_a)
                 except Exception as e:
-                    logger.error(f"Failed to process pair ({idx_a}, {idx_b}): {e}")
+                    logger.error(
+                        f"Failed to process pair ({idx_a}, {idx_b}): {e}"
+                    )
                     winners.append(idx_a)
-            
+
             return winners
-            
+
         except Exception as e:
             logger.error(f"Batch comparison failed: {e}")
             # Fallback: return first element of each pair
@@ -631,69 +651,70 @@ class TournamentEvaluator(BaseEvaluator):
     ) -> List[float]:
         if isinstance(node, Node):
             node = [node]
-        
+
         n = len(node)
-        
+
         # Single node case
         if n == 1:
             return [1.0]
-        
+
         # Prepare all proofs
         snips = []
         for i in range(n):
             proof_so_far = method.traverse_to_root(node[i], include_root=True)
             proof_so_far = self.parse_proof(proof=proof_so_far)
             snips.append(proof_so_far)
-        
+
         # Get Lean info for all proofs in batch
         try:
             response = self.lean_client.check(
                 snips=snips,
                 timeout=self.repl_args.timeout,
                 infotree=Infotree.original,
-                show_progress=False
+                show_progress=False,
             )
         except Exception as e:
             logger.error(f"KiminaClient failed: {e}")
             response = None
-        
+
         # Extract info for all nodes
         lean_infos = []
         for i in range(n):
             info = self._extract_lean_info(snips[i], response, i)
             lean_infos.append(info)
-        
+
         # Initialize bracket with shuffled or sequential indices
         bracket_indices = list(range(n))
         if self.shuffle_bracket:
             import random
+
             random.shuffle(bracket_indices)
             logger.info(f"Shuffled bracket order: {bracket_indices}")
-        
+
         # Pad to next power of 2 if needed
         n_padded = 2 ** math.ceil(math.log2(n))
-        
+
         # Add dummy indices for padding (they will lose immediately)
         while len(bracket_indices) < n_padded:
             bracket_indices.append(-1)  # -1 represents dummy/bye
-        
+
         # Track scores: initially all zeros
         scores = [0.0] * n
-        
+
         # Tournament rounds
         round_num = 1
         current_bracket = bracket_indices.copy()
-        
+
         while len(current_bracket) > 1:
             # Create pairs
             pairs = []
             valid_pairs = []  # pairs without dummies
             pair_to_valid_idx = {}
-            
+
             for i in range(0, len(current_bracket), 2):
                 idx_a = current_bracket[i]
                 idx_b = current_bracket[i + 1]
-                
+
                 # Handle dummy nodes (auto-advance real node)
                 if idx_a == -1 and idx_b == -1:
                     pairs.append((-1, -1))
@@ -705,7 +726,7 @@ class TournamentEvaluator(BaseEvaluator):
                     pair_to_valid_idx[len(pairs)] = len(valid_pairs)
                     valid_pairs.append((idx_a, idx_b))
                     pairs.append((idx_a, idx_b))
-            
+
             # Batch compare only valid pairs
             if valid_pairs:
                 winners_from_comparison = self._batch_compare_pairs(
@@ -713,11 +734,11 @@ class TournamentEvaluator(BaseEvaluator):
                 )
             else:
                 winners_from_comparison = []
-            
+
             # Process all pairs to get winners and assign scores to losers
             winners = []
             comparison_idx = 0
-            
+
             for pair_idx, (idx_a, idx_b) in enumerate(pairs):
                 if idx_a == -1 and idx_b == -1:
                     winners.append(-1)
@@ -729,28 +750,30 @@ class TournamentEvaluator(BaseEvaluator):
                     # Real comparison
                     winner_idx = winners_from_comparison[comparison_idx]
                     loser_idx = idx_b if winner_idx == idx_a else idx_a
-                    
+
                     # Assign score to loser based on round
                     # Round 1: score = 1, Round 2: score = 2, etc.
                     scores[loser_idx] = float(round_num)
-                    
+
                     winners.append(winner_idx)
                     comparison_idx += 1
-            
+
             current_bracket = winners
             round_num += 1
-        
+
         # Winner gets the highest score (number of rounds)
         winner_idx = current_bracket[0]
         if winner_idx != -1:
             scores[winner_idx] = float(round_num)
-        
+
         # Normalize scores to [0, 1]
         max_score = float(round_num)
         normalized_scores = [s / max_score for s in scores]
-        
-        logger.info(f"Tournament complete. Final scores: {scores} -> normalized: {normalized_scores}")
-        
+
+        logger.info(
+            f"Tournament complete. Final scores: {scores} -> normalized: {normalized_scores}"
+        )
+
         return normalized_scores
 
     def parse_proof(self, proof: str, pattern=None):

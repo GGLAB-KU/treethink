@@ -199,23 +199,24 @@ class BeamSearch(BaseMethod):
             f"depth_so_far={self._last_depth})"
         )
 
+
 class AsyncBeamSearch(BeamSearch):
     """
     Async version of BeamSearch that supports asynchronous node expansion.
-    
+
     This implementation leverages async_expand and async_expand_rm_dupes from
     BaseMethod to enable concurrent evaluation of children nodes during beam
     search expansion.
-    
+
     Key features:
     - Parallel expansion of beam nodes at each depth level
     - Concurrent node evaluation for I/O-bound operations (REPL, LLM-as-judge)
     - Compatible with both sync and async node evaluators
-    
+
     Attributes:
         max_concurrent_expansions (int): Maximum number of nodes to expand concurrently
     """
-    
+
     def __init__(
         self,
         root_node: Optional[Node | str],
@@ -227,7 +228,7 @@ class AsyncBeamSearch(BeamSearch):
     ):
         """
         Initialize AsyncBeamSearch.
-        
+
         Args:
             root_node: The root node of the search tree
             child_finder: Function to generate child nodes
@@ -254,10 +255,10 @@ class AsyncBeamSearch(BeamSearch):
     ):
         """
         Async version of simulate method that expands beam levels asynchronously.
-        
+
         This method processes all nodes in each beam level concurrently, allowing
         for significant speedup when using async node evaluators.
-        
+
         Args:
             expansion_count: Number of depth levels to expand
             timeout: Maximum time in seconds for the search
@@ -280,7 +281,7 @@ class AsyncBeamSearch(BeamSearch):
 
         for layer in range(layers_to_expand):
             logger.debug(f"Async expansion layer: {layer}")
-            
+
             # Check timeout
             if timeout is not None and (time.time() - start_time) >= timeout:
                 logger.warning("Reached timeout, stopping expansion.")
@@ -291,21 +292,29 @@ class AsyncBeamSearch(BeamSearch):
                 for current_node in self._current_beam:
                     if current_node.is_termination_node:
                         # Check if async or sync termination function
-                        if asyncio.iscoroutinefunction(termination_encountered_fn):
-                            answer = await termination_encountered_fn(current_node)
+                        if asyncio.iscoroutinefunction(
+                            termination_encountered_fn
+                        ):
+                            answer = await termination_encountered_fn(
+                                current_node
+                            )
                         else:
                             answer = termination_encountered_fn(current_node)
-                        
+
                         if answer:
                             self.best_answer = answer
                             self.best_answer_reason = "checked_and_true"
                             return
 
             # Expand all nodes in current beam concurrently
-            expandable_nodes = [n for n in self._current_beam if n.is_expandable]
-            
+            expandable_nodes = [
+                n for n in self._current_beam if n.is_expandable
+            ]
+
             if expandable_nodes:
-                await self._expand_beam_async(expandable_nodes, remove_duplicate_children)
+                await self._expand_beam_async(
+                    expandable_nodes, remove_duplicate_children
+                )
 
             # Collect all children from expanded nodes
             all_candidates: List[Node] = []
@@ -326,13 +335,11 @@ class AsyncBeamSearch(BeamSearch):
             self._last_depth += 1
 
     async def _expand_beam_async(
-        self,
-        nodes: List[Node],
-        remove_duplicate_children: bool = False
+        self, nodes: List[Node], remove_duplicate_children: bool = False
     ):
         """
         Expand all nodes in the beam concurrently.
-        
+
         Args:
             nodes: List of nodes to expand
             remove_duplicate_children: Whether to remove duplicate children
@@ -342,23 +349,21 @@ class AsyncBeamSearch(BeamSearch):
         for node in nodes:
             task = self._expand_single_async(node, remove_duplicate_children)
             tasks.append(task)
-        
+
         # Execute all expansions concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Log any exceptions
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Failed to expand node {i}: {result}")
 
     async def _expand_single_async(
-        self,
-        node: Node,
-        remove_duplicate_children: bool = False
+        self, node: Node, remove_duplicate_children: bool = False
     ):
         """
         Expand a single node asynchronously using semaphore for concurrency control.
-        
+
         Args:
             node: The node to expand
             remove_duplicate_children: Whether to remove duplicate children
@@ -370,7 +375,7 @@ class AsyncBeamSearch(BeamSearch):
                     await self.async_expand_rm_dupes(node)
                 else:
                     await self.async_expand(node)
-                    
+
             except Exception as e:
                 logger.exception(f"Failed to expand node asynchronously: {e}")
                 self.stats_failed_expansion_count += 1
@@ -384,10 +389,10 @@ class AsyncBeamSearch(BeamSearch):
     ):
         """
         Synchronous wrapper for async simulate.
-        
+
         This allows AsyncBeamSearch to be used with existing sync code by
         automatically running the async version in an event loop.
-        
+
         Args:
             expansion_count: Number of depth levels to expand
             timeout: Maximum time in seconds for the search
@@ -410,7 +415,7 @@ class AsyncBeamSearch(BeamSearch):
                     termination_encountered_fn=termination_encountered_fn,
                 )
             )
-        except RuntimeError:    # pragma: no cover
+        except RuntimeError:  # pragma: no cover
             # No event loop running, create new one
             asyncio.run(
                 self.async_simulate(

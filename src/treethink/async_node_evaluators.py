@@ -110,7 +110,9 @@ class AsyncREPLEvaluator(AsyncBaseEvaluator):
 
         except Exception as e:
             logger.error(f"Async REPL evaluation failed: {e}")
-            logger.debug("Returning default scores of 0.0 for all nodes due to error.")
+            logger.debug(
+                "Returning default scores of 0.0 for all nodes due to error."
+            )
             return [0.0] * len(nodes)
 
 
@@ -239,7 +241,9 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         if isinstance(nodes, Node):
             nodes = [nodes]
         if not nodes:
-            logger.warning("No nodes provided for AsyncJudgeEvaluator, returning [].")
+            logger.warning(
+                "No nodes provided for AsyncJudgeEvaluator, returning []."
+            )
             return []
 
         # 1. REPL Check
@@ -248,7 +252,6 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
             proof = method.traverse_to_root(node, include_root=True)
             parsed_proof = self.parse_proof(proof)
             snips.append(parsed_proof)
-
 
         try:
             response = await self.async_lean_client.check(
@@ -295,9 +298,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
                     if result_obj and result_obj.response
                     else None
                 )
-                logger.warning(
-                    f"No infotree for node {i}: {error_msg}"
-                )
+                logger.warning(f"No infotree for node {i}: {error_msg}")
 
             judge_prompt = self._prepare_judge_messages(
                 snips[i],
@@ -318,7 +319,9 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         for idx, ans in enumerate(answers):
             if ans.startswith("ERROR"):
                 scores.append(10.0)
-                logger.debug(f"Answer {idx} indicates error, setting score 10.0")
+                logger.debug(
+                    f"Answer {idx} indicates error, setting score 10.0"
+                )
                 logger.trace(f"Answer {idx}\nContent: {ans}")
                 continue
 
@@ -331,14 +334,14 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
                 scores.append(score_val)
             else:
                 scores.append(10.0)
-                logger.debug(f"Could not extract numeric score for answer {idx}, using default 10.0")
+                logger.debug(
+                    f"Could not extract numeric score for answer {idx}, using default 10.0"
+                )
 
         final_scores = [score / 20.0 for score in scores]
         logger.debug(f"Final normalized scores: {final_scores}")
 
         return final_scores
-
-
 
 
 class AsyncNormLenEvaluator(AsyncBaseEvaluator):
@@ -401,7 +404,7 @@ def get_async_node_evaluator_from_config(
         func_name = config.func_name
         if not func_name.startswith("async_"):
             logger.warning(
-                f"EvaluatorArgs func_name '{func_name}' does not start with 'async_', " 
+                f"EvaluatorArgs func_name '{func_name}' does not start with 'async_', "
                 + "but we're in async_node_evaluators. Prepending 'async_' to func_name."
             )
             func_name = "async_" + func_name

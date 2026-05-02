@@ -16,10 +16,13 @@ from treethink import (
     get_node_evaluator_from_config,
 )
 
+
 class SamplerBase:
     def __init__(
         self,
-        sample_params: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
+        sample_params: Optional[
+            Union[vllm.SamplingParams, SamplingArgs]
+        ] = None,
         prompter: Optional[Callable] = None,
         task_name="generate",
         model_name: Optional[str] = None,
@@ -52,13 +55,19 @@ class SamplerBase:
         return prompt
 
     def _save_outputs(self, outputs, k, path="data/results"):
-        model_name = self.model_name.replace("-", "_").replace("/", "_") if self.model_name else "unknown_model"
+        model_name = (
+            self.model_name.replace("-", "_").replace("/", "_")
+            if self.model_name
+            else "unknown_model"
+        )
         file_path = path + f"/{self.task_name}_{model_name}_{k}.jsonl"
         with open(file_path, "w") as f:
             for output in outputs:
                 f.write(json.dumps(output) + "\n")
 
-    def _message_creator(self, system_prompt, datapoint, data_key, prompt_format):
+    def _message_creator(
+        self, system_prompt, datapoint, data_key, prompt_format
+    ):
         try:
             values = [datapoint[k] for k in data_key]
             if prompt_format:
@@ -99,7 +108,9 @@ class SamplerBase:
 
         processed_data = []
         try:
-            for i in range(batch_size * start_from_kth_batch, len(data), batch_size):
+            for i in range(
+                batch_size * start_from_kth_batch, len(data), batch_size
+            ):
                 batch_data = data[i : i + batch_size]
                 batch_messages = []
 
@@ -112,31 +123,40 @@ class SamplerBase:
                     batch_messages.append(messages)
                     datapoint["model_input"] = messages
 
-                batch_responses = self._generate_batch(batch_data, batch_messages)
+                batch_responses = self._generate_batch(
+                    batch_data, batch_messages
+                )
 
                 for j, resp in enumerate(batch_responses):
                     datapoint = batch_data[j].copy()
-                    
+
                     if hasattr(resp, "outputs"):
                         datapoint["output"] = [
-                            resp.outputs[idx].text for idx in range(len(resp.outputs))
+                            resp.outputs[idx].text
+                            for idx in range(len(resp.outputs))
                         ]
                     else:
                         datapoint["output"] = [resp]
-                    
-                    if hasattr(self, "inference_time_args") and self.inference_time_args and self.inference_time_args.store_graph_stats:
+
+                    if (
+                        hasattr(self, "inference_time_args")
+                        and self.inference_time_args
+                        and self.inference_time_args.store_graph_stats
+                    ):
                         if hasattr(resp, "graph_stats"):
                             datapoint["graph_stats"] = resp.graph_stats
-                            
+
                     processed_data.append(datapoint)
 
                 if (
                     save_after_k_batches is not None
-                    and (i + batch_size) % (save_after_k_batches * batch_size) == 0
+                    and (i + batch_size) % (save_after_k_batches * batch_size)
+                    == 0
                 ):
                     self._save_outputs(
                         processed_data,
-                        k=(i + batch_size) // (save_after_k_batches * batch_size),
+                        k=(i + batch_size)
+                        // (save_after_k_batches * batch_size),
                     )
         except Exception as e:
             logger.error(f"Error occurred while processing batch: {e}")
@@ -150,18 +170,22 @@ class VLLMSampler(SamplerBase):
     def __init__(
         self,
         model_args: ModelArgs,
-        sample_params: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
+        sample_params: Optional[
+            Union[vllm.SamplingParams, SamplingArgs]
+        ] = None,
         prompter: Optional[Callable] = None,
         task_name="generate",
-        lora_path: Optional[str] = None
+        lora_path: Optional[str] = None,
     ):
         super().__init__(
-            sample_params=sample_params, 
-            prompter=prompter, 
+            sample_params=sample_params,
+            prompter=prompter,
             task_name=task_name,
-            model_name=model_args.model
+            model_name=model_args.model,
         )
-        self.model = vllm.LLM(**model_args, max_lora_rank=32, trust_remote_code=True)
+        self.model = vllm.LLM(
+            **model_args, max_lora_rank=32, trust_remote_code=True
+        )
         self.enable_lora = model_args.enable_lora
         self.lora_path = lora_path
 
@@ -190,15 +214,17 @@ class TreeThinkSampler(SamplerBase):
         child_finder_args: FinderArgs,
         node_evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
-        sample_params: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
+        sample_params: Optional[
+            Union[vllm.SamplingParams, SamplingArgs]
+        ] = None,
         prompter: Optional[Callable] = None,
-        task_name="generate"
+        task_name="generate",
     ):
         super().__init__(
-            sample_params=sample_params, 
-            prompter=prompter, 
+            sample_params=sample_params,
+            prompter=prompter,
             task_name=task_name,
-            model_name=child_finder_args.model.model
+            model_name=child_finder_args.model.model,
         )
         self.child_finder_args = child_finder_args
         self.node_evaluator_args = node_evaluator_args
@@ -208,7 +234,9 @@ class TreeThinkSampler(SamplerBase):
         self._init_inference_time_method()
 
     def _init_inference_time_method(self):
-        logger.info(f"Instantiating selected method: {self.inference_time_args.method_name}")
+        logger.info(
+            f"Instantiating selected method: {self.inference_time_args.method_name}"
+        )
         self.child_finder = get_child_finder_from_config(
             self.child_finder_args, prompter=self.prompter
         )
@@ -231,7 +259,8 @@ class TreeThinkSampler(SamplerBase):
                 or datapoint.get("problem_id")
                 or datapoint.get("custom_id")
             )
-            response = self.model.generate(prompts=prompt, problem_id=problem_id)
+            response = self.model.generate(
+                prompts=prompt, problem_id=problem_id
+            )
             batch_responses.append(response)
         return batch_responses
-
