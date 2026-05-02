@@ -126,7 +126,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         *args,
         **kwargs,
     ):
-        super().__init__(name="async_llm_as_judge_evaluator", *args, **kwargs)
+        super().__init__(name="async_judge_evaluator", *args, **kwargs)
         self.repl_args = repl_args
         self.system_prompt = llm_as_judge_system_prompt
 
@@ -385,7 +385,7 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
 # Registry
 ASYNC_IMPLEMENTED_EVALUATORS = {
     "async_repl_evaluator": AsyncREPLEvaluator,
-    "async_llm_as_judge_evaluator": AsyncJudgeEvaluator,
+    "async_judge_evaluator": AsyncJudgeEvaluator,
     "async_normalized_lengths_evaluator": AsyncNormLenEvaluator,
 }
 
@@ -399,7 +399,9 @@ def get_async_evaluator_from_config(config: EvaluatorArgs, *args, **kwargs):
                 + "but we're in async_evaluators. Prepending 'async_' to func_name."
             )
             func_name = "async_" + func_name
-        return ASYNC_IMPLEMENTED_EVALUATORS[func_name](*args, **config, **kwargs)
+        return ASYNC_IMPLEMENTED_EVALUATORS[func_name](
+            *args, **config, **kwargs
+        )
     except KeyError:
         logger.error(f"Async node evaluator not found: {config.func_name}")
         return None
