@@ -3,23 +3,23 @@
 import itertools
 import random
 
-from treethink import BaseEvaluator, BaseFinder, Node
+from treethink import BaseEvaluator, BaseExpander, Node
 
 # -------------
-# Finders
+# Expanders
 # -------------
 
 
-class SimpleChildFinder(BaseFinder):
+class SimpleChildExpander(BaseExpander):
     def __init__(self, num_child: int = 5, *args, **kwargs):
-        super().__init__(name="simple_finder", *args, **kwargs)
+        super().__init__(name="simple_expander", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
         self._id_gen = itertools.count(0)  # Infinite counter
 
     def __call__(self, node, method):
-        def _finder(x: Node, y):
+        def _expander(x: Node, y):
             for i in range(self.num_child - 1):
                 child_id = next(self._id_gen)
                 node.add_child(
@@ -31,14 +31,14 @@ class SimpleChildFinder(BaseFinder):
                     )
                 )
 
-        return _finder(node, method)
+        return _expander(node, method)
 
 
-class SetStrChildFinder(BaseFinder):
+class SetStrChildExpander(BaseExpander):
     def __init__(
         self, text: str, num_child: int = 5, sep="\n", *args, **kwargs
     ):
-        super().__init__(name="set_str_finder", *args, **kwargs)
+        super().__init__(name="set_str_expander", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
@@ -75,7 +75,7 @@ class SetStrChildFinder(BaseFinder):
             )
 
 
-class PreferTerminationChildFinder(BaseFinder):
+class PreferTerminationChildExpander(BaseExpander):
     def __init__(
         self,
         termination_str: str = "```",
@@ -87,7 +87,7 @@ class PreferTerminationChildFinder(BaseFinder):
     ):
         """Occasionally produce a node with text `termination_str` to test if
         we can REPL that proof trajectory."""
-        super().__init__(name="prefer_termination_finder", *args, **kwargs)
+        super().__init__(name="prefer_termination_expander", *args, **kwargs)
         self.termination_str = termination_str
         self.num_child = num_child
         self.start_prob = start_prob

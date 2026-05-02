@@ -16,7 +16,7 @@ class BFTS(BaseMethod):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        finder: Callable,
+        expander: Callable,
         evaluator: Callable,
         final_decision_mode: Literal[
             "clear_frontier", "native"
@@ -30,7 +30,7 @@ class BFTS(BaseMethod):
 
         Args:
             root_node (Node): root node.
-            finder (Callable): finder method to use in expansion.
+            expander (Callable): expander method to use in expansion.
             evaluator (Callable): evaluator method to give the node
                 a score.
         """
@@ -44,7 +44,7 @@ class BFTS(BaseMethod):
 
         super().__init__(
             root_node=root_node,
-            finder=finder,
+            expander=expander,
             evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
@@ -266,7 +266,7 @@ class AsyncBFTS(BFTS):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        finder: Callable,
+        expander: Callable,
         evaluator: Callable,
         max_concurrent_expansions: int = 8,
         final_decision_mode: Literal[
@@ -280,7 +280,7 @@ class AsyncBFTS(BFTS):
 
         Args:
             root_node: The root node of the search tree
-            finder: Function to generate child nodes
+            expander: Function to generate child nodes
             evaluator: Async function to evaluate nodes
             max_concurrent_expansions: Max number of nodes to expand in parallel
             final_decision_mode: How to compute the final answer
@@ -288,7 +288,7 @@ class AsyncBFTS(BFTS):
         """
         super().__init__(
             root_node=root_node,
-            finder=finder,
+            expander=expander,
             evaluator=evaluator,
             final_decision_mode=final_decision_mode,
             *args,

@@ -21,14 +21,14 @@ class BaseMethod(ABC):
     def __init__(
         self,
         root_node: Optional[Union[Node, str]],
-        finder: Callable,
+        expander: Callable,
         evaluator: Callable,
         final_decision_mode: str = "native",
         *args,
         **kwargs,
     ):
         # Main functions
-        self.finder = finder
+        self.expander = expander
         self.evaluator = evaluator
 
         # Final decision mode and its function, "native" for base method
@@ -68,7 +68,7 @@ class BaseMethod(ABC):
         """Reset the inner variables so that the class can be used for another
         generation task without instantiating it again.
         """
-        self.__init__(root_node, self.finder, self.evaluator)
+        self.__init__(root_node, self.expander, self.evaluator)
 
     def get_widths(self):
         widths = [1]
@@ -544,7 +544,7 @@ class BaseMethod(ABC):
         pass
 
     def expand(self, node: Node):
-        """Base expand method that calls finder and evaluator, then
+        """Base expand method that calls expander and evaluator, then
         updates visits. May be overridden in child classes for additional
         functionality.
 
@@ -554,8 +554,8 @@ class BaseMethod(ABC):
         self.stats_expansion_count += 1
         logger.trace(f"Node to expand: {node}")
 
-        # Use finder to generate children
-        self.finder(node, self)
+        # Use expander to generate children
+        self.expander(node, self)
         logger.trace(f"Found children: {node.children}")
 
         if not node.children:
@@ -571,7 +571,7 @@ class BaseMethod(ABC):
                 node.children[i].win_value = win_val
 
     async def async_expand(self, node: Node):
-        """Async version of expand method that calls finder and evaluator.
+        """Async version of expand method that calls expander and evaluator.
 
         The evaluator is called asynchronously, which allows for concurrent
         evaluation of children nodes, significantly improving performance for I/O-bound
@@ -582,12 +582,12 @@ class BaseMethod(ABC):
         self.stats_expansion_count += 1
         logger.trace(f"Node to async expand: {node}")
 
-        # Use finder to generate children
-        # Check if finder is async or sync
-        if asyncio.iscoroutinefunction(self.finder):
-            await self.finder(node, self)
+        # Use expander to generate children
+        # Check if expander is async or sync
+        if asyncio.iscoroutinefunction(self.expander):
+            await self.expander(node, self)
         else:
-            self.finder(node, self)
+            self.expander(node, self)
         logger.trace(f"Found children: {node.children}")
 
         if not node.children:
@@ -603,14 +603,14 @@ class BaseMethod(ABC):
                 node.children[i].win_value = win_val
 
     def expand_rm_dupes(self, node: Node):
-        """Base expand method that calls finder, removes duplicates, and
+        """Base expand method that calls expander, removes duplicates, and
         calls evaluator, then updates visits. May be overridden in child
         classes for additional functionality.
         """
         self.stats_expansion_count += 1
 
-        # Use finder to generate children
-        self.finder(node, self)
+        # Use expander to generate children
+        self.expander(node, self)
 
         if not node.children:
             logger.warning(f"Failed to expand node: {node}.")
@@ -630,7 +630,7 @@ class BaseMethod(ABC):
     async def async_expand_rm_dupes(self, node: Node):
         """Async version of expand_rm_dupes method.
 
-        This method generates children using finder, removes duplicates,
+        This method generates children using expander, removes duplicates,
         and then evaluates them asynchronously. The async evaluation allows for
         concurrent processing of children nodes.
         """
@@ -638,8 +638,8 @@ class BaseMethod(ABC):
         logger.trace(f"Expanding node: {node}")
 
         # Generate children
-        logger.trace(f"Calling finder for node {id(node)}...")
-        await self.finder(node, self)
+        logger.trace(f"Calling expander for node {id(node)}...")
+        await self.expander(node, self)
 
         if not node.children:
             logger.warning(f"Failed to expand node: {node}.")

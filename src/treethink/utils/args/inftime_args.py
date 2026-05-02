@@ -143,7 +143,7 @@ class ModelArgs(BaseArgs):
 
 
 @dataclass
-class FinderArgs(BaseArgs):
+class ExpanderArgs(BaseArgs):
     """
     Args:
         func_name (str): The name of the function to use for finding children.

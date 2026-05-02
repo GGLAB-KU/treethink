@@ -17,7 +17,7 @@ class BeamSearch(BaseMethod):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        finder: Callable,
+        expander: Callable,
         evaluator: Callable,
         beam_width: int = 5,
         max_depth: Optional[int] = None,
@@ -28,7 +28,7 @@ class BeamSearch(BaseMethod):
     ):
         super().__init__(
             root_node=root_node,
-            finder=finder,
+            expander=expander,
             evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
@@ -220,7 +220,7 @@ class AsyncBeamSearch(BeamSearch):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        finder: Callable,
+        expander: Callable,
         evaluator: Callable,
         max_concurrent_expansions: int = 8,
         *args,
@@ -231,14 +231,14 @@ class AsyncBeamSearch(BeamSearch):
 
         Args:
             root_node: The root node of the search tree
-            finder: Function to generate child nodes
+            expander: Function to generate child nodes
             evaluator: Async function to evaluate nodes
             max_concurrent_expansions: Max number of nodes to expand in parallel
             *args, **kwargs: Additional arguments passed to BeamSearch
         """
         super().__init__(
             root_node=root_node,
-            finder=finder,
+            expander=expander,
             evaluator=evaluator,
             *args,
             **kwargs,

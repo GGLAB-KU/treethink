@@ -84,13 +84,13 @@ def setup_model(
     """Initialize the model with given parameters."""
     _args, _inference_type = parse_inference_arguments(gen_config_path)
     if _inference_type == "inftime":
-        inference_time_args, finder_args, evaluator_args = _args
+        inference_time_args, expander_args, evaluator_args = _args
 
         if use_async:
-            # Pure async stack: AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator
             logger.info("Using pure async stack (AsyncSampler)")
             model = AsyncSampler(
-                finder_args=finder_args,
+                expander_args=expander_args,
                 evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
@@ -103,7 +103,7 @@ def setup_model(
                 "Using parallel datapoint sampler (AsyncDatapointSampler)"
             )
             model = AsyncDatapointSampler(
-                finder_args=finder_args,
+                expander_args=expander_args,
                 evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
@@ -114,7 +114,7 @@ def setup_model(
             # Sequential processing
             logger.info("Using sequential TreeThink sampler (TreeThinkSampler)")
             model = TreeThinkSampler(
-                finder_args=finder_args,
+                expander_args=expander_args,
                 evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 sample_params=None,
@@ -163,7 +163,7 @@ async def run_async_iterations(
         logger.info(f"Running iteration {i + 1}/{num_iterations}")
 
         if isinstance(model, AsyncSampler):
-            # Pure async stack: AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator
             logger.info("Running with AsyncSampler (pure async stack)")
             results = await model.async_inference(
                 data=datapoints,
@@ -415,7 +415,7 @@ def parse_arguments():
         "--async",
         dest="use_async",
         action="store_true",
-        help="Enable pure async stack (AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator). "
+        help="Enable pure async stack (AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator). "
         "Fully asynchronous tree search with concurrent child generation and evaluation. "
         "Recommended for maximum throughput.",
     )

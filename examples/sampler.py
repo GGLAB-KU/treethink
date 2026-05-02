@@ -9,11 +9,11 @@ from vllm.lora.request import LoRARequest
 
 from treethink import (
     EvaluatorArgs,
-    FinderArgs,
+    ExpanderArgs,
     InferenceTimeArgs,
     TreeThink,
     get_evaluator_from_config,
-    get_finder_from_config,
+    get_expander_from_config,
     get_inference_time_method,
 )
 
@@ -212,7 +212,7 @@ class VLLMSampler(SamplerBase):
 class TreeThinkSampler(SamplerBase):
     def __init__(
         self,
-        finder_args: FinderArgs,
+        expander_args: ExpanderArgs,
         evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         sample_params: Optional[
@@ -225,9 +225,9 @@ class TreeThinkSampler(SamplerBase):
             sample_params=sample_params,
             prompter=prompter,
             task_name=task_name,
-            model_name=finder_args.model.model,
+            model_name=expander_args.model.model,
         )
-        self.finder_args = finder_args
+        self.expander_args = expander_args
         self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
         self.enable_lora = False
@@ -238,8 +238,8 @@ class TreeThinkSampler(SamplerBase):
         logger.info(
             f"Instantiating selected method: {self.inference_time_args.method_name}"
         )
-        self.finder = get_finder_from_config(
-            self.finder_args, prompter=self.prompter
+        self.expander = get_expander_from_config(
+            self.expander_args, prompter=self.prompter
         )
         self.evaluator = get_evaluator_from_config(
             self.evaluator_args, prompter=self.prompter
@@ -247,7 +247,7 @@ class TreeThinkSampler(SamplerBase):
         self.method = get_inference_time_method(
             inference_time_config=self.inference_time_args,
             root_node=None,
-            finder=self.finder,
+            expander=self.expander,
             evaluator=self.evaluator,
         )
         self.model = TreeThink(self.method, self.inference_time_args)

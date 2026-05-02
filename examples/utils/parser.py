@@ -146,13 +146,13 @@ def _get_optional_inner_type(type_hint):
 # Inference Time
 from treethink import (  # noqa: E402
     EvaluatorArgs,
-    FinderArgs,
+    ExpanderArgs,
     InferenceTimeArgs,
 )
 
 __inftime = {
     "inference_time": InferenceTimeArgs,
-    "finder": FinderArgs,
+    "expander": ExpanderArgs,
     "evaluator": EvaluatorArgs,
 }
 

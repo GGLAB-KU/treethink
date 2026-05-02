@@ -1,7 +1,7 @@
 """
 Fully Asynchronous Sampler for TreeThink.
 
-This sampler leverages AsyncMCTS, AsyncChildFinder, and AsyncNodeEvaluator
+This sampler leverages AsyncMCTS, AsyncChildExpander, and AsyncNodeEvaluator
 to achieve high-throughput parallel inference on multiple datapoints.
 """
 
@@ -13,19 +13,19 @@ from typing import Callable, Dict, List, Optional
 from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
 
+# Import async components
+from treethink.expanders import (
+    get_expander_from_config,  # Has async support
+)
+
 from treethink import (
     EvaluatorArgs,
-    FinderArgs,
+    ExpanderArgs,
     InferenceTimeArgs,
     TreeThink,
     get_inference_time_method,
 )  # Wrapper class
 from treethink.async_evaluators import get_async_evaluator_from_config
-
-# Import async components
-from treethink.finders import (
-    get_finder_from_config,  # Has async support
-)
 
 # Check for AsyncEngine
 try:
@@ -42,7 +42,7 @@ class AsyncSampler:
 
     def __init__(
         self,
-        finder_args: FinderArgs,
+        expander_args: ExpanderArgs,
         evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         prompter: Optional[Callable] = None,
@@ -52,7 +52,7 @@ class AsyncSampler:
         visible_devices: str = "0",
         task_name: str = "async_generate",
     ):
-        self.finder_args = finder_args
+        self.expander_args = expander_args
         self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
         self.max_concurrent_datapoints = max_concurrent_datapoints
@@ -66,13 +66,13 @@ class AsyncSampler:
                 "vLLM AsyncLLMEngine not found. Please upgrade vLLM."
             )
 
-        # Create engine args from finder config or defaults
-        model_name = finder_args.model.model
+        # Create engine args from expander config or defaults
+        model_name = expander_args.model.model
 
         # Initialize Shared Components
-        # Use get_finder_from_config - it supports async finders
-        self.shared_finder = get_finder_from_config(
-            finder_args, prompter=self.prompter
+        # Use get_expander_from_config - it supports async expanders
+        self.shared_expander = get_expander_from_config(
+            expander_args, prompter=self.prompter
         )
 
         # For Judge, if it uses the same model, we can reuse the engine
@@ -157,7 +157,7 @@ class AsyncSampler:
             method = get_inference_time_method(
                 inference_time_config=self.inference_time_args,
                 root_node=None,
-                finder=self.shared_finder,
+                expander=self.shared_expander,
                 evaluator=self.shared_evaluator,
             )
 

@@ -9,10 +9,10 @@ from loguru import logger
 from vllm import AsyncEngineArgs, AsyncLLMEngine
 
 from .methods import Node
-from .utils import FinderArgs, ModelArgs, SamplingArgs
+from .utils import ExpanderArgs, ModelArgs, SamplingArgs
 
 
-class BaseFinder(ABC):
+class BaseExpander(ABC):
     def __init__(
         self,
         name: str,
@@ -41,7 +41,7 @@ class BaseFinder(ABC):
         return vllm.LLM(**model_args)
 
 
-class VLLMFinder(BaseFinder):
+class VLLMExpander(BaseExpander):
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -51,8 +51,8 @@ class VLLMFinder(BaseFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing VLLMFinder.")
-        super().__init__(name="vllm_finder")
+        logger.debug("Initializing VLLMExpander.")
+        super().__init__(name="vllm_expander")
         if isinstance(model, ModelArgs):
             logger.trace("ModelArgs is given, using init_model()")
             self.model = self.init_model(
@@ -85,7 +85,7 @@ class VLLMFinder(BaseFinder):
         self._max_model_len = self.model.llm_engine.model_config.max_model_len
         self._tokenizer = self.model.get_tokenizer()
         logger.debug(f"Max model length: {self._max_model_len}")
-        logger.info("VLLMFinder is initialized.")
+        logger.info("VLLMExpander is initialized.")
 
     def __call__(self, node: Node, method):
         proof_so_far = method.traverse_to_root(node, include_root=False)
@@ -139,7 +139,7 @@ class VLLMFinder(BaseFinder):
         logger.debug(f"Added {len(children)} children to node {node}.")
 
 
-class DynamicFinder(BaseFinder):
+class DynamicExpander(BaseExpander):
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -150,8 +150,8 @@ class DynamicFinder(BaseFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing DynamicFinder.")
-        super().__init__(name="dynamic_sampling_finder")
+        logger.debug("Initializing DynamicExpander.")
+        super().__init__(name="dynamic_sampling_expander")
         if isinstance(model, ModelArgs):
             logger.trace("Model is ModelArgs, using init_model()")
             self.model = self.init_model(
@@ -170,10 +170,10 @@ class DynamicFinder(BaseFinder):
         self.system_prompt = system_prompt
 
         if isinstance(prompter, Callable):
-            logger.debug("Using custom prompter for DynamicFinder.")
+            logger.debug("Using custom prompter for DynamicExpander.")
             self.prompter = prompter
         else:
-            logger.debug("Using default prompter for DynamicFinder.")
+            logger.debug("Using default prompter for DynamicExpander.")
             self.prompter = partial(
                 self.model.get_tokenizer().apply_chat_template,
                 tokenize=False,
@@ -189,7 +189,7 @@ class DynamicFinder(BaseFinder):
             logger.debug("Using default param_modifier function.")
             self.param_modifier = self._default_param_modifier
 
-        logger.info("DynamicFinder initialized.")
+        logger.info("DynamicExpander initialized.")
 
     def _default_param_modifier(self, node: Node) -> vllm.SamplingParams:
         new_params = self.sampling_params.clone()
@@ -260,7 +260,7 @@ class DynamicFinder(BaseFinder):
         logger.debug(f"Added {len(children)} children to node {node}.")
 
 
-class AsyncVLLMFinder(BaseFinder):
+class AsyncVLLMExpander(BaseExpander):
     """Async vLLM based inference for node expansion with batch processing support."""
 
     def __init__(
@@ -272,8 +272,8 @@ class AsyncVLLMFinder(BaseFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing AsyncVLLMFinder.")
-        super().__init__(name="async_vllm_finder")
+        logger.debug("Initializing AsyncVLLMExpander.")
+        super().__init__(name="async_vllm_expander")
 
         if isinstance(model, ModelArgs):
             engine_args = AsyncEngineArgs(
@@ -296,7 +296,7 @@ class AsyncVLLMFinder(BaseFinder):
             )
         else:
             raise ValueError(
-                "model must be ModelArgs instance for AsyncVLLMFinder."
+                "model must be ModelArgs instance for AsyncVLLMExpander."
             )
 
         self.sampling_params = (
@@ -309,12 +309,12 @@ class AsyncVLLMFinder(BaseFinder):
         self._init_tokenizer_task = None
 
         if isinstance(prompter, Callable):
-            logger.debug("Using provided prompter for AsyncVLLMFinder.")
+            logger.debug("Using provided prompter for AsyncVLLMExpander.")
             self.prompter = prompter
         else:
             self.prompter = self._default_prompter
 
-        logger.info("AsyncVLLMFinder initialized.")
+        logger.info("AsyncVLLMExpander initialized.")
 
     async def _async_init_tokenizer(self):
         """Initialize tokenizer asynchronously."""
@@ -325,7 +325,7 @@ class AsyncVLLMFinder(BaseFinder):
             self._tokenizer = AutoTokenizer.from_pretrained(
                 model_config.model, trust_remote_code=True
             )
-            logger.debug("Tokenizer loaded successfully in AsyncVLLMFinder.")
+            logger.debug("Tokenizer loaded successfully in AsyncVLLMExpander.")
         except Exception as e:
             logger.warning(
                 f"Failed to load tokenizer: {e}. Token counting disabled."
@@ -429,11 +429,11 @@ class AsyncVLLMFinder(BaseFinder):
             logger.error(f"Single generation failed for {request_id}: {e}")
 
 
-class AsyncBatchVLLMFinder(BaseFinder):
+class AsyncBatchVLLMExpander(BaseExpander):
     """
-    Async vLLM finder with smart batching across multiple nodes.
+    Async vLLM expander with smart batching across multiple nodes.
 
-    This finder can batch multiple node expansions into a single vLLM call,
+    This expander can batch multiple node expansions into a single vLLM call,
     significantly improving throughput.
     """
 
@@ -447,8 +447,8 @@ class AsyncBatchVLLMFinder(BaseFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing AsyncBatchVLLMFinder.")
-        super().__init__(name="async_batch_vllm_finder")
+        logger.debug("Initializing AsyncBatchVLLMExpander.")
+        super().__init__(name="async_batch_vllm_expander")
 
         if isinstance(model, ModelArgs):
             engine_args = AsyncEngineArgs(
@@ -462,7 +462,7 @@ class AsyncBatchVLLMFinder(BaseFinder):
                 dtype=getattr(model, "dtype", "auto"),
             )
             self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-            logger.debug("AsyncBatchVLLMFinder AsyncLLMEngine initialized.")
+            logger.debug("AsyncBatchVLLMExpander AsyncLLMEngine initialized.")
             self._max_model_len = (
                 model.max_model_len if hasattr(model, "max_model_len") else 4096
             )
@@ -484,7 +484,7 @@ class AsyncBatchVLLMFinder(BaseFinder):
         logger.debug("Tokenizer async initialization task created.")
 
         if isinstance(prompter, Callable):
-            logger.debug("Using custom prompter for AsyncBatchVLLMFinder.")
+            logger.debug("Using custom prompter for AsyncBatchVLLMExpander.")
             self.prompter = prompter
         else:
             self.prompter = self._default_prompter
@@ -492,7 +492,7 @@ class AsyncBatchVLLMFinder(BaseFinder):
         self._pending_nodes = []
         self._batch_lock = asyncio.Lock()
 
-        logger.debug("AsyncBatchVLLMFinder initialized.")
+        logger.debug("AsyncBatchVLLMExpander initialized.")
 
     async def _async_init_tokenizer(self):
         try:
@@ -503,7 +503,7 @@ class AsyncBatchVLLMFinder(BaseFinder):
                 model_config.model, trust_remote_code=True
             )
             logger.debug(
-                "Tokenizer loaded successfully for AsyncBatchVLLMFinder."
+                "Tokenizer loaded successfully for AsyncBatchVLLMExpander."
             )
         except Exception as e:
             logger.warning(f"Failed to load tokenizer: {e}")
@@ -725,35 +725,37 @@ class AsyncBatchVLLMFinder(BaseFinder):
 
 
 # Constants
-IMPLEMENTED_CF = {
-    "vllm_finder": VLLMFinder,
-    "dynamic_sampling_finder": DynamicFinder,
-    "async_batch_vllm_finder": AsyncBatchVLLMFinder,
-    "async_vllm_finder": AsyncVLLMFinder,
+IMPLEMENTED_EXPANDERS = {
+    "vllm_expander": VLLMExpander,
+    "dynamic_sampling_expander": DynamicExpander,
+    "async_batch_vllm_expander": AsyncBatchVLLMExpander,
+    "async_vllm_expander": AsyncVLLMExpander,
 }
-CHILD_FINDERS = list(IMPLEMENTED_CF.keys())
-CHILD_FINDER_TYPE = TypeVar("CHILD_FINDER_TYPE", bound=BaseFinder)
+EXPANDERS = list(IMPLEMENTED_EXPANDERS.keys())
+EXPANDER_TYPE = TypeVar("EXPANDER_TYPE", bound=BaseExpander)
 
 
-def get_finder(func_name, *args, **kwargs) -> BaseFinder:
+def get_expander(func_name, *args, **kwargs) -> BaseExpander:
     try:
-        logger.info(f"Instantiating finder: {func_name}")
-        return IMPLEMENTED_CF[func_name](*args, **kwargs)
+        logger.info(f"Instantiating expander: {func_name}")
+        return IMPLEMENTED_EXPANDERS[func_name](*args, **kwargs)
     except KeyError:
         logger.error(
-            f"Could not initialize finder: {func_name}"
-            + f"Available finders: {list(IMPLEMENTED_CF.keys())}"
+            f"Could not initialize expander: {func_name}"
+            + f"Available expanders: {list(IMPLEMENTED_EXPANDERS.keys())}"
         )
 
 
-def get_finder_from_config(
-    config: FinderArgs, *args, **kwargs
-) -> CHILD_FINDER_TYPE:
+def get_expander_from_config(
+    config: ExpanderArgs, *args, **kwargs
+) -> EXPANDER_TYPE:
     try:
-        logger.info(f"Instantiating finder from config: {config.func_name}")
-        return IMPLEMENTED_CF[config.func_name](*args, **config, **kwargs)
+        logger.info(f"Instantiating expander from config: {config.func_name}")
+        return IMPLEMENTED_EXPANDERS[config.func_name](
+            *args, **config, **kwargs
+        )
     except KeyError:
         logger.error(
-            f"Could not initialize finder: {config.func_name}"
-            + f"Available finder: {list(IMPLEMENTED_CF.keys())}"
+            f"Could not initialize expander: {config.func_name}"
+            + f"Available expander: {list(IMPLEMENTED_EXPANDERS.keys())}"
         )

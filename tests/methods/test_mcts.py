@@ -4,7 +4,7 @@ import unittest
 
 from loguru import logger
 
-from tests.common import RandomNodeEvaluator, SimpleChildFinder
+from tests.common import RandomNodeEvaluator, SimpleChildExpander
 from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
     save_tree_to_txt,
@@ -26,11 +26,11 @@ class TestMCTS(unittest.TestCase):
 
         root = Node("root")
         evaluator_func = RandomNodeEvaluator()
-        finder_func = SimpleChildFinder()
+        expander_func = SimpleChildExpander()
 
         mcts = MCTS(
             root_node=None,
-            finder=finder_func,
+            expander=expander_func,
             evaluator=evaluator_func,
             exploration_weight=0.0,
         )
@@ -50,11 +50,11 @@ class TestMCTS(unittest.TestCase):
 
         root = Node("root")
         evaluator_func = RandomNodeEvaluator()
-        finder_func = SimpleChildFinder()
+        expander_func = SimpleChildExpander()
 
         mcts = MCTS(
             root_node=None,
-            finder=finder_func,
+            expander=expander_func,
             evaluator=evaluator_func,
             final_decision_mode="maximize_visits",
         )
@@ -74,11 +74,11 @@ class TestMCTS(unittest.TestCase):
 
         root = Node("root")
         evaluator_func = RandomNodeEvaluator()
-        finder_func = SimpleChildFinder()
+        expander_func = SimpleChildExpander()
 
         mcts = MCTS(
             root_node=None,
-            finder=finder_func,
+            expander=expander_func,
             evaluator=evaluator_func,
             final_decision_mode="maximize_value",
         )
@@ -100,7 +100,7 @@ class TestMCTS(unittest.TestCase):
         root = Node("root")
 
         # Create explicit children with duplicates so we can reference them
-        def finder(node, method):
+        def expander(node, method):
             # First duplicate
             dup1 = Node(text="DUP", parent=node)
             node.add_child(dup1)
@@ -143,7 +143,7 @@ class TestMCTS(unittest.TestCase):
 
         mcts = MCTS(
             root_node=None,
-            finder=finder,
+            expander=expander,
             evaluator=evaluator,
             final_decision_mode="maximize_value",
         )
