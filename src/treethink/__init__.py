@@ -1,4 +1,6 @@
 from treethink import (
+    async_evaluators,
+    async_expanders,
     evaluators,
     expanders,
     grading,
@@ -6,9 +8,18 @@ from treethink import (
     treethink,
     utils,
 )
+from treethink.async_expanders import (
+    ASYNC_EXPANDER_TYPE,
+    ASYNC_EXPANDERS,
+    IMPLEMENTED_ASYNC_EXPANDERS,
+    AsyncBatchVLLMExpander,
+    AsyncVLLMExpander,
+    get_async_expander,
+    get_async_expander_from_config,
+)
 from treethink.evaluators import (
-    IMPLEMENTED_EVALUATORS,
     EVALUATORS,
+    IMPLEMENTED_EVALUATORS,
     BaseEvaluator,
     JudgeEvaluator,
     LogprobEvaluator,
