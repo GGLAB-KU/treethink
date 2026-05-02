@@ -19,7 +19,7 @@ from dataset_prep import (
 )
 from loguru import logger
 from parallel_sampler import AsyncDatapointSampler
-from sampler import Sampler
+from sampler import TreeThinkSampler, VLLMSampler
 from utils.parser import (
     parse_inftime_conf,
     parse_normal_inference_conf,
@@ -112,25 +112,22 @@ def setup_model(
             )
         else:
             # Sequential processing
-            logger.info("Using sequential sampler (Sampler)")
-            model = Sampler(
-                model_args=None,
-                sample_params=None,
+            logger.info("Using sequential TreeThink sampler (TreeThinkSampler)")
+            model = TreeThinkSampler(
                 child_finder_args=child_finder_args,
                 node_evaluator_args=node_evaluator_args,
                 inference_time_args=inference_time_args,
+                sample_params=None,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
             )
     elif _inference_type == "normal":
         model_args, sample_args = _args
 
-        model = Sampler(
+        logger.info("Using standard vLLM sampler (VLLMSampler)")
+        model = VLLMSampler(
             model_args=model_args,
             sample_params=sample_args,
-            child_finder_args=None,
-            node_evaluator_args=None,
-            inference_time_args=None,
             prompter=None,
             task_name=run_name,
         )

@@ -13,13 +13,17 @@ from examples.run_sampler import (
     simple_messages_to_string,
 )
 from examples.sampler import (
-    Sampler,
+    SamplerBase,
+    TreeThinkSampler,
+    VLLMSampler,
 )
 
 __all__ = [
     "ConfigRegistry",
     "PreparationConfig",
-    "Sampler",
+    "SamplerBase",
+    "VLLMSampler",
+    "TreeThinkSampler",
     "dataset_prep",
     "get_time",
     "parse_arguments",
