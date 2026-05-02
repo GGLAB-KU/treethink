@@ -20,7 +20,7 @@ from treethink.methods import BaseMethod, Node
 from treethink.utils import (
     LeanREPLArgs,
     ModelArgs,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
     SamplingArgs,
     extract_result,
 )
@@ -38,7 +38,7 @@ You score the solution out of 20 and put your final score inside \\boxed{}.
 Do NOT attempt to solve the problem, only provide a score out of 20 inside \\boxed{}.
 """
 
-class BaseNodeEvaluator(ABC):
+class BaseEvaluator(ABC):
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
 
@@ -49,7 +49,7 @@ class BaseNodeEvaluator(ABC):
         pass
 
 
-class CumulativeLogprobNodeEvaluator(BaseNodeEvaluator):
+class LogprobEvaluator(BaseEvaluator):
     def __init__(self, *args, **kwargs):
         super().__init__(
             name="cumulative_logprob_node_evaluator", *args, **kwargs
@@ -70,7 +70,7 @@ class CumulativeLogprobNodeEvaluator(BaseNodeEvaluator):
             return [0.0] * len(node)
 
 
-class CumulativeProbNodeEvaluator(BaseNodeEvaluator):
+class ProbEvaluator(BaseEvaluator):
     def __init__(self, *args, **kwargs):
         super().__init__(name="cumulative_prob_node_evaluator", *args, **kwargs)
 
@@ -90,7 +90,7 @@ class CumulativeProbNodeEvaluator(BaseNodeEvaluator):
             return [0.0] * len(node)
 
 
-class REPLNodeEvaluator(BaseNodeEvaluator):
+class REPLEvaluator(BaseEvaluator):
     def __init__(self, repl_args: LeanREPLArgs, *args, **kwargs):
         super().__init__(name="repl_node_evaluator", *args, **kwargs)
         self.repl_args = repl_args
@@ -163,7 +163,7 @@ class REPLNodeEvaluator(BaseNodeEvaluator):
         return True
 
 
-class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
+class JudgeEvaluator(BaseEvaluator):
     def __init__(
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
@@ -433,7 +433,7 @@ class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
             return proof[start:]
         return proof[start:end]
 
-class PairwiseTournamentEvaluator(BaseNodeEvaluator):
+class TournamentEvaluator(BaseEvaluator):
     def __init__(
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
@@ -763,7 +763,7 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
         return proof[start:end]
 
 
-class AsyncLLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
+class AsyncJudgeEvaluator(BaseEvaluator):
     """
     Async LLM-as-judge node evaluator with AsyncLLMEngine.
 
@@ -1047,7 +1047,7 @@ class AsyncLLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
         return proof[start:end]
 
 
-class NormalizedLengthsNodeEvaluator(BaseNodeEvaluator):
+class NormLenEvaluator(BaseEvaluator):
     """Normalized Lengths node evaluation strategy from BFS-Prover paper:
     https://arxiv.org/pdf/2502.03438
 
@@ -1096,7 +1096,7 @@ class NormalizedLengthsNodeEvaluator(BaseNodeEvaluator):
         return [whole_path_cumulative_logprobs / (L**self.length_norm)]
 
 
-class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
+class NormLenProbEvaluator(BaseEvaluator):
     """Normalized Lengths node evaluation strategy from BFS-Prover paper:
     https://arxiv.org/pdf/2502.03438
 
@@ -1150,7 +1150,7 @@ class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
         return [whole_path_cumulative_probs / (L**self.length_norm)]
 
 
-class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
+class NormLenProbEvaluator(BaseEvaluator):
     """Normalized Lengths node evaluation strategy from BFS-Prover paper:
     https://arxiv.org/pdf/2502.03438
 
@@ -1208,12 +1208,12 @@ class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
 
 
 IMPLEMENTED_ND = {
-    "cumulative_logprob_node_evaluator": CumulativeLogprobNodeEvaluator,
-    "repl_node_evaluator": REPLNodeEvaluator,
-    "llm_as_judge_node_evaluator": LLMAsJudgeNodeEvaluator,
-    "normalized_lengths_node_evaluator": NormalizedLengthsNodeEvaluator,
-    "async_llm_as_judge_node_evaluator": AsyncLLMAsJudgeNodeEvaluator,
-    "normalized_lengths_probs_node_evaluator": NormalizedLengthsProbsNodeEvaluator,
+    "cumulative_logprob_node_evaluator": LogprobEvaluator,
+    "repl_node_evaluator": REPLEvaluator,
+    "llm_as_judge_node_evaluator": JudgeEvaluator,
+    "normalized_lengths_node_evaluator": NormLenEvaluator,
+    "async_llm_as_judge_node_evaluator": AsyncJudgeEvaluator,
+    "normalized_lengths_probs_node_evaluator": NormLenProbEvaluator,
 }
 NODE_EVALUATORS = list(IMPLEMENTED_ND.keys())
 
@@ -1229,7 +1229,7 @@ def get_node_evaluator(func_name, *args, **kwargs) -> Callable:
 
 
 def get_node_evaluator_from_config(
-    config: NodeEvaluatorArgs, *args, **kwargs
+    config: EvaluatorArgs, *args, **kwargs
 ) -> Callable:
     try:
         logger.info(

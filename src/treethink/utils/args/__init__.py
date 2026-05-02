@@ -2,20 +2,20 @@ from treethink.utils.args.base_args import (
     BaseArgs,
 )
 from treethink.utils.args.inftime_args import (
-    ChildFinderArgs,
+    FinderArgs,
     InferenceTimeArgs,
     LeanREPLArgs,
     ModelArgs,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
     SamplingArgs,
 )
 
 __all__ = [
     "BaseArgs",
-    "ChildFinderArgs",
+    "FinderArgs",
     "InferenceTimeArgs",
     "LeanREPLArgs",
     "ModelArgs",
-    "NodeEvaluatorArgs",
+    "EvaluatorArgs",
     "SamplingArgs",
 ]

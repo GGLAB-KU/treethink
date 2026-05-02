@@ -8,10 +8,10 @@ from utils import ModelArgs, SamplingArgs
 from vllm.lora.request import LoRARequest
 
 from treethink import (
-    ChildFinderArgs,
+    FinderArgs,
     InferenceTimeArgs,
-    InferenceTimeMethods,
-    NodeEvaluatorArgs,
+    TreeThink,
+    EvaluatorArgs,
     get_child_finder_from_config,
     get_inference_time_method,
     get_node_evaluator_from_config,
@@ -25,8 +25,8 @@ class Sampler:
         sample_params: Optional[
             Union[vllm.SamplingParams, SamplingArgs]
         ] = None,
-        child_finder_args: Optional[ChildFinderArgs] = None,
-        node_evaluator_args: Optional[NodeEvaluatorArgs] = None,
+        child_finder_args: Optional[FinderArgs] = None,
+        node_evaluator_args: Optional[EvaluatorArgs] = None,
         inference_time_args: Optional[InferenceTimeArgs] = None,
         prompter: Optional[Callable] = None,
         task_name="generate",
@@ -95,7 +95,7 @@ class Sampler:
         )
 
         # change the model and therefore the generation
-        self.model = InferenceTimeMethods(self.method, self.inference_time_args)
+        self.model = TreeThink(self.method, self.inference_time_args)
 
     def _format_text(self, text):
         # find the text starting from <|end_header_id|> to the end of the text
@@ -232,7 +232,7 @@ class Sampler:
                 batch_messages.append(messages)
                 datapoint["model_input"] = messages
 
-            # Check if using inference time methods (InferenceTimeMethods has generate with problem_id)
+            # Check if using inference time methods (TreeThink has generate with problem_id)
             if hasattr(self.model, "generate") and hasattr(
                 self.model, "inftime_args"
             ):

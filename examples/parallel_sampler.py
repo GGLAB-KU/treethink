@@ -18,13 +18,13 @@ from typing import Callable, List, Optional
 from loguru import logger
 from tqdm import tqdm
 from utils import (
-    ChildFinderArgs,
+    FinderArgs,
     InferenceTimeArgs,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
 )
 
 from treethink import (
-    InferenceTimeMethods,
+    TreeThink,
     get_child_finder_from_config,
     get_inference_time_method,
     get_node_evaluator_from_config,
@@ -55,8 +55,8 @@ class AsyncDatapointSampler:
 
     def __init__(
         self,
-        child_finder_args: Optional[ChildFinderArgs] = None,
-        node_evaluator_args: Optional[NodeEvaluatorArgs] = None,
+        child_finder_args: Optional[FinderArgs] = None,
+        node_evaluator_args: Optional[EvaluatorArgs] = None,
         inference_time_args: Optional[InferenceTimeArgs] = None,
         prompter: Optional[Callable] = None,
         task_name: str = "async_generate",
@@ -289,8 +289,8 @@ class AsyncDatapointSampler:
                 node_evaluator=self.shared_node_evaluator,  # Shared evaluator
             )
 
-            # Create InferenceTimeMethods wrapper
-            model = InferenceTimeMethods(method, self.inference_time_args)
+            # Create TreeThink wrapper
+            model = TreeThink(method, self.inference_time_args)
 
             # CRITICAL: Acquire vLLM lock before calling generate
             # vLLM is NOT thread-safe and concurrent calls cause internal state corruption

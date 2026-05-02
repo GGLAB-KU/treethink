@@ -27,21 +27,21 @@ except ImportError:
 from treethink.grading import extract_data, split_proof_header
 from treethink.methods import BaseMethod, Node
 from treethink.node_evaluators import (
-    BaseNodeEvaluator,
-    LLMAsJudgeNodeEvaluator,
-    REPLNodeEvaluator,
+    BaseEvaluator,
+    JudgeEvaluator,
+    REPLEvaluator,
     LLM_AS_JUDGE_SYSTEM_PROMPT,
 )
 from treethink.utils import (
     LeanREPLArgs,
     extract_result,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
     ModelArgs,
     SamplingArgs,
 )
 
 
-class AsyncBaseNodeEvaluator(ABC):
+class AsyncBaseEvaluator(ABC):
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
 
@@ -52,7 +52,7 @@ class AsyncBaseNodeEvaluator(ABC):
         pass
 
 
-class AsyncREPLNodeEvaluator(AsyncBaseNodeEvaluator):
+class AsyncREPLEvaluator(AsyncBaseEvaluator):
     """
     Async version of REPL Node Evaluator.
 
@@ -114,7 +114,7 @@ class AsyncREPLNodeEvaluator(AsyncBaseNodeEvaluator):
             return [0.0] * len(nodes)
 
 
-class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
+class AsyncJudgeEvaluator(AsyncBaseEvaluator):
     """
     Async version of LLM-as-Judge Node Evaluator.
     """
@@ -239,7 +239,7 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
         if isinstance(nodes, Node):
             nodes = [nodes]
         if not nodes:
-            logger.warning("No nodes provided for AsyncLLMAsJudgeNodeEvaluator, returning [].")
+            logger.warning("No nodes provided for AsyncJudgeEvaluator, returning [].")
             return []
 
         # 1. REPL Check
@@ -341,7 +341,7 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
 
 
 
-class AsyncNormalizedLengthsNodeEvaluator(AsyncBaseNodeEvaluator):
+class AsyncNormLenEvaluator(AsyncBaseEvaluator):
     """
     Async wrapper for NormalizedLengths (CPU bound, so just wraps).
     """
@@ -388,20 +388,20 @@ class AsyncNormalizedLengthsNodeEvaluator(AsyncBaseNodeEvaluator):
 
 # Registry
 ASYNC_IMPLEMENTED_ND = {
-    "async_repl_node_evaluator": AsyncREPLNodeEvaluator,
-    "async_llm_as_judge_node_evaluator": AsyncLLMAsJudgeNodeEvaluator,
-    "async_normalized_lengths_node_evaluator": AsyncNormalizedLengthsNodeEvaluator,
+    "async_repl_node_evaluator": AsyncREPLEvaluator,
+    "async_llm_as_judge_node_evaluator": AsyncJudgeEvaluator,
+    "async_normalized_lengths_node_evaluator": AsyncNormLenEvaluator,
 }
 
 
 def get_async_node_evaluator_from_config(
-    config: NodeEvaluatorArgs, *args, **kwargs
+    config: EvaluatorArgs, *args, **kwargs
 ):
     try:
         func_name = config.func_name
         if not func_name.startswith("async_"):
             logger.warning(
-                f"NodeEvaluatorArgs func_name '{func_name}' does not start with 'async_', " 
+                f"EvaluatorArgs func_name '{func_name}' does not start with 'async_', " 
                 + "but we're in async_node_evaluators. Prepending 'async_' to func_name."
             )
             func_name = "async_" + func_name

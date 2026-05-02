@@ -144,7 +144,7 @@ class ModelArgs(BaseArgs):
 
 
 @dataclass
-class ChildFinderArgs(BaseArgs):
+class FinderArgs(BaseArgs):
     """
     Args:
         func_name (str): The name of the function to use for finding children.
@@ -168,7 +168,7 @@ class ChildFinderArgs(BaseArgs):
 
 
 @dataclass
-class NodeEvaluatorArgs(BaseArgs):
+class EvaluatorArgs(BaseArgs):
     """
     Args:
         func_name (str): The name of the function to use for evaluating nodes.
