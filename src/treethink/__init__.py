@@ -7,8 +7,8 @@ from treethink import (
     utils,
 )
 from treethink.evaluators import (
-    IMPLEMENTED_ND,
-    NODE_EVALUATORS,
+    IMPLEMENTED_EVALUATORS,
+    EVALUATORS,
     BaseEvaluator,
     JudgeEvaluator,
     LogprobEvaluator,
@@ -74,7 +74,7 @@ __all__ = [
     "EXPANDER_TYPE",
     "ExpanderArgs",
     "LogprobEvaluator",
-    "IMPLEMENTED_FINDERS",
+    "IMPLEMENTED_EXPANDERS",
     "IMPLEMENTED_EVALUATORS",
     "TreeThinkOutputs",
     "InferenceTimeArgs",
