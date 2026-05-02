@@ -2,8 +2,8 @@ from treethink import (
     evaluators,
     finders,
     grading,
-    inference_time_methods,
     methods,
+    treethink,
     utils,
 )
 from treethink.evaluators import (
@@ -34,10 +34,6 @@ from treethink.grading import (
     process_batches,
     split_proof_header,
 )
-from treethink.inference_time_methods import (
-    TreeThink,
-    TreeThinkOutputs,
-)
 from treethink.methods import (
     BFTS,
     MCTS,
@@ -51,6 +47,10 @@ from treethink.methods import (
     get_total_child_num,
     mcts,
     node,
+)
+from treethink.treethink import (
+    TreeThink,
+    TreeThinkOutputs,
 )
 from treethink.utils import (
     BaseArgs,
@@ -106,7 +106,7 @@ __all__ = [
     "get_total_child_num",
     "grading",
     "has_error_response",
-    "inference_time_methods",
+    "treethink",
     "mcts",
     "methods",
     "node",

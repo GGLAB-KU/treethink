@@ -19,7 +19,7 @@ except ImportError as e:
     logger.warning(f"Async methods not available: {e}")
     ASYNC_AVAILABLE = False
 
-IMPLEMENTED_INFERENCE_TIME_METHODS = {
+IMPLEMENTED_METHODS = {
     "MCTS": MCTS,
     "BFTS": BFTS,
     "BeamSearch": BeamSearch,
@@ -27,7 +27,7 @@ IMPLEMENTED_INFERENCE_TIME_METHODS = {
 
 # Add async methods if available
 if ASYNC_AVAILABLE:
-    IMPLEMENTED_INFERENCE_TIME_METHODS.update(
+    IMPLEMENTED_METHODS.update(
         {
             "AsyncBeamSearch": AsyncBeamSearch,
             "AsyncBFTS": AsyncBFTS,
@@ -35,7 +35,7 @@ if ASYNC_AVAILABLE:
         }
     )
 
-INFERENCE_TIME_METHODS = list(IMPLEMENTED_INFERENCE_TIME_METHODS.keys())
+INFERENCE_TIME_METHODS = list(IMPLEMENTED_METHODS.keys())
 METHOD_TYPE = TypeVar("METHOD_TYPE", bound=BaseMethod)
 
 
@@ -43,7 +43,7 @@ def get_inference_time_method(
     inference_time_config, root_node, finder, evaluator
 ):
     try:
-        return IMPLEMENTED_INFERENCE_TIME_METHODS[
+        return IMPLEMENTED_METHODS[
             inference_time_config.method_name
         ](
             root_node=root_node,
@@ -54,7 +54,7 @@ def get_inference_time_method(
     except KeyError:
         logger.error(
             f"Could not found method: {inference_time_config.method_name}. "
-            + f"Available methods are: {IMPLEMENTED_INFERENCE_TIME_METHODS.keys()}"
+            + f"Available methods are: {IMPLEMENTED_METHODS.keys()}"
         )
 
 

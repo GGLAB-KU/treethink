@@ -25,7 +25,7 @@ from treethink import (
     InferenceTimeArgs,
     get_inference_time_method,
 )
-from treethink.inference_time_methods import (
+from treethink import (
     TreeThink,
 )  # Wrapper class
 
