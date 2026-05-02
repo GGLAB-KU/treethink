@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Formal Mathematical Reasoning of LLMs with Tree Search Methods"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = [
+    "kimina-client",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -13,6 +16,9 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [dependency-groups]
+main = [
+    "vllm>=0.8.5.post1",
+]
 build = [
     "setuptools>=75.8.0",
 ]
@@ -21,4 +27,7 @@ direct = [
 ]
 
 [tool.uv]
-default-groups = ["build", "direct", "main"]
+default-groups = ["main", "build", "direct"]
+
+[tool.uv.sources]
+kimina-client = { git = "https://github.com/project-numina/kimina-lean-server.git" }
