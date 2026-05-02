@@ -84,7 +84,7 @@ class TestREPLIntegration(unittest.TestCase):
 
         # Sample proof from DeepSeekProverV2 on minif2f
         proof_begin = "Complete the following lean code:\n```\nimport Mathlib\nimport Aesop\n\n\nopen BigOperators\nopen Real\nopen Nat\nopen Topology\ntheorem mathd_algebra_478\n  (b h v : \u211d)\n  (h\u2080 : 0 < b \u2227 0 < h \u2227 0 < v)\n  (h\u2081 : v = 1 / 3 * (b * h))\n  (h\u2082 : b = 30)\n  (h\u2083 : h = 13 / 2) :\n  v = 65 := by\n"
-        proof_cont = "  rw [h\u2081]\n  norm_num [h\u2082, h\u2083]\n  <;> ring\n  <;> norm_num\n  <;> linarith\n```\n"
+        proof_cont = "  rw [h\u2081]\n  norm_num [h\u2082, h\u2083]\n  <;> ring\n  <;> norm_num\n  <;> linarith\n```\n"  # noqa: F841
 
         method = BFTS(
             root_node=Node("root"),
