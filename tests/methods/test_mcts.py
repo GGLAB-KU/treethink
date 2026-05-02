@@ -25,13 +25,13 @@ class TestMCTS(unittest.TestCase):
         """Test when exploration_weight is set to 0."""
 
         root = Node("root")
-        node_evaluator_func = RandomNodeEvaluator()
-        child_finder_func = SimpleChildFinder()
+        evaluator_func = RandomNodeEvaluator()
+        finder_func = SimpleChildFinder()
 
         mcts = MCTS(
             root_node=None,
-            child_finder=child_finder_func,
-            node_evaluator=node_evaluator_func,
+            finder=finder_func,
+            evaluator=evaluator_func,
             exploration_weight=0.0,
         )
         mcts.set_root_node(root)
@@ -49,13 +49,13 @@ class TestMCTS(unittest.TestCase):
         """Test final_decision_mode = maximize_visits"""
 
         root = Node("root")
-        node_evaluator_func = RandomNodeEvaluator()
-        child_finder_func = SimpleChildFinder()
+        evaluator_func = RandomNodeEvaluator()
+        finder_func = SimpleChildFinder()
 
         mcts = MCTS(
             root_node=None,
-            child_finder=child_finder_func,
-            node_evaluator=node_evaluator_func,
+            finder=finder_func,
+            evaluator=evaluator_func,
             final_decision_mode="maximize_visits",
         )
         mcts.set_root_node(root)
@@ -73,13 +73,13 @@ class TestMCTS(unittest.TestCase):
         """Test final_decision_mode = maximize_value"""
 
         root = Node("root")
-        node_evaluator_func = RandomNodeEvaluator()
-        child_finder_func = SimpleChildFinder()
+        evaluator_func = RandomNodeEvaluator()
+        finder_func = SimpleChildFinder()
 
         mcts = MCTS(
             root_node=None,
-            child_finder=child_finder_func,
-            node_evaluator=node_evaluator_func,
+            finder=finder_func,
+            evaluator=evaluator_func,
             final_decision_mode="maximize_value",
         )
         mcts.set_root_node(root)
@@ -100,7 +100,7 @@ class TestMCTS(unittest.TestCase):
         root = Node("root")
 
         # Create explicit children with duplicates so we can reference them
-        def child_finder(node, method):
+        def finder(node, method):
             # First duplicate
             dup1 = Node(text="DUP", parent=node)
             node.add_child(dup1)
@@ -130,7 +130,7 @@ class TestMCTS(unittest.TestCase):
                 "gc": gc,
             }
 
-        def node_evaluator(x, method):
+        def evaluator(x, method):
             # Called once for root during set_root_node
             from treethink.methods.node import Node as _Node
 
@@ -143,8 +143,8 @@ class TestMCTS(unittest.TestCase):
 
         mcts = MCTS(
             root_node=None,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             final_decision_mode="maximize_value",
         )
         mcts.set_root_node(root)

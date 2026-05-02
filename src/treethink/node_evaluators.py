@@ -1,26 +1,23 @@
-import json
 import math
 import os
-import uuid
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Callable, List, Optional, Union, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
-import requests
 import vllm
+from kimina_client import KiminaClient
+from kimina_client.models import Infotree
 from loguru import logger
 
 from treethink.grading import (
     extract_data,
     split_proof_header,
 )
-from kimina_client import KiminaClient
-from kimina_client.models import Infotree
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
+    EvaluatorArgs,
     LeanREPLArgs,
     ModelArgs,
-    EvaluatorArgs,
     SamplingArgs,
     extract_result,
 )
@@ -52,9 +49,7 @@ class BaseEvaluator(ABC):
 
 class LogprobEvaluator(BaseEvaluator):
     def __init__(self, *args, **kwargs):
-        super().__init__(
-            name="cumulative_logprob_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="cumulative_logprob_evaluator", *args, **kwargs)
 
     def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -73,7 +68,7 @@ class LogprobEvaluator(BaseEvaluator):
 
 class ProbEvaluator(BaseEvaluator):
     def __init__(self, *args, **kwargs):
-        super().__init__(name="cumulative_prob_node_evaluator", *args, **kwargs)
+        super().__init__(name="cumulative_prob_evaluator", *args, **kwargs)
 
     def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -93,7 +88,7 @@ class ProbEvaluator(BaseEvaluator):
 
 class REPLEvaluator(BaseEvaluator):
     def __init__(self, repl_args: LeanREPLArgs, *args, **kwargs):
-        super().__init__(name="repl_node_evaluator", *args, **kwargs)
+        super().__init__(name="repl_evaluator", *args, **kwargs)
         self.repl_args = repl_args
         # Sync KiminaClient
         self.lean_client = KiminaClient()
@@ -175,7 +170,7 @@ class JudgeEvaluator(BaseEvaluator):
         *args,
         **kwargs,
     ):
-        super().__init__(name="llm_as_judge_node_evaluator", *args, **kwargs)
+        super().__init__(name="llm_as_judge_evaluator", *args, **kwargs)
         self.repl_args = repl_args
 
         if isinstance(llm_as_judge_model, ModelArgs):
@@ -804,9 +799,7 @@ class AsyncJudgeEvaluator(BaseEvaluator):
         *args,
         **kwargs,
     ):
-        super().__init__(
-            name="async_llm_as_judge_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="async_llm_as_judge_evaluator", *args, **kwargs)
         self.repl_args = repl_args
 
         # Initialize AsyncLLMEngine for judge
@@ -1084,9 +1077,7 @@ class NormLenEvaluator(BaseEvaluator):
             length_norm (float): tunable alpha parameter that is used in L^alpha
         """
         self.length_norm = length_norm
-        super().__init__(
-            name="normalized_lengths_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="normalized_lengths_evaluator", *args, **kwargs)
 
     def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -1134,7 +1125,7 @@ class NormLenProbEvaluator(BaseEvaluator):
         """
         self.length_norm = length_norm
         super().__init__(
-            name="normalized_lengths_probs_node_evaluator", *args, **kwargs
+            name="normalized_lengths_probs_evaluator", *args, **kwargs
         )
 
     def __call__(
@@ -1188,7 +1179,7 @@ class NormLenProbEvaluator(BaseEvaluator):
         """
         self.length_norm = length_norm
         super().__init__(
-            name="normalized_lengths_probs_node_evaluator", *args, **kwargs
+            name="normalized_lengths_probs_evaluator", *args, **kwargs
         )
 
     def __call__(
@@ -1231,17 +1222,17 @@ class NormLenProbEvaluator(BaseEvaluator):
 
 
 IMPLEMENTED_ND = {
-    "cumulative_logprob_node_evaluator": LogprobEvaluator,
-    "repl_node_evaluator": REPLEvaluator,
-    "llm_as_judge_node_evaluator": JudgeEvaluator,
-    "normalized_lengths_node_evaluator": NormLenEvaluator,
-    "async_llm_as_judge_node_evaluator": AsyncJudgeEvaluator,
-    "normalized_lengths_probs_node_evaluator": NormLenProbEvaluator,
+    "cumulative_logprob_evaluator": LogprobEvaluator,
+    "repl_evaluator": REPLEvaluator,
+    "llm_as_judge_evaluator": JudgeEvaluator,
+    "normalized_lengths_evaluator": NormLenEvaluator,
+    "async_llm_as_judge_evaluator": AsyncJudgeEvaluator,
+    "normalized_lengths_probs_evaluator": NormLenProbEvaluator,
 }
 NODE_EVALUATORS = list(IMPLEMENTED_ND.keys())
 
 
-def get_node_evaluator(func_name, *args, **kwargs) -> Callable:
+def get_evaluator(func_name, *args, **kwargs) -> Callable:
     try:
         return IMPLEMENTED_ND[func_name](*args, **kwargs)
     except KeyError:
@@ -1251,7 +1242,7 @@ def get_node_evaluator(func_name, *args, **kwargs) -> Callable:
         )
 
 
-def get_node_evaluator_from_config(
+def get_evaluator_from_config(
     config: EvaluatorArgs, *args, **kwargs
 ) -> Callable:
     try:

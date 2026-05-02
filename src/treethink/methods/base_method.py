@@ -21,15 +21,15 @@ class BaseMethod(ABC):
     def __init__(
         self,
         root_node: Optional[Union[Node, str]],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        finder: Callable,
+        evaluator: Callable,
         final_decision_mode: str = "native",
         *args,
         **kwargs,
     ):
         # Main functions
-        self.child_finder = child_finder
-        self.node_evaluator = node_evaluator
+        self.finder = finder
+        self.evaluator = evaluator
 
         # Final decision mode and its function, "native" for base method
         # Change _compute_best_answer to change best_answer computation in the
@@ -68,7 +68,7 @@ class BaseMethod(ABC):
         """Reset the inner variables so that the class can be used for another
         generation task without instantiating it again.
         """
-        self.__init__(root_node, self.child_finder, self.node_evaluator)
+        self.__init__(root_node, self.finder, self.evaluator)
 
     def get_widths(self):
         widths = [1]
@@ -544,7 +544,7 @@ class BaseMethod(ABC):
         pass
 
     def expand(self, node: Node):
-        """Base expand method that calls child_finder and node_evaluator, then
+        """Base expand method that calls finder and evaluator, then
         updates visits. May be overridden in child classes for additional
         functionality.
 
@@ -554,8 +554,8 @@ class BaseMethod(ABC):
         self.stats_expansion_count += 1
         logger.trace(f"Node to expand: {node}")
 
-        # Use child_finder to generate children
-        self.child_finder(node, self)
+        # Use finder to generate children
+        self.finder(node, self)
         logger.trace(f"Found children: {node.children}")
 
         if not node.children:
@@ -564,16 +564,16 @@ class BaseMethod(ABC):
             return
 
         # Evaluate each child in a batched way
-        children_win_values = self.node_evaluator(node.children, self)
+        children_win_values = self.evaluator(node.children, self)
         logger.trace(f"Found children win values: {children_win_values}")
         for i, win_val in enumerate(children_win_values):
             if win_val is not None:
                 node.children[i].win_value = win_val
 
     async def async_expand(self, node: Node):
-        """Async version of expand method that calls child_finder and node_evaluator.
+        """Async version of expand method that calls finder and evaluator.
 
-        The node_evaluator is called asynchronously, which allows for concurrent
+        The evaluator is called asynchronously, which allows for concurrent
         evaluation of children nodes, significantly improving performance for I/O-bound
         operations like REPL verification and LLM-as-judge scoring.
 
@@ -582,12 +582,12 @@ class BaseMethod(ABC):
         self.stats_expansion_count += 1
         logger.trace(f"Node to async expand: {node}")
 
-        # Use child_finder to generate children
-        # Check if child_finder is async or sync
-        if asyncio.iscoroutinefunction(self.child_finder):
-            await self.child_finder(node, self)
+        # Use finder to generate children
+        # Check if finder is async or sync
+        if asyncio.iscoroutinefunction(self.finder):
+            await self.finder(node, self)
         else:
-            self.child_finder(node, self)
+            self.finder(node, self)
         logger.trace(f"Found children: {node.children}")
 
         if not node.children:
@@ -596,21 +596,21 @@ class BaseMethod(ABC):
             return
 
         # Evaluate each child in a batched way (async)
-        children_win_values = await self.node_evaluator(node.children, self)
+        children_win_values = await self.evaluator(node.children, self)
         logger.trace(f"Found children win values: {children_win_values}")
         for i, win_val in enumerate(children_win_values):
             if win_val is not None:
                 node.children[i].win_value = win_val
 
     def expand_rm_dupes(self, node: Node):
-        """Base expand method that calls child_finder, removes duplicates, and
-        calls node_evaluator, then updates visits. May be overridden in child
+        """Base expand method that calls finder, removes duplicates, and
+        calls evaluator, then updates visits. May be overridden in child
         classes for additional functionality.
         """
         self.stats_expansion_count += 1
 
-        # Use child_finder to generate children
-        self.child_finder(node, self)
+        # Use finder to generate children
+        self.finder(node, self)
 
         if not node.children:
             logger.warning(f"Failed to expand node: {node}.")
@@ -621,7 +621,7 @@ class BaseMethod(ABC):
         node.remove_duplicate_children()
 
         # Evaluate each child in a batched way
-        children_win_values = self.node_evaluator(node.children, self)
+        children_win_values = self.evaluator(node.children, self)
         logger.trace(f"Found children win values: {children_win_values}")
         for i, win_val in enumerate(children_win_values):
             if win_val is not None:
@@ -630,7 +630,7 @@ class BaseMethod(ABC):
     async def async_expand_rm_dupes(self, node: Node):
         """Async version of expand_rm_dupes method.
 
-        This method generates children using child_finder, removes duplicates,
+        This method generates children using finder, removes duplicates,
         and then evaluates them asynchronously. The async evaluation allows for
         concurrent processing of children nodes.
         """
@@ -638,8 +638,8 @@ class BaseMethod(ABC):
         logger.trace(f"Expanding node: {node}")
 
         # Generate children
-        logger.trace(f"Calling child_finder for node {id(node)}...")
-        await self.child_finder(node, self)
+        logger.trace(f"Calling finder for node {id(node)}...")
+        await self.finder(node, self)
 
         if not node.children:
             logger.warning(f"Failed to expand node: {node}.")
@@ -655,7 +655,7 @@ class BaseMethod(ABC):
         )
 
         # Evaluate each child in a async and batched way
-        children_win_values = await self.node_evaluator(node.children, self)
+        children_win_values = await self.evaluator(node.children, self)
         logger.trace(f"Found children win values: {children_win_values}")
         for i, win_val in enumerate(children_win_values):
             if win_val is not None:

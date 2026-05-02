@@ -1,19 +1,20 @@
 import json
 from typing import Callable, Optional, Union
+
+import vllm
 from loguru import logger
 from transformers import AutoTokenizer
-import vllm
+from utils import ModelArgs, SamplingArgs
 from vllm.lora.request import LoRARequest
 
-from utils import ModelArgs, SamplingArgs
 from treethink import (
+    EvaluatorArgs,
     FinderArgs,
     InferenceTimeArgs,
     TreeThink,
-    EvaluatorArgs,
-    get_child_finder_from_config,
+    get_evaluator_from_config,
+    get_finder_from_config,
     get_inference_time_method,
-    get_node_evaluator_from_config,
 )
 
 
@@ -211,8 +212,8 @@ class VLLMSampler(SamplerBase):
 class TreeThinkSampler(SamplerBase):
     def __init__(
         self,
-        child_finder_args: FinderArgs,
-        node_evaluator_args: EvaluatorArgs,
+        finder_args: FinderArgs,
+        evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         sample_params: Optional[
             Union[vllm.SamplingParams, SamplingArgs]
@@ -224,10 +225,10 @@ class TreeThinkSampler(SamplerBase):
             sample_params=sample_params,
             prompter=prompter,
             task_name=task_name,
-            model_name=child_finder_args.model.model,
+            model_name=finder_args.model.model,
         )
-        self.child_finder_args = child_finder_args
-        self.node_evaluator_args = node_evaluator_args
+        self.finder_args = finder_args
+        self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
         self.enable_lora = False
 
@@ -237,17 +238,17 @@ class TreeThinkSampler(SamplerBase):
         logger.info(
             f"Instantiating selected method: {self.inference_time_args.method_name}"
         )
-        self.child_finder = get_child_finder_from_config(
-            self.child_finder_args, prompter=self.prompter
+        self.finder = get_finder_from_config(
+            self.finder_args, prompter=self.prompter
         )
-        self.node_evaluator = get_node_evaluator_from_config(
-            self.node_evaluator_args, prompter=self.prompter
+        self.evaluator = get_evaluator_from_config(
+            self.evaluator_args, prompter=self.prompter
         )
         self.method = get_inference_time_method(
             inference_time_config=self.inference_time_args,
             root_node=None,
-            child_finder=self.child_finder,
-            node_evaluator=self.node_evaluator,
+            finder=self.finder,
+            evaluator=self.evaluator,
         )
         self.model = TreeThink(self.method, self.inference_time_args)
 

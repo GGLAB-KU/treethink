@@ -102,7 +102,7 @@ class SamplingArgs(BaseArgs):
         n (int): The number of samples to generate. This should be the same as
             max_children in InferenceTimeArgs. Defaults to 1.
         logprobs (int): The number of log probabilities to return. When using
-            cumulative_logprob_node_evaluator, set this to 1. Defaults to None.
+            cumulative_logprob_evaluator, set this to 1. Defaults to None.
     """
 
     max_tokens: int = 8192
@@ -173,7 +173,7 @@ class EvaluatorArgs(BaseArgs):
         func_name (str): The name of the function to use for evaluating nodes.
             Defaults to None.
         repl_args (LeanREPLArgs): The arguments for the Lean REPL server when
-            using repl_node_evaluator or llm_as_judge_node_evaluator. Defaults
+            using repl_evaluator or llm_as_judge_evaluator. Defaults
             to None.
         llm_as_judge_model (ModelArgs): The model to use as a judge. Defaults
             to None.

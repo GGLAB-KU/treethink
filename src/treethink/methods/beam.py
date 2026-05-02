@@ -17,8 +17,8 @@ class BeamSearch(BaseMethod):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        finder: Callable,
+        evaluator: Callable,
         beam_width: int = 5,
         max_depth: Optional[int] = None,
         tie_breaker: Literal["random", "deep", "stable"] = "random",
@@ -28,8 +28,8 @@ class BeamSearch(BaseMethod):
     ):
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
 
@@ -109,7 +109,7 @@ class BeamSearch(BaseMethod):
             remaining_depth = max(0, depth_limit - self._last_depth)
             layers_to_expand = min(layers_to_expand, remaining_depth)
 
-        logger.debug(f"Simulation started.")
+        logger.debug("Simulation started.")
         for layer in range(layers_to_expand):
             start_time = time.time()
             logger.debug(f"Expansion count: {layer}")
@@ -220,8 +220,8 @@ class AsyncBeamSearch(BeamSearch):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        finder: Callable,
+        evaluator: Callable,
         max_concurrent_expansions: int = 8,
         *args,
         **kwargs,
@@ -231,15 +231,15 @@ class AsyncBeamSearch(BeamSearch):
 
         Args:
             root_node: The root node of the search tree
-            child_finder: Function to generate child nodes
-            node_evaluator: Async function to evaluate nodes
+            finder: Function to generate child nodes
+            evaluator: Async function to evaluate nodes
             max_concurrent_expansions: Max number of nodes to expand in parallel
             *args, **kwargs: Additional arguments passed to BeamSearch
         """
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             *args,
             **kwargs,
         )

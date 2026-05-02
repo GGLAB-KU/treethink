@@ -3,7 +3,7 @@
 import itertools
 import random
 
-from treethink import BaseFinder, BaseEvaluator, Node
+from treethink import BaseEvaluator, BaseFinder, Node
 
 # -------------
 # Child Finders
@@ -12,14 +12,14 @@ from treethink import BaseFinder, BaseEvaluator, Node
 
 class SimpleChildFinder(BaseFinder):
     def __init__(self, num_child: int = 5, *args, **kwargs):
-        super().__init__(name="simple_child_finder", *args, **kwargs)
+        super().__init__(name="simple_finder", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
         self._id_gen = itertools.count(0)  # Infinite counter
 
     def __call__(self, node, method):
-        def _child_finder(x: Node, y):
+        def _finder(x: Node, y):
             for i in range(self.num_child - 1):
                 child_id = next(self._id_gen)
                 node.add_child(
@@ -31,14 +31,14 @@ class SimpleChildFinder(BaseFinder):
                     )
                 )
 
-        return _child_finder(node, method)
+        return _finder(node, method)
 
 
 class SetStrChildFinder(BaseFinder):
     def __init__(
         self, text: str, num_child: int = 5, sep="\n", *args, **kwargs
     ):
-        super().__init__(name="set_str_child_finder", *args, **kwargs)
+        super().__init__(name="set_str_finder", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
@@ -87,9 +87,7 @@ class PreferTerminationChildFinder(BaseFinder):
     ):
         """Occasionally produce a node with text `termination_str` to test if
         we can REPL that proof trajectory."""
-        super().__init__(
-            name="prefer_termination_child_finder", *args, **kwargs
-        )
+        super().__init__(name="prefer_termination_finder", *args, **kwargs)
         self.termination_str = termination_str
         self.num_child = num_child
         self.start_prob = start_prob
@@ -157,10 +155,10 @@ class RandomNodeEvaluator(BaseEvaluator):
         self.min_val = min_val
         self.max_val = max_val
 
-        super().__init__(name="random_node_evaluator", *args, **kwargs)
+        super().__init__(name="random_evaluator", *args, **kwargs)
 
     def __call__(self, node, method):
-        def _node_evaluator(x, y):
+        def _evaluator(x, y):
             if isinstance(x, Node):
                 x = [x]
 
@@ -169,7 +167,7 @@ class RandomNodeEvaluator(BaseEvaluator):
                 for i in range(len(x))
             ]
 
-        return _node_evaluator(node, method)
+        return _evaluator(node, method)
 
 
 class FirstPosOthersNegNodeEvaluator(BaseEvaluator):
@@ -183,12 +181,10 @@ class FirstPosOthersNegNodeEvaluator(BaseEvaluator):
     ):
         self._val_gen = itertools.count(-1.0, -1.0)
 
-        super().__init__(
-            name="first_pos_others_neg_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="first_pos_others_neg_evaluator", *args, **kwargs)
 
     def __call__(self, node, method):
-        def _node_evaluator(x, y):
+        def _evaluator(x, y):
             if isinstance(x, Node):
                 x = [x]
 
@@ -198,4 +194,4 @@ class FirstPosOthersNegNodeEvaluator(BaseEvaluator):
                 breakpoint()
             return scores
 
-        return _node_evaluator(node, method)
+        return _evaluator(node, method)

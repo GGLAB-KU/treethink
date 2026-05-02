@@ -7,16 +7,14 @@ operations like REPL verification and LLM-as-judge scoring.
 """
 
 import asyncio
-from typing import List, Union, Callable, Optional
-from abc import ABC, abstractmethod
-
-from loguru import logger
-from kimina_client import AsyncKiminaClient
-from kimina_client.models import Infotree
-
 import os
+from abc import ABC, abstractmethod
+from typing import Callable, List, Optional, Union
 
 import vllm
+from kimina_client import AsyncKiminaClient
+from kimina_client.models import Infotree
+from loguru import logger
 
 try:
     from vllm import AsyncEngineArgs, AsyncLLMEngine
@@ -24,20 +22,17 @@ except ImportError:
     AsyncEngineArgs = None
     AsyncLLMEngine = None
 
-from treethink.grading import extract_data, split_proof_header
-from treethink.methods import BaseMethod, Node
-from treethink.node_evaluators import (
-    BaseEvaluator,
-    JudgeEvaluator,
-    REPLEvaluator,
+from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
 )
+from treethink.grading import extract_data, split_proof_header
+from treethink.methods import BaseMethod, Node
 from treethink.utils import (
-    LeanREPLArgs,
-    extract_result,
     EvaluatorArgs,
+    LeanREPLArgs,
     ModelArgs,
     SamplingArgs,
+    extract_result,
 )
 
 
@@ -60,7 +55,7 @@ class AsyncREPLEvaluator(AsyncBaseEvaluator):
     """
 
     def __init__(self, repl_args: LeanREPLArgs, *args, **kwargs):
-        super().__init__(name="async_repl_node_evaluator", *args, **kwargs)
+        super().__init__(name="async_repl_evaluator", *args, **kwargs)
         self.repl_args = repl_args
         self.async_client = AsyncKiminaClient(api_url=repl_args.lean_server_url)
 
@@ -131,9 +126,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         *args,
         **kwargs,
     ):
-        super().__init__(
-            name="async_llm_as_judge_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="async_llm_as_judge_evaluator", *args, **kwargs)
         self.repl_args = repl_args
         self.system_prompt = llm_as_judge_system_prompt
 
@@ -198,8 +191,8 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
 
     async def generate_judge_answers(self, prompts: List[str]) -> List[str]:
         """Generate answers for multiple prompts concurrently."""
-        import uuid
         import time
+        import uuid
 
         results = [None] * len(prompts)
         logger.debug(f"Generating judge answers for {len(prompts)} prompts.")
@@ -351,7 +344,7 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
 
     def __init__(self, length_norm: float = 0.5, *args, **kwargs):
         super().__init__(
-            name="async_normalized_lengths_node_evaluator", *args, **kwargs
+            name="async_normalized_lengths_evaluator", *args, **kwargs
         )
         self.length_norm = length_norm
 
@@ -391,21 +384,19 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
 
 # Registry
 ASYNC_IMPLEMENTED_ND = {
-    "async_repl_node_evaluator": AsyncREPLEvaluator,
-    "async_llm_as_judge_node_evaluator": AsyncJudgeEvaluator,
-    "async_normalized_lengths_node_evaluator": AsyncNormLenEvaluator,
+    "async_repl_evaluator": AsyncREPLEvaluator,
+    "async_llm_as_judge_evaluator": AsyncJudgeEvaluator,
+    "async_normalized_lengths_evaluator": AsyncNormLenEvaluator,
 }
 
 
-def get_async_node_evaluator_from_config(
-    config: EvaluatorArgs, *args, **kwargs
-):
+def get_async_evaluator_from_config(config: EvaluatorArgs, *args, **kwargs):
     try:
         func_name = config.func_name
         if not func_name.startswith("async_"):
             logger.warning(
                 f"EvaluatorArgs func_name '{func_name}' does not start with 'async_', "
-                + "but we're in async_node_evaluators. Prepending 'async_' to func_name."
+                + "but we're in async_evaluators. Prepending 'async_' to func_name."
             )
             func_name = "async_" + func_name
         return ASYNC_IMPLEMENTED_ND[func_name](*args, **config, **kwargs)

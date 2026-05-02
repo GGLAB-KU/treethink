@@ -16,8 +16,8 @@ class BFTS(BaseMethod):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        finder: Callable,
+        evaluator: Callable,
         final_decision_mode: Literal[
             "clear_frontier", "native"
         ] = "clear_frontier",
@@ -30,8 +30,8 @@ class BFTS(BaseMethod):
 
         Args:
             root_node (Node): root node.
-            child_finder (Callable): child_finder method to use in expansion.
-            node_evaluator (Callable): node_evaluator method to give the node
+            finder (Callable): finder method to use in expansion.
+            evaluator (Callable): evaluator method to give the node
                 a score.
         """
 
@@ -44,8 +44,8 @@ class BFTS(BaseMethod):
 
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
 
@@ -266,8 +266,8 @@ class AsyncBFTS(BFTS):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        finder: Callable,
+        evaluator: Callable,
         max_concurrent_expansions: int = 8,
         final_decision_mode: Literal[
             "clear_frontier", "native"
@@ -280,16 +280,16 @@ class AsyncBFTS(BFTS):
 
         Args:
             root_node: The root node of the search tree
-            child_finder: Function to generate child nodes
-            node_evaluator: Async function to evaluate nodes
+            finder: Function to generate child nodes
+            evaluator: Async function to evaluate nodes
             max_concurrent_expansions: Max number of nodes to expand in parallel
             final_decision_mode: How to compute the final answer
             *args, **kwargs: Additional arguments passed to BFTS
         """
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
             *args,
             **kwargs,

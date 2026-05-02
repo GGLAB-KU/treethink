@@ -11,8 +11,8 @@ from tests.common import (
 )
 from treethink import (  # noqa
     InferenceTimeArgs,
-    TreeThink,
     LeanREPLArgs,
+    TreeThink,
 )
 from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
@@ -64,8 +64,8 @@ class TestREPLIntegration(unittest.TestCase):
             root_node=Node(
                 "root", termination_str=self.inftime_args.termination_str
             ),
-            child_finder=SetStrChildFinder(text=proof_cont, num_child=5),
-            node_evaluator=FirstPosOthersNegNodeEvaluator(),
+            finder=SetStrChildFinder(text=proof_cont, num_child=5),
+            evaluator=FirstPosOthersNegNodeEvaluator(),
         )
         inference_time = TreeThink(
             method=method, inftime_args=self.inftime_args
@@ -88,8 +88,8 @@ class TestREPLIntegration(unittest.TestCase):
 
         method = BFTS(
             root_node=Node("root"),
-            child_finder=PreferTerminationChildFinder(),
-            node_evaluator=FirstPosOthersNegNodeEvaluator(),
+            finder=PreferTerminationChildFinder(),
+            evaluator=FirstPosOthersNegNodeEvaluator(),
         )
         inference_time = TreeThink(
             method=method, inftime_args=self.inftime_args

@@ -18,15 +18,15 @@ class MCTS(BaseMethod):
 
     Attributes:
         root_node (Node): The root node of the search tree.
-        child_finder: Function to generate child nodes.
-        node_evaluator: Function to evaluate node quality.
+        finder: Function to generate child nodes.
+        evaluator: Function to evaluate node quality.
     """
 
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        finder: Callable,
+        evaluator: Callable,
         exploration_weight: float = 0.5,
         final_decision_mode: Literal[
             "maximize_visits", "maximize_value", "native"
@@ -36,8 +36,8 @@ class MCTS(BaseMethod):
     ):
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
         # Exploration weight for UCT algorithm
@@ -103,7 +103,7 @@ class MCTS(BaseMethod):
 
         termination_checked_nodes = []
 
-        logger.debug(f"Simulation started.")
+        logger.debug("Simulation started.")
         while expansion_count is None or i < expansion_count:
             logger.debug(f"Expansion: {i}")
             i += 1
@@ -249,8 +249,8 @@ class AsyncMCTS(MCTS):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        finder: Callable,
+        evaluator: Callable,
         exploration_weight: float = 0.5,
         final_decision_mode: Literal[
             "maximize_visits", "maximize_value", "native"
@@ -263,16 +263,16 @@ class AsyncMCTS(MCTS):
 
         Args:
             root_node: The root node of the search tree
-            child_finder: Function to generate child nodes
-            node_evaluator: Async function to evaluate nodes
+            finder: Function to generate child nodes
+            evaluator: Async function to evaluate nodes
             exploration_weight: Weight for exploration term in UCT
             final_decision_mode: How to compute the final answer
             *args, **kwargs: Additional arguments passed to MCTS
         """
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             exploration_weight=exploration_weight,
             final_decision_mode=final_decision_mode,
             *args,

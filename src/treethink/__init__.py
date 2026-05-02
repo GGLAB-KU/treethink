@@ -1,19 +1,29 @@
 from treethink import (
-    child_finders,
+    evaluators,
+    finders,
     grading,
     inference_time_methods,
     methods,
-    node_evaluators,
     utils,
 )
-from treethink.child_finders import (
+from treethink.evaluators import (
+    IMPLEMENTED_ND,
+    NODE_EVALUATORS,
+    BaseEvaluator,
+    JudgeEvaluator,
+    LogprobEvaluator,
+    REPLEvaluator,
+    get_evaluator,
+    get_evaluator_from_config,
+)
+from treethink.finders import (
     CHILD_FINDER_TYPE,
     CHILD_FINDERS,
     IMPLEMENTED_CF,
     BaseFinder,
-    get_child_finder,
-    get_child_finder_from_config,
     VLLMFinder,
+    get_finder,
+    get_finder_from_config,
 )
 from treethink.grading import (
     Lean4Client,
@@ -42,23 +52,13 @@ from treethink.methods import (
     mcts,
     node,
 )
-from treethink.node_evaluators import (
-    IMPLEMENTED_ND,
-    NODE_EVALUATORS,
-    BaseEvaluator,
-    LogprobEvaluator,
-    JudgeEvaluator,
-    REPLEvaluator,
-    get_node_evaluator,
-    get_node_evaluator_from_config,
-)
 from treethink.utils import (
     BaseArgs,
+    EvaluatorArgs,
     FinderArgs,
     InferenceTimeArgs,
     LeanREPLArgs,
     ModelArgs,
-    EvaluatorArgs,
     SamplingArgs,
     extract_result,
 )
@@ -95,13 +95,13 @@ __all__ = [
     "batch_verify_proof",
     "beam",
     "bfts",
-    "child_finders",
+    "finders",
     "extract_data",
     "extract_result",
-    "get_child_finder",
-    "get_child_finder_from_config",
-    "get_node_evaluator",
-    "get_node_evaluator_from_config",
+    "get_finder",
+    "get_finder_from_config",
+    "get_evaluator",
+    "get_evaluator_from_config",
     "get_inference_time_method",
     "get_total_child_num",
     "grading",
@@ -110,7 +110,7 @@ __all__ = [
     "mcts",
     "methods",
     "node",
-    "node_evaluators",
+    "evaluators",
     "process_batches",
     "split_proof_header",
     "utils",

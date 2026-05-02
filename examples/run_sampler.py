@@ -84,14 +84,14 @@ def setup_model(
     """Initialize the model with given parameters."""
     _args, _inference_type = parse_inference_arguments(gen_config_path)
     if _inference_type == "inftime":
-        inference_time_args, child_finder_args, node_evaluator_args = _args
+        inference_time_args, finder_args, evaluator_args = _args
 
         if use_async:
             # Pure async stack: AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator
             logger.info("Using pure async stack (AsyncSampler)")
             model = AsyncSampler(
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
+                finder_args=finder_args,
+                evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
@@ -103,8 +103,8 @@ def setup_model(
                 "Using parallel datapoint sampler (AsyncDatapointSampler)"
             )
             model = AsyncDatapointSampler(
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
+                finder_args=finder_args,
+                evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
@@ -114,8 +114,8 @@ def setup_model(
             # Sequential processing
             logger.info("Using sequential TreeThink sampler (TreeThinkSampler)")
             model = TreeThinkSampler(
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
+                finder_args=finder_args,
+                evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 sample_params=None,
                 prompter=simple_messages_to_string,

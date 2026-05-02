@@ -40,15 +40,15 @@ METHOD_TYPE = TypeVar("METHOD_TYPE", bound=BaseMethod)
 
 
 def get_inference_time_method(
-    inference_time_config, root_node, child_finder, node_evaluator
+    inference_time_config, root_node, finder, evaluator
 ):
     try:
         return IMPLEMENTED_INFERENCE_TIME_METHODS[
             inference_time_config.method_name
         ](
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            finder=finder,
+            evaluator=evaluator,
             **inference_time_config,
         )
     except KeyError:
