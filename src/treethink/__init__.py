@@ -1,19 +1,40 @@
 from treethink import (
-    child_finders,
+    async_evaluators,
+    async_expanders,
+    evaluators,
+    expanders,
     grading,
-    inference_time_methods,
     methods,
-    node_evaluators,
+    treethink,
     utils,
 )
-from treethink.child_finders import (
-    CHILD_FINDER_TYPE,
-    CHILD_FINDERS,
-    IMPLEMENTED_CF,
-    BaseFinder,
-    get_child_finder,
-    get_child_finder_from_config,
-    VLLMFinder,
+from treethink.async_expanders import (
+    ASYNC_EXPANDER_TYPE,
+    ASYNC_EXPANDERS,
+    IMPLEMENTED_ASYNC_EXPANDERS,
+    AsyncBatchVLLMExpander,
+    AsyncVLLMExpander,
+    get_async_expander,
+    get_async_expander_from_config,
+)
+from treethink.evaluators import (
+    EVALUATORS,
+    IMPLEMENTED_EVALUATORS,
+    BaseEvaluator,
+    JudgeEvaluator,
+    LogprobEvaluator,
+    REPLEvaluator,
+    get_evaluator,
+    get_evaluator_from_config,
+)
+from treethink.expanders import (
+    EXPANDER_TYPE,
+    EXPANDERS,
+    IMPLEMENTED_EXPANDERS,
+    BaseExpander,
+    VLLMExpander,
+    get_expander,
+    get_expander_from_config,
 )
 from treethink.grading import (
     Lean4Client,
@@ -23,10 +44,6 @@ from treethink.grading import (
     has_error_response,
     process_batches,
     split_proof_header,
-)
-from treethink.inference_time_methods import (
-    TreeThink,
-    TreeThinkOutputs,
 )
 from treethink.methods import (
     BFTS,
@@ -42,50 +59,53 @@ from treethink.methods import (
     mcts,
     node,
 )
-from treethink.node_evaluators import (
-    IMPLEMENTED_ND,
-    NODE_EVALUATORS,
-    BaseEvaluator,
-    LogprobEvaluator,
-    JudgeEvaluator,
-    REPLEvaluator,
-    get_node_evaluator,
-    get_node_evaluator_from_config,
+from treethink.treethink import (
+    TreeThink,
+    TreeThinkOutputs,
 )
 from treethink.utils import (
     BaseArgs,
-    FinderArgs,
+    EvaluatorArgs,
+    ExpanderArgs,
     InferenceTimeArgs,
     LeanREPLArgs,
     ModelArgs,
-    EvaluatorArgs,
     SamplingArgs,
     extract_result,
 )
 
 __all__ = [
+    "async_evaluators",
+    "async_expanders",
     "BFTS",
     "BaseArgs",
-    "BaseFinder",
+    "BaseExpander",
     "BaseMethod",
     "BaseEvaluator",
     "BeamSearch",
-    "CHILD_FINDERS",
-    "CHILD_FINDER_TYPE",
-    "FinderArgs",
+    "EXPANDERS",
+    "EXPANDER_TYPE",
+    "ExpanderArgs",
     "LogprobEvaluator",
-    "IMPLEMENTED_CF",
-    "IMPLEMENTED_ND",
+    "IMPLEMENTED_EXPANDERS",
+    "IMPLEMENTED_EVALUATORS",
+    "ASYNC_EXPANDER_TYPE",
+    "ASYNC_EXPANDERS",
+    "IMPLEMENTED_ASYNC_EXPANDERS",
+    "AsyncBatchVLLMExpander",
+    "AsyncVLLMExpander",
+    "get_async_expander",
+    "get_async_expander_from_config",
     "TreeThinkOutputs",
     "InferenceTimeArgs",
     "TreeThink",
     "JudgeEvaluator",
     "Lean4Client",
     "LeanREPLArgs",
-    "VLLMFinder",
+    "VLLMExpander",
     "MCTS",
     "ModelArgs",
-    "NODE_EVALUATORS",
+    "EVALUATORS",
     "Node",
     "EvaluatorArgs",
     "REPLEvaluator",
@@ -95,31 +115,23 @@ __all__ = [
     "batch_verify_proof",
     "beam",
     "bfts",
-    "child_finders",
+    "expanders",
     "extract_data",
     "extract_result",
-    "get_child_finder",
-    "get_child_finder_from_config",
-    "get_node_evaluator",
-    "get_node_evaluator_from_config",
+    "get_expander",
+    "get_expander_from_config",
+    "get_evaluator",
+    "get_evaluator_from_config",
     "get_inference_time_method",
     "get_total_child_num",
     "grading",
     "has_error_response",
-    "inference_time_methods",
+    "treethink",
     "mcts",
     "methods",
     "node",
-    "node_evaluators",
+    "evaluators",
     "process_batches",
     "split_proof_header",
     "utils",
 ]
-
-# Change recursion depth to avoid RecursionError
-import resource
-import sys
-
-# TODO(burak): We can dynamically change recursion depth with expansion_count too but to we need actually need it?
-resource.setrlimit(resource.RLIMIT_STACK, (2**29, -1))
-sys.setrecursionlimit(10**6)

@@ -17,8 +17,8 @@ inference_time:
   beam_width:
   exploration_weight: 1.4142135623730951  # sqrt(2)
 
-child_finder:
-  func_name: "vllm_child_finder"
+expander:
+  func_name: "vllm_expander"
   model: 
     model: "internlm/internlm2-7b"
     max_model_len:
@@ -35,8 +35,8 @@ child_finder:
     logprobs: 1
   visible_devices: "0"
 
-node_evaluator:
-  func_name: "cumulative_logprob_node_evaluator"
+evaluator:
+  func_name: "cumulative_logprob_evaluator"
   repl_args:
     lean_server_url:
     batch_size: 8

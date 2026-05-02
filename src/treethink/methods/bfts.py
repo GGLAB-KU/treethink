@@ -16,8 +16,8 @@ class BFTS(BaseMethod):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        expander: Callable,
+        evaluator: Callable,
         final_decision_mode: Literal[
             "clear_frontier", "native"
         ] = "clear_frontier",
@@ -30,8 +30,8 @@ class BFTS(BaseMethod):
 
         Args:
             root_node (Node): root node.
-            child_finder (Callable): child_finder method to use in expansion.
-            node_evaluator (Callable): node_evaluator method to give the node
+            expander (Callable): expander method to use in expansion.
+            evaluator (Callable): evaluator method to give the node
                 a score.
         """
 
@@ -44,8 +44,8 @@ class BFTS(BaseMethod):
 
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            expander=expander,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
 
@@ -248,26 +248,26 @@ class BFTS(BaseMethod):
 class AsyncBFTS(BFTS):
     """
     Async version of BFTS that supports asynchronous node expansion.
-    
+
     This implementation leverages async_expand and async_expand_rm_dupes from
     BaseMethod to enable concurrent evaluation of children nodes during best-first
     tree search expansion.
-    
+
     Key features:
     - Asynchronous expansion of nodes as they are popped from the frontier
     - Concurrent node evaluation for I/O-bound operations (REPL, LLM-as-judge)
     - Compatible with both sync and async node evaluators
     - Maintains the same priority queue semantics as BFTS
-    
+
     Attributes:
         max_concurrent_expansions (int): Maximum number of nodes to expand concurrently
     """
-    
+
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        expander: Callable,
+        evaluator: Callable,
         max_concurrent_expansions: int = 8,
         final_decision_mode: Literal[
             "clear_frontier", "native"
@@ -277,19 +277,19 @@ class AsyncBFTS(BFTS):
     ):
         """
         Initialize AsyncBFTS.
-        
+
         Args:
             root_node: The root node of the search tree
-            child_finder: Function to generate child nodes
-            node_evaluator: Async function to evaluate nodes
+            expander: Function to generate child nodes
+            evaluator: Async function to evaluate nodes
             max_concurrent_expansions: Max number of nodes to expand in parallel
             final_decision_mode: How to compute the final answer
             *args, **kwargs: Additional arguments passed to BFTS
         """
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            expander=expander,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
             *args,
             **kwargs,
@@ -306,11 +306,11 @@ class AsyncBFTS(BFTS):
     ):
         """
         Async version of simulate method that expands nodes asynchronously.
-        
+
         This method processes nodes from the priority queue (frontier) and expands
         them asynchronously, allowing for significant speedup when using async
         node evaluators.
-        
+
         Args:
             expansion_count: Number of nodes to expand
             timeout: Maximum time in seconds for the search
@@ -339,7 +339,7 @@ class AsyncBFTS(BFTS):
                     answer = await termination_encountered_fn(current_node)
                 else:
                     answer = termination_encountered_fn(current_node)
-                
+
                 if answer:
                     self.best_answer = answer
                     self.best_answer_reason = "checked_and_true"
@@ -371,7 +371,7 @@ class AsyncBFTS(BFTS):
 
     async def async_expand(self, node):
         """Async version of expand that additionally pushes children to frontier.
-        
+
         Uses the BaseMethod.async_expand for async node evaluation, then adds
         children to the frontier priority queue.
         """
@@ -385,7 +385,7 @@ class AsyncBFTS(BFTS):
 
     async def async_expand_rm_dupes(self, node):
         """Async version of expand_rm_dupes that pushes children to frontier.
-        
+
         Uses the BaseMethod.async_expand_rm_dupes for async node evaluation
         with duplicate removal, then adds children to the frontier priority queue.
         """
@@ -406,10 +406,10 @@ class AsyncBFTS(BFTS):
     ):
         """
         Synchronous wrapper for async simulate.
-        
+
         This allows AsyncBFTS to be used with existing sync code by
         automatically running the async version in an event loop.
-        
+
         Args:
             expansion_count: Number of nodes to expand
             timeout: Maximum time in seconds for the search

@@ -1,7 +1,7 @@
 """
 Fully Asynchronous Sampler for TreeThink.
 
-This sampler leverages AsyncMCTS, AsyncChildFinder, and AsyncNodeEvaluator
+This sampler leverages AsyncMCTS, AsyncChildExpander, and AsyncNodeEvaluator
 to achieve high-throughput parallel inference on multiple datapoints.
 """
 
@@ -13,21 +13,19 @@ from typing import Callable, Dict, List, Optional
 from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
 
-from treethink import (
-    FinderArgs,
-    InferenceTimeArgs,
-    EvaluatorArgs,
-    get_inference_time_method,
-)
-from treethink.async_node_evaluators import get_async_node_evaluator_from_config
-
 # Import async components
-from treethink.child_finders import (
-    get_child_finder_from_config,  # Has async support
+from treethink.expanders import (
+    get_expander_from_config,  # Has async support
 )
-from treethink.inference_time_methods import (
+
+from treethink import (
+    EvaluatorArgs,
+    ExpanderArgs,
+    InferenceTimeArgs,
     TreeThink,
+    get_inference_time_method,
 )  # Wrapper class
+from treethink.async_evaluators import get_async_evaluator_from_config
 
 # Check for AsyncEngine
 try:
@@ -44,8 +42,8 @@ class AsyncSampler:
 
     def __init__(
         self,
-        child_finder_args: FinderArgs,
-        node_evaluator_args: EvaluatorArgs,
+        expander_args: ExpanderArgs,
+        evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         prompter: Optional[Callable] = None,
         max_concurrent_datapoints: int = 16,
@@ -54,8 +52,8 @@ class AsyncSampler:
         visible_devices: str = "0",
         task_name: str = "async_generate",
     ):
-        self.child_finder_args = child_finder_args
-        self.node_evaluator_args = node_evaluator_args
+        self.expander_args = expander_args
+        self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
         self.max_concurrent_datapoints = max_concurrent_datapoints
         self.prompter = prompter or self._default_prompter
@@ -68,21 +66,18 @@ class AsyncSampler:
                 "vLLM AsyncLLMEngine not found. Please upgrade vLLM."
             )
 
-        # Create engine args from child_finder config or defaults
-        model_name = child_finder_args.model.model
-
         # Initialize Shared Components
-        # Use get_child_finder_from_config - it supports async child finders
-        self.shared_child_finder = get_child_finder_from_config(
-            child_finder_args, prompter=self.prompter
+        # Use get_expander_from_config - it supports async expanders
+        self.shared_expander = get_expander_from_config(
+            expander_args, prompter=self.prompter
         )
 
         # For Judge, if it uses the same model, we can reuse the engine
         # If Judge is a different model, we would need a separate engine (and GPU memory!)
         # Here we assume Judge uses the SAME model for simplicity or it's handled externally.
-        # If node_evaluator needs a model, we pass the SAME engine.
-        self.shared_node_evaluator = get_async_node_evaluator_from_config(
-            node_evaluator_args,
+        # If evaluator needs a model, we pass the SAME engine.
+        self.shared_evaluator = get_async_evaluator_from_config(
+            evaluator_args,
             # We try to pass model if the evaluator needs it (like LLMAsJudge)
             prompter=self.prompter,
         )
@@ -159,8 +154,8 @@ class AsyncSampler:
             method = get_inference_time_method(
                 inference_time_config=self.inference_time_args,
                 root_node=None,
-                child_finder=self.shared_child_finder,
-                node_evaluator=self.shared_node_evaluator,
+                expander=self.shared_expander,
+                evaluator=self.shared_evaluator,
             )
 
             wrapper = TreeThink(method, self.inference_time_args)

@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Union
 import asyncio
 from functools import partial
 
@@ -96,7 +96,9 @@ class TreeThinkOutputs(vllm.RequestOutput):
 
 class TreeThink:
     def __init__(self, method: METHOD_TYPE, inftime_args: InferenceTimeArgs):
-        logger.debug(f"Initializing TreeThink with method: {method} and inftime_args: {inftime_args}")
+        logger.debug(
+            f"Initializing TreeThink with method: {method} and inftime_args: {inftime_args}"
+        )
         self.method = method
         self.inftime_args = inftime_args
 
@@ -125,8 +127,8 @@ class TreeThink:
             self.client = None
             self.async_client = None
             logger.debug("REPL clients not initialized.")
-        
-        logger.info(f"TreeThink initialized.")
+
+        logger.info("TreeThink initialized.")
 
     def generate(
         self, prompts: Union[str, List[str]], problem_id=None, *args, **kwargs
@@ -239,7 +241,9 @@ class TreeThink:
         _termination_fn = None
         if self._must_repl_encountered:
             # Use async version if available
-            if self.async_client and hasattr(self.method, "async_repl_encountered_termination"):
+            if self.async_client and hasattr(
+                self.method, "async_repl_encountered_termination"
+            ):
                 _termination_fn = partial(
                     self.method.async_repl_encountered_termination,
                     client=self.async_client,

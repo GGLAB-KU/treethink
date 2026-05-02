@@ -19,7 +19,7 @@ from dataset_prep import (
 )
 from loguru import logger
 from parallel_sampler import AsyncDatapointSampler
-from sampler import Sampler
+from sampler import TreeThinkSampler, VLLMSampler
 from utils.parser import (
     parse_inftime_conf,
     parse_normal_inference_conf,
@@ -84,14 +84,14 @@ def setup_model(
     """Initialize the model with given parameters."""
     _args, _inference_type = parse_inference_arguments(gen_config_path)
     if _inference_type == "inftime":
-        inference_time_args, child_finder_args, node_evaluator_args = _args
+        inference_time_args, expander_args, evaluator_args = _args
 
         if use_async:
-            # Pure async stack: AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator
             logger.info("Using pure async stack (AsyncSampler)")
             model = AsyncSampler(
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
+                expander_args=expander_args,
+                evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
@@ -103,8 +103,8 @@ def setup_model(
                 "Using parallel datapoint sampler (AsyncDatapointSampler)"
             )
             model = AsyncDatapointSampler(
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
+                expander_args=expander_args,
+                evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
@@ -112,25 +112,22 @@ def setup_model(
             )
         else:
             # Sequential processing
-            logger.info("Using sequential sampler (Sampler)")
-            model = Sampler(
-                model_args=None,
-                sample_params=None,
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
+            logger.info("Using sequential TreeThink sampler (TreeThinkSampler)")
+            model = TreeThinkSampler(
+                expander_args=expander_args,
+                evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
+                sample_params=None,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
             )
     elif _inference_type == "normal":
         model_args, sample_args = _args
 
-        model = Sampler(
+        logger.info("Using standard vLLM sampler (VLLMSampler)")
+        model = VLLMSampler(
             model_args=model_args,
             sample_params=sample_args,
-            child_finder_args=None,
-            node_evaluator_args=None,
-            inference_time_args=None,
             prompter=None,
             task_name=run_name,
         )
@@ -166,7 +163,7 @@ async def run_async_iterations(
         logger.info(f"Running iteration {i + 1}/{num_iterations}")
 
         if isinstance(model, AsyncSampler):
-            # Pure async stack: AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator
             logger.info("Running with AsyncSampler (pure async stack)")
             results = await model.async_inference(
                 data=datapoints,
@@ -418,7 +415,7 @@ def parse_arguments():
         "--async",
         dest="use_async",
         action="store_true",
-        help="Enable pure async stack (AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator). "
+        help="Enable pure async stack (AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator). "
         "Fully asynchronous tree search with concurrent child generation and evaluation. "
         "Recommended for maximum throughput.",
     )

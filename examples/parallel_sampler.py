@@ -10,24 +10,22 @@ sharing the vLLM GPU resource.
 """
 
 import asyncio
-import json
 import re
 from pathlib import Path
 from typing import Callable, List, Optional
 
 from loguru import logger
-from tqdm import tqdm
 from utils import (
-    FinderArgs,
-    InferenceTimeArgs,
     EvaluatorArgs,
+    ExpanderArgs,
+    InferenceTimeArgs,
 )
 
 from treethink import (
     TreeThink,
-    get_child_finder_from_config,
+    get_evaluator_from_config,
+    get_expander_from_config,
     get_inference_time_method,
-    get_node_evaluator_from_config,
 )
 
 
@@ -55,8 +53,8 @@ class AsyncDatapointSampler:
 
     def __init__(
         self,
-        child_finder_args: Optional[FinderArgs] = None,
-        node_evaluator_args: Optional[EvaluatorArgs] = None,
+        expander_args: Optional[ExpanderArgs] = None,
+        evaluator_args: Optional[EvaluatorArgs] = None,
         inference_time_args: Optional[InferenceTimeArgs] = None,
         prompter: Optional[Callable] = None,
         task_name: str = "async_generate",
@@ -66,15 +64,15 @@ class AsyncDatapointSampler:
         Initialize AsyncDatapointSampler.
 
         Args:
-            child_finder_args: Configuration for child finder
-            node_evaluator_args: Configuration for node evaluator
+            expander_args: Configuration for expander
+            evaluator_args: Configuration for node evaluator
             inference_time_args: Configuration for inference time method
             prompter: Function to format prompts
             task_name: Name identifier for this task
             max_concurrent_datapoints: Maximum number of datapoints to process concurrently
         """
-        self.child_finder_args = child_finder_args
-        self.node_evaluator_args = node_evaluator_args
+        self.expander_args = expander_args
+        self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
         self.task_name = task_name
         self.max_concurrent_datapoints = max_concurrent_datapoints
@@ -85,8 +83,8 @@ class AsyncDatapointSampler:
             self.prompter = self._default_prompter
 
         # Get model name for logging
-        if child_finder_args:
-            self.model_name = child_finder_args.model.model
+        if expander_args:
+            self.model_name = expander_args.model.model
         else:
             self.model_name = "unknown"
 
@@ -106,25 +104,25 @@ class AsyncDatapointSampler:
         )
 
     def _init_shared_components(self):
-        """Initialize shared components (vLLM, child finder, node evaluator)."""
+        """Initialize shared components (vLLM, expander, node evaluator)."""
         if not (
-            self.child_finder_args
-            and self.node_evaluator_args
+            self.expander_args
+            and self.evaluator_args
             and self.inference_time_args
         ):
             raise ValueError(
                 "All args must be provided for inference time methods"
             )
 
-        # Initialize shared child finder (contains vLLM)
-        self.shared_child_finder = get_child_finder_from_config(
-            self.child_finder_args, prompter=self.prompter
+        # Initialize shared expander (contains vLLM)
+        self.shared_expander = get_expander_from_config(
+            self.expander_args, prompter=self.prompter
         )
 
         # Initialize shared node evaluator
         # Note: Use async evaluator if available for better performance
-        self.shared_node_evaluator = get_node_evaluator_from_config(
-            self.node_evaluator_args, prompter=self.prompter
+        self.shared_evaluator = get_evaluator_from_config(
+            self.evaluator_args, prompter=self.prompter
         )
 
         logger.info("Shared components initialized.")
@@ -285,8 +283,8 @@ class AsyncDatapointSampler:
             method = get_inference_time_method(
                 inference_time_config=self.inference_time_args,
                 root_node=None,
-                child_finder=self.shared_child_finder,  # Shared vLLM
-                node_evaluator=self.shared_node_evaluator,  # Shared evaluator
+                expander=self.shared_expander,  # Shared vLLM
+                evaluator=self.shared_evaluator,  # Shared evaluator
             )
 
             # Create TreeThink wrapper
@@ -400,8 +398,8 @@ class AsyncDatapointSampler:
         Example:
             ```python
             sampler = AsyncDatapointSampler(
-                child_finder_args=cf_args,
-                node_evaluator_args=ne_args,
+                expander_args=cf_args,
+                evaluator_args=ne_args,
                 inference_time_args=it_args,
                 max_concurrent_datapoints=4
             )

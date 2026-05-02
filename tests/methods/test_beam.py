@@ -4,13 +4,12 @@ import unittest
 
 from loguru import logger
 
+from tests.common import RandomNodeEvaluator, SimpleChildExpander
 from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
     save_tree_to_txt,
 )
 from treethink.methods import BeamSearch, Node  # noqa
-
-from tests.common import RandomNodeEvaluator, SimpleChildFinder
 
 
 class TestBeamSearch(unittest.TestCase):
@@ -26,13 +25,13 @@ class TestBeamSearch(unittest.TestCase):
         """Test when exploration_weight is set to 0."""
 
         root = Node("root")
-        node_evaluator_func = RandomNodeEvaluator()
-        child_finder_func = SimpleChildFinder()
+        evaluator_func = RandomNodeEvaluator()
+        expander_func = SimpleChildExpander()
 
         beam = BeamSearch(
             root_node=None,
-            child_finder=child_finder_func,
-            node_evaluator=node_evaluator_func,
+            expander=expander_func,
+            evaluator=evaluator_func,
             beam_width=2,
         )
         beam.set_root_node(root)

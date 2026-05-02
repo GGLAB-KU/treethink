@@ -7,10 +7,15 @@ This script tests:
 """
 
 import sys
-from pathlib import Path
 
 from kimina_client import KiminaClient
 from kimina_client.models import Infotree
+
+from treethink import (
+    LeanREPLArgs,
+    Node,
+    REPLEvaluator,
+)
 
 # Mock proofs for testing
 VALID_PROOFS = [
@@ -54,7 +59,7 @@ def create_mock_node(proof: str, level: int = 1) -> Node:
     return node
 
 
-def test_repl_node_evaluator():
+def test_repl_evaluator():
     """Test REPLEvaluator with valid and invalid proofs."""
     print("\n" + "=" * 80)
     print("Testing REPLEvaluator")
@@ -77,7 +82,7 @@ def test_repl_node_evaluator():
         print(f"\nProof {i + 1}:")
         print(f"  Code: {proof[:80]}...")
         print(f"  Score: {score}")
-        print(f"  Expected: 1.0 (valid)")
+        print("  Expected: 1.0 (valid)")
         print(f"  Status: {'✅ PASS' if score == 1.0 else '❌ FAIL'}")
 
     print("\n" + "-" * 80)
@@ -91,7 +96,7 @@ def test_repl_node_evaluator():
         print(f"\nProof {i + 1}:")
         print(f"  Code: {proof[:80]}...")
         print(f"  Score: {score}")
-        print(f"  Expected: 0.0 (invalid)")
+        print("  Expected: 0.0 (invalid)")
         print(f"  Status: {'✅ PASS' if score == 0.0 else '❌ FAIL'}")
 
 
@@ -116,7 +121,7 @@ def test_kimina_client_direct():
     result = response.results[0]
 
     print(f"\nProof: {snips[0][:100]}...")
-    print(f"\nResult Analysis:")
+    print("\nResult Analysis:")
     analysis = result.analyze()
     print(f"  Status: {analysis.status.value}")
     print(f"  Time: {result.time}s")
@@ -127,7 +132,7 @@ def test_kimina_client_direct():
     # Check infotree
     if result.response and "infotree" in result.response:
         infotree = result.response["infotree"]
-        print(f"\n✅ Infotree retrieved successfully!")
+        print("\n✅ Infotree retrieved successfully!")
         print(f"  Type: {type(infotree)}")
 
         if isinstance(infotree, dict):
@@ -137,7 +142,7 @@ def test_kimina_client_direct():
             if len(infotree) > 0 and isinstance(infotree[0], dict):
                 print(f"  First item keys: {list(infotree[0].keys())}")
     else:
-        print(f"\n❌ No infotree in response")
+        print("\n❌ No infotree in response")
 
     # Check messages
     if result.response and "messages" in result.response:
@@ -172,7 +177,7 @@ def test_batch_verification():
         show_progress=True,
     )
 
-    print(f"\n📊 Results Summary:")
+    print("\n📊 Results Summary:")
     print("-" * 80)
 
     valid_count = 0
@@ -199,7 +204,7 @@ def test_batch_verification():
             f"{emoji} Proof {i + 1} ({proof_type}): {status} - {result.time:.2f}s"
         )
 
-    print(f"\n📈 Summary:")
+    print("\n📈 Summary:")
     print(f"  Valid: {valid_count}/{len(all_proofs)}")
     print(f"  Invalid: {invalid_count}/{len(all_proofs)}")
     print(
@@ -226,7 +231,7 @@ if __name__ == "__main__":
         test_batch_verification()
 
         # Test 3: REPLEvaluator
-        test_repl_node_evaluator()
+        test_repl_evaluator()
 
         print("\n" + "=" * 80)
         print("✅ All tests completed!")
