@@ -6,7 +6,7 @@ import random
 from treethink import BaseEvaluator, BaseFinder, Node
 
 # -------------
-# Child Finders
+# Finders
 # -------------
 
 

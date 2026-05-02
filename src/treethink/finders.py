@@ -431,7 +431,7 @@ class AsyncVLLMFinder(BaseFinder):
 
 class AsyncBatchVLLMFinder(BaseFinder):
     """
-    Async vLLM child finder with smart batching across multiple nodes.
+    Async vLLM finder with smart batching across multiple nodes.
 
     This finder can batch multiple node expansions into a single vLLM call,
     significantly improving throughput.
@@ -737,12 +737,12 @@ CHILD_FINDER_TYPE = TypeVar("CHILD_FINDER_TYPE", bound=BaseFinder)
 
 def get_finder(func_name, *args, **kwargs) -> BaseFinder:
     try:
-        logger.info(f"Instantiating child finder: {func_name}")
+        logger.info(f"Instantiating finder: {func_name}")
         return IMPLEMENTED_CF[func_name](*args, **kwargs)
     except KeyError:
         logger.error(
-            f"Could not initialize child finder: {func_name}"
-            + f"Available child finder: {list(IMPLEMENTED_CF.keys())}"
+            f"Could not initialize finder: {func_name}"
+            + f"Available finders: {list(IMPLEMENTED_CF.keys())}"
         )
 
 
@@ -750,12 +750,10 @@ def get_finder_from_config(
     config: FinderArgs, *args, **kwargs
 ) -> CHILD_FINDER_TYPE:
     try:
-        logger.info(
-            f"Instantiating child finder from config: {config.func_name}"
-        )
+        logger.info(f"Instantiating finder from config: {config.func_name}")
         return IMPLEMENTED_CF[config.func_name](*args, **config, **kwargs)
     except KeyError:
         logger.error(
-            f"Could not initialize child finder: {config.func_name}"
-            + f"Available child finder: {list(IMPLEMENTED_CF.keys())}"
+            f"Could not initialize finder: {config.func_name}"
+            + f"Available finder: {list(IMPLEMENTED_CF.keys())}"
         )

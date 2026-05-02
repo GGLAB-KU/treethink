@@ -383,7 +383,7 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
 
 
 # Registry
-ASYNC_IMPLEMENTED_ND = {
+ASYNC_IMPLEMENTED_NE = {
     "async_repl_evaluator": AsyncREPLEvaluator,
     "async_llm_as_judge_evaluator": AsyncJudgeEvaluator,
     "async_normalized_lengths_evaluator": AsyncNormLenEvaluator,
@@ -399,7 +399,7 @@ def get_async_evaluator_from_config(config: EvaluatorArgs, *args, **kwargs):
                 + "but we're in async_evaluators. Prepending 'async_' to func_name."
             )
             func_name = "async_" + func_name
-        return ASYNC_IMPLEMENTED_ND[func_name](*args, **config, **kwargs)
+        return ASYNC_IMPLEMENTED_NE[func_name](*args, **config, **kwargs)
     except KeyError:
         logger.error(f"Async node evaluator not found: {config.func_name}")
         return None

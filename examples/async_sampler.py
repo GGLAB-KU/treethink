@@ -12,22 +12,20 @@ from typing import Callable, Dict, List, Optional
 
 from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
+
+from treethink import (
+    EvaluatorArgs,
+    FinderArgs,
+    InferenceTimeArgs,
+    TreeThink,
+    get_inference_time_method,
+)  # Wrapper class
 from treethink.async_evaluators import get_async_evaluator_from_config
 
 # Import async components
 from treethink.finders import (
     get_finder_from_config,  # Has async support
 )
-
-from treethink import (
-    EvaluatorArgs,
-    FinderArgs,
-    InferenceTimeArgs,
-    get_inference_time_method,
-)
-from treethink import (
-    TreeThink,
-)  # Wrapper class
 
 # Check for AsyncEngine
 try:
@@ -72,7 +70,7 @@ class AsyncSampler:
         model_name = finder_args.model.model
 
         # Initialize Shared Components
-        # Use get_finder_from_config - it supports async child finders
+        # Use get_finder_from_config - it supports async finders
         self.shared_finder = get_finder_from_config(
             finder_args, prompter=self.prompter
         )

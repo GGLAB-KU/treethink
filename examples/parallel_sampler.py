@@ -64,7 +64,7 @@ class AsyncDatapointSampler:
         Initialize AsyncDatapointSampler.
 
         Args:
-            finder_args: Configuration for child finder
+            finder_args: Configuration for finder
             evaluator_args: Configuration for node evaluator
             inference_time_args: Configuration for inference time method
             prompter: Function to format prompts
@@ -104,7 +104,7 @@ class AsyncDatapointSampler:
         )
 
     def _init_shared_components(self):
-        """Initialize shared components (vLLM, child finder, node evaluator)."""
+        """Initialize shared components (vLLM, finder, node evaluator)."""
         if not (
             self.finder_args
             and self.evaluator_args
@@ -114,7 +114,7 @@ class AsyncDatapointSampler:
                 "All args must be provided for inference time methods"
             )
 
-        # Initialize shared child finder (contains vLLM)
+        # Initialize shared finder (contains vLLM)
         self.shared_finder = get_finder_from_config(
             self.finder_args, prompter=self.prompter
         )

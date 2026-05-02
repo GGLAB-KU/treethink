@@ -1221,7 +1221,7 @@ class NormLenProbEvaluator(BaseEvaluator):
         return [whole_path_cumulative_probs / (L**self.length_norm)]
 
 
-IMPLEMENTED_ND = {
+IMPLEMENTED_EVALUATORS = {
     "cumulative_logprob_evaluator": LogprobEvaluator,
     "repl_evaluator": REPLEvaluator,
     "llm_as_judge_evaluator": JudgeEvaluator,
@@ -1229,16 +1229,16 @@ IMPLEMENTED_ND = {
     "async_llm_as_judge_evaluator": AsyncJudgeEvaluator,
     "normalized_lengths_probs_evaluator": NormLenProbEvaluator,
 }
-NODE_EVALUATORS = list(IMPLEMENTED_ND.keys())
+EVALUATORS = list(IMPLEMENTED_EVALUATORS.keys())
 
 
 def get_evaluator(func_name, *args, **kwargs) -> Callable:
     try:
-        return IMPLEMENTED_ND[func_name](*args, **kwargs)
+        return IMPLEMENTED_EVALUATORS[func_name](*args, **kwargs)
     except KeyError:
         logger.error(
             f"Could not initialize node evaluator: {func_name}"
-            + f"Available node evaluators: {list(IMPLEMENTED_ND.keys())}"
+            + f"Available node evaluators: {list(IMPLEMENTED_EVALUATORS.keys())}"
         )
 
 
@@ -1249,9 +1249,9 @@ def get_evaluator_from_config(
         logger.info(
             f"Instantiating node evaluator from config: {config.func_name}"
         )
-        return IMPLEMENTED_ND[config.func_name](*args, **config, **kwargs)
+        return IMPLEMENTED_EVALUATORS[config.func_name](*args, **config, **kwargs)
     except KeyError:
         logger.error(
             f"Could not initialize node evaluator: {config.func_name}"
-            + f"Available node evaluators: {list(IMPLEMENTED_ND.keys())}"
+            + f"Available node evaluators: {list(IMPLEMENTED_EVALUATORS.keys())}"
         )
