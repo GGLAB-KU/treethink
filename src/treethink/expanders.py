@@ -3,12 +3,13 @@ from abc import ABC, abstractmethod
 from functools import partial
 from typing import Callable, Optional, TypeVar, Union
 
+import openai
 import vllm
 from loguru import logger
 from vllm.lora.request import LoRARequest
 
 from .methods import Node
-from .utils import ExpanderArgs, ModelArgs, SamplingArgs
+from .utils import ExpanderArgs, ModelArgs, SamplingArgs, ServerArgs
 
 
 class BaseExpander(ABC):
@@ -309,10 +310,100 @@ class DynamicExpander(BaseExpander):
         logger.debug(f"Added {len(children)} children to node {node}.")
 
 
+class VLLMServerExpander(BaseExpander):
+    """vLLM Server based inference for node expansion."""
+
+    def __init__(
+        self,
+        model: Union[str, ModelArgs],
+        sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
+        server: Optional[ServerArgs] = None,
+        system_prompt: str = "You are a helpful math assistant.",
+        *args,
+        **kwargs,
+    ):
+        logger.debug("Initializing VLLMServerExpander.")
+        super().__init__(name="vllm_server_expander")
+
+        self.server_args = server if server else ServerArgs()
+        self.client = openai.OpenAI(
+            base_url=self.server_args.base_url,
+            api_key=self.server_args.api_key,
+            timeout=self.server_args.timeout,
+        )
+
+        if isinstance(model, ModelArgs):
+            self.model_name = model.model
+        elif hasattr(model, "llm_engine"):
+            self.model_name = model.llm_engine.model_config.model
+        else:
+            self.model_name = model or "default"
+
+        if isinstance(sampling, SamplingArgs):
+            self.sampling_dict = {
+                "max_tokens": sampling.max_tokens,
+                "temperature": sampling.temperature,
+                "top_p": sampling.top_p,
+                "n": sampling.n or 1,
+            }
+            if sampling.stop:
+                self.sampling_dict["stop"] = sampling.stop
+        elif isinstance(sampling, vllm.SamplingParams):
+            self.sampling_dict = {
+                "max_tokens": sampling.max_tokens,
+                "temperature": sampling.temperature,
+                "top_p": sampling.top_p,
+                "n": sampling.n or 1,
+            }
+            if sampling.stop:
+                self.sampling_dict["stop"] = list(sampling.stop)
+        else:
+            self.sampling_dict = {"max_tokens": 8192, "temperature": 1.0, "n": 1}
+
+        self.system_prompt = system_prompt
+        logger.info("VLLMServerExpander initialized.")
+
+    def __call__(self, node: Node, method):
+        proof_so_far = method.traverse_to_root(node, include_root=False)
+
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": method.root_node.text},
+        ]
+        if proof_so_far.strip():
+            messages.append({"role": "assistant", "content": proof_so_far})
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                **self.sampling_dict,
+            )
+
+            children = []
+            for choice in response.choices:
+                text = choice.message.content
+                logger.trace(f"Model response: {text}")
+                _child_node = Node(
+                    text=text,
+                    max_children=node.max_children,
+                    parent=node,
+                    vllm_output=choice,
+                    termination_str=node.termination_str,
+                )
+                children.append(_child_node)
+
+            node.add_children(children=children)
+            logger.debug(f"Added {len(children)} children to node {node}.")
+        except Exception as e:
+            logger.error(f"VLLMServerExpander generation failed: {e}")
+
+
 # Constants
 IMPLEMENTED_EXPANDERS = {
     "vllm_expander": VLLMExpander,
     "dynamic_expander": DynamicExpander,
+    "vllm_server_expander": VLLMServerExpander,
 }
 EXPANDERS = list(IMPLEMENTED_EXPANDERS.keys())
 EXPANDER_TYPE = TypeVar("EXPANDER_TYPE", bound=BaseExpander)

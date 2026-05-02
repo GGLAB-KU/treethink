@@ -143,12 +143,28 @@ class ModelArgs(BaseArgs):
 
 
 @dataclass
+class ServerArgs(BaseArgs):
+    """
+    Args:
+        base_url (str): The base URL of the OpenAI compatible server (vLLM server).
+            Defaults to "http://localhost:8000/v1".
+        api_key (str): The API key for the server. Defaults to "EMPTY".
+        timeout (int): The timeout for the server connection. Defaults to 600.
+    """
+
+    base_url: str = "http://localhost:8000/v1"
+    api_key: str = "EMPTY"
+    timeout: int = 600
+
+
+@dataclass
 class ExpanderArgs(BaseArgs):
     """
     Args:
         func_name (str): The name of the function to use for finding children.
         model (ModelArgs): The model arguments. See ModelArgs.
         sampling (SamplingArgs): The sampling arguments. See SamplingArgs.
+        server (ServerArgs): Server arguments for remote API access. Defaults to None.
         system_prompt (str): The system prompt to use. Defaults to
             "You are a helpful math assistant.".
         visible_devices (str): The visible devices for the model. While using
@@ -162,6 +178,7 @@ class ExpanderArgs(BaseArgs):
     func_name: str
     model: ModelArgs
     sampling: SamplingArgs
+    server: ServerArgs = None
     system_prompt: str = "You are a helpful math assistant."
     visible_devices: str = "0"
 
