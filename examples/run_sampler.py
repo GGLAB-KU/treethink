@@ -23,6 +23,7 @@ from sampler import TreeThinkSampler, VLLMSampler
 from utils.parser import (
     parse_inftime_conf,
     parse_normal_inference_conf,
+    serialize_args,
 )
 
 from treethink.graph import analyze_graph_stats
@@ -72,6 +73,71 @@ def simple_messages_to_string(messages):
         #     result += f"<|start_header_id|>assistant<|end_header_id|>\n\n{content}<|eot_id|>"
 
     return result
+
+
+def _infer_graph_dir(
+    inference_time_args, output_path: Path, iteration_index: int, num_iterations
+):
+    base_graph_dir = output_path
+    if inference_time_args and inference_time_args.graph_path:
+        graph_path = Path(inference_time_args.graph_path)
+        if graph_path.suffix:
+            base_graph_dir = graph_path.parent
+        else:
+            base_graph_dir = graph_path / "dev"
+
+    if num_iterations > 1 and base_graph_dir == output_path:
+        candidate = output_path / f"graphs_{iteration_index}"
+        if candidate.exists() and any(candidate.glob("*.txt")):
+            return candidate
+    return base_graph_dir
+
+
+def _build_graph_stats_payload(
+    model,
+    results,
+    output_path: Path,
+    run_name: str,
+    iteration_index: int,
+    timestamp: str,
+    num_iterations: int,
+):
+    if not results:
+        return None
+
+    graph_stats_list = [r["graph_stats"] for r in results if "graph_stats" in r]
+    if not graph_stats_list:
+        return None
+
+    inference_time_args = getattr(model, "inference_time_args", None)
+    expander_args = getattr(model, "expander_args", None)
+    evaluator_args = getattr(model, "evaluator_args", None)
+    method_name = (
+        inference_time_args.method_name
+        if inference_time_args is not None
+        else None
+    )
+
+    graph_dir = _infer_graph_dir(
+        inference_time_args, output_path, iteration_index, num_iterations
+    )
+
+    return {
+        "run_name": run_name,
+        "iteration": iteration_index,
+        "timestamp": timestamp,
+        "output_dir": str(output_path),
+        "graph_dir": str(graph_dir),
+        "graph_path": getattr(inference_time_args, "graph_path", None)
+        if inference_time_args
+        else None,
+        "method_name": method_name,
+        "inference_time_args": serialize_args(inference_time_args),
+        "expander_args": serialize_args(expander_args),
+        "evaluator_args": serialize_args(evaluator_args),
+        "graph_stats_summary": analyze_graph_stats(graph_stats_list),
+        "graph_stats_count": len(graph_stats_list),
+    }
 
 
 def setup_model(
@@ -199,26 +265,38 @@ async def run_async_iterations(
                 _graph.rename(_graph_path / _graph.name)
             logger.info(f"Moving graphs to {_graph_path}")
 
+        graph_stats_payload = None
         if show_graph_stats:
-            if "graph_stats" in results[0].keys():
-                # which means if inftime_args.store_graph_stats = True
-                graph_accum = []
-                for r in results:
-                    if "graph_stats" in r:
-                        graph_accum.append(r["graph_stats"])
-
-                graph_analysis = analyze_graph_stats(graph_accum)
-                _graph_analysis_pretty = json.dumps(graph_analysis, indent=2)
+            graph_stats_payload = _build_graph_stats_payload(
+                model=model,
+                results=results,
+                output_path=output_path,
+                run_name=run_name,
+                iteration_index=i,
+                timestamp=_time,
+                num_iterations=num_iterations,
+            )
+            if graph_stats_payload:
+                _graph_analysis_pretty = json.dumps(
+                    graph_stats_payload["graph_stats_summary"], indent=2
+                )
                 logger.success(
                     f"Graph stats analysis for iteration {i + 1}/{num_iterations}: "
                     + f"\n{_graph_analysis_pretty}"
                 )
             else:
-                # something unexpected?
                 logger.warning(
                     "Failed to find `graph_stats` key in outputs, "
                     "did you set `store_graph_stats=True` in InferenceTimeArgs?"
                 )
+
+        if graph_stats_payload:
+            stats_path = (
+                output_path / f"{i}_graph_stats_{run_name}_{_time}.json"
+            )
+            with open(stats_path, "w", encoding="utf-8") as f:
+                json.dump(graph_stats_payload, f, indent=2, ensure_ascii=False)
+            logger.success(f"Graph stats saved to {stats_path}.")
         logger.success(f"Answers saved to {_path}.")
 
 
@@ -291,25 +369,41 @@ def run_inference_loop(
                     _graph.rename(_graph_path / _graph.name)
                 logger.info(f"Moving graphs to {_graph_path}")
 
+            graph_stats_payload = None
             if show_graph_stats:
-                if "graph_stats" in results[0].keys():
-                    # which means if inftime_args.store_graph_stats = True
-                    graph_analysis = analyze_graph_stats(
-                        [r["graph_stats"] for r in results]
-                    )
+                graph_stats_payload = _build_graph_stats_payload(
+                    model=model,
+                    results=results,
+                    output_path=output_path,
+                    run_name=run_name,
+                    iteration_index=i,
+                    timestamp=_time,
+                    num_iterations=num_iterations,
+                )
+                if graph_stats_payload:
                     _graph_analysis_pretty = json.dumps(
-                        graph_analysis, indent=2
+                        graph_stats_payload["graph_stats_summary"],
+                        indent=2,
                     )
                     logger.success(
                         f"Graph stats analysis for iteration {i + 1}/{num_iterations}: "
                         + f"\n{_graph_analysis_pretty}"
                     )
                 else:
-                    # something unexpected?
                     logger.warning(
                         "Failed to find `graph_stats` key in outputs, "
                         "did you set `store_graph_stats=True` in InferenceTimeArgs?"
                     )
+
+            if graph_stats_payload:
+                stats_path = (
+                    output_path / f"{i}_graph_stats_{run_name}_{_time}.json"
+                )
+                with open(stats_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        graph_stats_payload, f, indent=2, ensure_ascii=False
+                    )
+                logger.success(f"Graph stats saved to {stats_path}.")
             logger.success(f"Answers saved to {_path}")
 
 
