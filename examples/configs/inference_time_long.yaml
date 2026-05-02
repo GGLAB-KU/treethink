@@ -1,0 +1,59 @@
+inference_time:
+  method_name: "MCTS"
+  max_children: 8
+  expansion_count: 512
+  timeout: 600
+  graph_path: "sampled/internlm2_infbaseL/"
+  remove_duplicate_children: true
+  termination_str: "```"
+  repl_terminated_paths: true
+  max_repl: 64
+  repl_args:
+    lean_server_url: "http://0.0.0.0:12336"
+    batch_size: 8
+    num_proc: 4
+    timeout: 400
+  store_method_class: false
+  beam_width:
+  exploration_weight: 1.4142135623730951  # sqrt(2)
+
+child_finder:
+  func_name: "vllm_child_finder"
+  model: 
+    model: "internlm/internlm2-7b"
+    max_model_len:
+    tensor_parallel_size: 1
+    gpu_memory_utilization: 0.95 
+  sampling:
+    max_tokens: 2048
+    temperature: 1.0
+    top_k: -1
+    top_p: 0.95
+    seed: 
+    stop: ["\n"]  
+    n: 8
+    logprobs: 1
+  visible_devices: "0"
+
+node_evaluator:
+  func_name: "cumulative_logprob_node_evaluator"
+  repl_args:
+    lean_server_url:
+    batch_size: 8
+    num_proc: 4
+    timeout: 400
+  llm_as_judge_model: 
+    model:
+    tensor_parallel_size: 1
+    gpu_memory_utilization: 0.95
+  llm_as_judge_sampling:
+    max_tokens: 2048
+    temperature: 1.0
+    top_k: -1
+    top_p: 0.95
+    # seed:
+    # stop:
+    n: 1
+    logprobs: 1
+  llm_as_judge_system_prompt: "You are a LLM judge who assesses a student's solution. The given solution is not complete, it requires your assessment of whether if the student is on the right track or not. You score the solution out of 20 and put your final score inside \\boxed{}. Do NOT attempt to solve the problem, only provide a score out of 20 inside \\boxed{}."
+  llm_as_judge_visible_devices: "1"

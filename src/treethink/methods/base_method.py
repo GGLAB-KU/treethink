@@ -1,0 +1,660 @@
+import asyncio
+import re
+from abc import ABC, abstractmethod
+from collections import deque
+from typing import Callable, List, Literal, Optional, Tuple, Union
+
+from kimina_client import KiminaClient
+from loguru import logger
+
+from treethink.grading import (
+    # Lean4Client,
+    has_error_response,
+)
+
+from .node import Node
+
+
+class BaseMethod(ABC):
+    """Class implementing the necessary utilities for every method to have."""
+
+    def __init__(
+        self,
+        root_node: Optional[Union[Node, str]],
+        child_finder: Callable,
+        node_evaluator: Callable,
+        final_decision_mode: str = "native",
+        *args,
+        **kwargs,
+    ):
+        # Main functions
+        self.child_finder = child_finder
+        self.node_evaluator = node_evaluator
+
+        # Final decision mode and its function, "native" for base method
+        # Change _compute_best_answer to change best_answer computation in the
+        # child class.
+        self.final_decision_mode = final_decision_mode
+        self._compute_best_answer = self._compute_native_best_answer
+
+        # self._best_answer is defined in order for externally setting
+        # best_answer property and its condition. Available ,
+        self._best_answer: str = None
+        self.best_answer_reason: Literal[
+            "calculated", "set", "checked_and_true"
+        ] = None
+
+        # Expansion statistics
+        self.stats_expansion_count = 0
+        self.stats_failed_expansion_count = 0
+
+        # Compile for faster use later
+        self._re_parse = re.compile(r"```(?:\w+|\n)\s*((?:.|\n)*?)```")
+
+        if root_node:
+            self.root_node = self.set_root_node(root_node)
+
+    def set_root_node(self, root_node: Union[Node, str]) -> Node:
+        """Create the root node."""
+
+        self.root_node = (
+            root_node if isinstance(root_node, Node) else Node(root_node)
+        )
+        self.root_node.win_value = 0
+
+        return self.root_node
+
+    def reset(self, root_node: Optional[Node] = None):
+        """Reset the inner variables so that the class can be used for another
+        generation task without instantiating it again.
+        """
+        self.__init__(root_node, self.child_finder, self.node_evaluator)
+
+    def get_widths(self):
+        widths = [1]
+        nodes = [self.root_node]
+        while any([len(n.children) > 0 for n in nodes]):
+            new_nodes = []
+            for node in nodes:
+                for child in node.children:
+                    new_nodes.append(child)
+            nodes = new_nodes
+            widths.append(len(nodes))
+        return widths
+
+    def get_child_counts(self):
+        counts = [1]
+        nodes = [self.root_node]
+        while any([len(n.children) > 0 for n in nodes]):
+            new_nodes = []
+            for node in nodes:
+                for child in node.children:
+                    new_nodes.append(child)
+            nodes = new_nodes
+            counts.extend([len(n.children) for n in nodes])
+        return counts
+
+    def get_values_and_visits(self):
+        values = [self.root_node.win_value]
+        visits = [self.root_node.visits]
+        expected_values = [
+            self.root_node.win_value / (self.root_node.visits or 1)
+        ]
+        nodes = [self.root_node]
+        while any([len(n.children) > 0 for n in nodes]):
+            new_nodes = []
+            for node in nodes:
+                for child in node.children:
+                    new_nodes.append(child)
+            nodes = new_nodes
+            values.extend([n.win_value for n in nodes])
+            visits.extend([n.visits for n in nodes])
+            expected_values.extend(
+                [n.win_value / (n.visits or 1) for n in nodes]
+            )
+        return values, visits, expected_values
+
+    def get_widen_count(self):
+        count = 0
+        nodes = [self.root_node]
+        while any([len(n.children) > 0 for n in nodes]):
+            new_nodes = []
+            for node in nodes:
+                for child in node.children:
+                    new_nodes.append(child)
+            nodes = new_nodes
+            count += len([n for n in nodes if n.is_widen_node])
+        return count
+
+    def get_stat_dict(self):
+        stat = {}
+        widths = self.get_widths()
+        stat["width"] = max(widths)
+        stat["depth"] = len(widths)
+        stat["total_nodes"] = sum(widths)
+
+        child_counts = self.get_child_counts()
+        stat["mean_child_count"] = sum(child_counts) / len(child_counts)
+        stat["max_child_count"] = max(child_counts)
+        stat["leaf_node_count"] = len([1 for c in child_counts if c == 0])
+        stat["widen_count"] = self.get_widen_count()
+
+        values, visits, expected_values = self.get_values_and_visits()
+        stat["mean_value"] = sum(values) / len(values)
+        stat["max_value"] = max(values)
+        stat["min_value"] = min(values)
+        stat["mean_visits"] = sum(visits) / len(visits)
+        stat["max_visits"] = max(visits)
+        stat["min_visits"] = min(visits)
+        stat["mean_expected_value"] = sum(expected_values) / len(
+            expected_values
+        )
+        stat["max_expected_value"] = max(expected_values)
+        stat["min_expected_value"] = min(expected_values)
+
+        # if termination_str is defined for root it will be defined for all
+        if self.root_node.termination_str:
+            leaves = self.find_leaves(self.root_node)
+            stat["termination_count"] = len(
+                [1 for l in leaves if l.is_termination_node]
+            )
+
+        return stat
+
+    def find_path_to_terminal(self, terminal_node):
+        """
+        Find the path from root to a terminal node.
+
+        Args:
+            terminal_node: The terminal node to trace back from
+
+        Returns:
+            List of states from root to terminal node
+        """
+        path = deque()
+        current = terminal_node
+        while current is not None:
+            path.appendleft(current.text)
+            current = current.parent
+        return list(path)
+
+    def traverse_to_root(self, node, include_root=True) -> str:
+        if include_root:
+            return "".join(self.find_path_to_terminal(node))
+        else:
+            path = self.find_path_to_terminal(node)
+            if len(path) > 1:
+                return "".join(path[1:])
+            else:
+                # Maybe unexpected behavior, putting it to trace:
+                logger.trace(
+                    "Even though include_root=False, you have provided root "
+                    + "node itself. Returning empty string."
+                )
+                return ""
+
+    def _compute_native_best_answer(self) -> str:
+        final_node = self.make_choice()
+        path = self.find_path_to_terminal(final_node)
+        return "".join(path)
+
+    @property
+    def best_answer(self) -> str:
+        if self._best_answer is None:
+            self._best_answer = self._compute_best_answer()
+            self.best_answer_reason = "calculated"
+
+        return self._best_answer
+
+    @best_answer.setter
+    def best_answer(self, value: Union[str, Tuple[str, str]]):
+        if isinstance(value, Node):
+            logger.warning(
+                "You are trying to set best_answer from a node, did you forget "
+                + "to run find_path_to_terminal? Extracting node's text to be "
+                + "best_answer for now..."
+            )
+            value = value.text
+
+        if not isinstance(value, str):
+            raise TypeError(
+                f"Setting best_answer to be of type {type(value)} is not "
+                + "supported."
+            )
+
+        if self._best_answer is not None:
+            logger.debug(
+                f"Overriding previous best answer:\n{self._best_answer}\n"
+                + f"In favor of:\n{value}"
+            )
+
+        self._best_answer = value
+        self.best_answer_reason = "set"
+
+    def find_leaves(self, node):
+        """Helper function to find the leaves in a tree."""
+        queue = [node]
+        visited = set()
+        leaves = []
+
+        while node:
+            if queue:
+                current_node = queue.pop(0)  # Remove from front (BFS)
+            else:
+                break
+
+            # Avoid infinite loops in case of cycles (though shouldn't happen in trees)
+            if id(current_node) in visited:
+                continue
+            visited.add(id(current_node))
+
+            if current_node.children:
+                for child in current_node.children:
+                    queue.append(child)
+            else:
+                leaves.append(current_node)
+
+        return leaves
+
+    def repl_encountered_termination(
+        self,
+        node: Node = None,
+        client: KiminaClient = None,
+        timeout=400,
+        num_proc=4,
+    ):
+        """Run REPL when a termination node is encountered. Can be used as
+        termination_encountered_fn for self.simulate() with the following call:
+        ```python
+        from functools import partial
+
+        _termination_fn = partial(
+            method.repl_encountered_termination,
+            client=client,
+            timeout=timeout,
+            num_proc=num_proc,
+        )
+        method.simulate(..., termination_encountered_fn=_termination_fn)
+        ```
+
+        TODO(burak): can we take this outside of base_method? Where could it be?
+        """
+
+        # Get proof trajectory
+        proof_path = self.traverse_to_root(node, include_root=True)
+
+        # Parse it and curate it for REPL
+        parsed_proof = self.parse_proof(proof_path)
+        snips = [parsed_proof]
+
+        # Send to REPL
+        logger.trace(f"Sending to Sync REPL: {snips[0][:200]}...")
+
+        try:
+            response = client.check(
+                snips=snips,
+                timeout=timeout,
+                show_progress=False,
+            )
+        except Exception as e:
+            logger.error(f"Sync REPL failed: {e}")
+            return None
+
+        if not response or not hasattr(response, "results"):
+            logger.warning("Sync REPL returned no results")
+            return None
+
+        logger.trace(f"Sync REPL response: {response}")
+
+        result = response.results[0]
+        if not result.response:
+            logger.warning("Sync REPL result has no response.")
+            return None
+
+        if not has_error_response(result.response, accept_sorry=False):
+            logger.info("Sync REPL found a solution!")
+            return proof_path
+
+    def repl_terminated_paths(
+        self,
+        node: Node = None,
+        client: KiminaClient = None,
+        timeout=400,
+        num_proc=4,
+        batch_size=8,
+        max_repl=16,
+    ):
+        """Run REPL over terminated paths (i.e. ones that end with
+        Node.termination_str) and return if a successful proof is found.
+        """
+        node = node if node else self.root_node
+
+        # Collect leaves that are termination nodes
+        leaves: List[Node] = self.find_leaves(node)
+        terminated_leaves = list(
+            filter(lambda x: x.is_termination_node, leaves)
+        )
+
+        if not terminated_leaves:
+            logger.debug("Could not found any terminated leaves.")
+            return None
+        else:
+            logger.debug(f"Found {len(terminated_leaves)} many terminated leaves.")
+
+        # Limit the number of termination nodes to process
+        if len(terminated_leaves) >= max_repl:
+            # Sort by win value of the nodes
+            terminated_leaves = sorted(
+                terminated_leaves, key=lambda x: x.win_value, reverse=True
+            )[:max_repl]
+
+        # Collect proof trajectories and curate it for REPL
+        proof_paths = [
+            self.traverse_to_root(leaf) for leaf in terminated_leaves
+        ]
+        snips = [self.parse_proof(proof) for proof in proof_paths]
+
+        logger.debug(f"Prepared {len(snips)} proofs for Sync REPL verification")
+
+        # Send to REPL
+        logger.trace(f"Sending to Sync REPL: {snips[0][:200]}...")
+        try:
+            response = client.check(
+                snips=snips,
+                timeout=timeout,
+                show_progress=False,
+            )
+        except Exception as e:
+            logger.error(f"Sync REPL batch check failed: {e}")
+            return None
+
+        if not response or not hasattr(response, "results"):
+            logger.warning("Sync REPL returned no results")
+            return None
+
+        # Find first successful proof
+        logger.trace(f"Sync REPL response: {response}")
+        for idx, result in enumerate(response.results):
+            if not has_error_response(result.response, accept_sorry=False):
+                logger.success(f"Sync REPL found a solution at index {idx}!")
+                return proof_paths[idx]
+
+        logger.info("No valid solution found in any terminated path.")
+        return None
+
+    async def async_repl_encountered_termination(
+        self,
+        node: Node = None,
+        client=None,  # AsyncKiminaClient
+        timeout=400,
+        num_proc=4,
+    ):
+        """
+        Async version of repl_encountered_termination.
+
+        Uses AsyncKiminaClient for non-blocking REPL verification.
+        """
+        logger.debug("async_repl_encountered_termination started.")
+
+        # Get proof trajectory
+        proof_path = self.traverse_to_root(node, include_root=True)
+
+        # Parse and prepare for REPL
+        parsed_proof = self.parse_proof(proof_path)
+        snips = [parsed_proof]
+
+        # Async REPL check
+        logger.trace(f"Sending to Async REPL: {snips[0][:200]}...")
+        try:
+            response = await client.check(
+                snips=snips,
+                timeout=timeout,
+                show_progress=False,
+            )
+        except Exception as e:
+            logger.error(f"Async REPL failed: {e}")
+            return None
+
+        if not response or not getattr(response, "results", None):
+            logger.warning("Async REPL returned no results.")
+            return None
+
+        # Check if successful (no errors)
+        logger.trace(f"Async REPL response: {response}")
+        result = response.results[0]
+        if not has_error_response(result.response, accept_sorry=False):
+            logger.success("Async REPL found a solution!")
+            return proof_path
+
+        logger.debug("Encountered terminated path is not a valid solution.")
+        return None
+
+    async def async_repl_terminated_paths(
+        self,
+        node: Node = None,
+        client=None,  # AsyncKiminaClient
+        timeout=400,
+        num_proc=4,
+        batch_size=8,
+        max_repl=16,
+    ):
+        """
+        Async version of repl_terminated_paths with concurrent REPL checks.
+
+        This method checks multiple terminated paths concurrently using
+        AsyncKiminaClient, providing significant speedup.
+        """
+        logger.debug("async_repl_terminated_paths started.")
+
+        node = node if node else self.root_node
+
+        # Collect terminated leaves
+        leaves = self.find_leaves(node)
+        terminated_leaves = [l for l in leaves if l.is_termination_node]
+
+        if not terminated_leaves:
+            logger.info("No terminated leaves found.")
+            return None
+
+        logger.debug(f"Found {len(terminated_leaves)} terminated leaves.")
+
+        # Limit to max_repl
+        if len(terminated_leaves) > max_repl:
+            terminated_leaves = sorted(
+                terminated_leaves, key=lambda x: x.win_value, reverse=True
+            )[:max_repl]
+            logger.debug(
+                f"Limited to top {max_repl} terminated leaves by win_value."
+            )
+
+        # Prepare proofs
+        proof_paths = [
+            self.traverse_to_root(leaf) for leaf in terminated_leaves
+        ]
+        snips = [self.parse_proof(proof) for proof in proof_paths]
+
+        logger.debug(f"Prepared {len(snips)} proofs for Async REPL verification.")
+        logger.trace(f"First proof snippet: {snips[0][:200]}...")
+        # Async REPL check (concurrent!)
+        try:
+            response = await client.check(
+                snips=snips,
+                timeout=timeout,
+                show_progress=False,
+            )
+        except Exception as e:
+            logger.error(f"Async REPL batch check failed: {e}")
+            return None
+
+        if not response or not getattr(response, "results", None):
+            logger.warning("Async REPL returned no results")
+            return None
+
+        logger.trace(f"First Async REPL result: {response.results[0]}")
+        # Find first successful proof
+        for idx, result in enumerate(response.results):
+            if not has_error_response(result.response, accept_sorry=False):
+                logger.info(f"Async REPL found a solution at index {idx}!")
+                return proof_paths[idx]
+
+        logger.debug("No valid solution found in any terminated path.")
+        return None
+
+    def parse_proof(self, proof: str, pattern=None):
+        # TODO(burak): This should be moved elsewhere and maybe improved like the one I use in assessment scripts.
+        pattern = self._re_parse if pattern is None else pattern
+        matches = re.findall(pattern, proof)
+
+        # If we fail to find anything, we should return
+        if not matches:
+            logger.debug(
+                "Parsing yielded nothing, returning the original proof trajectory.",
+            )
+            return proof
+
+        return matches[-1]
+
+    def update_proof_path_visits(self, node: Node):
+        """Update visits on the proof trajectory."""
+        current = node
+        while current is not None:
+            current.visits += 1
+            current = current.parent
+
+    @abstractmethod
+    def make_choice(self, node: Optional[Node] = None):
+        pass
+
+    @abstractmethod
+    def make_exploratory_choice(self, node: Optional[Node] = None):
+        pass
+
+    @abstractmethod
+    def simulate(
+        self,
+        expansion_count: int = 5,
+        timeout: Optional[float] = None,
+        remove_duplicate_children: bool = False,
+        termination_encountered_fn: Optional[Callable[[Node], str]] = None,
+    ):
+        pass
+
+    def expand(self, node: Node):
+        """Base expand method that calls child_finder and node_evaluator, then
+        updates visits. May be overridden in child classes for additional
+        functionality.
+
+        Does not remove duplicate children, use expand_remove_duplicate_children
+        for that.
+        """
+        self.stats_expansion_count += 1
+        logger.trace(f"Node to expand: {node}")
+
+        # Use child_finder to generate children
+        self.child_finder(node, self)
+        logger.trace(f"Found children: {node.children}")
+
+        if not node.children:
+            logger.warning(f"Failed to expand node: {node}.")
+            self.stats_failed_expansion_count += 1
+            return
+
+        # Evaluate each child in a batched way
+        children_win_values = self.node_evaluator(node.children, self)
+        logger.trace(f"Found children win values: {children_win_values}")
+        for i, win_val in enumerate(children_win_values):
+            if win_val is not None:
+                node.children[i].win_value = win_val
+
+    async def async_expand(self, node: Node):
+        """Async version of expand method that calls child_finder and node_evaluator.
+
+        The node_evaluator is called asynchronously, which allows for concurrent
+        evaluation of children nodes, significantly improving performance for I/O-bound
+        operations like REPL verification and LLM-as-judge scoring.
+
+        Does not remove duplicate children, use async_expand_rm_dupes for that.
+        """
+        self.stats_expansion_count += 1
+        logger.trace(f"Node to async expand: {node}")
+
+        # Use child_finder to generate children
+        # Check if child_finder is async or sync
+        if asyncio.iscoroutinefunction(self.child_finder):
+            await self.child_finder(node, self)
+        else:
+            self.child_finder(node, self)
+        logger.trace(f"Found children: {node.children}")
+
+        if not node.children:
+            logger.warning(f"Failed to expand node: {node}.")
+            self.stats_failed_expansion_count += 1
+            return
+
+        # Evaluate each child in a batched way (async)
+        children_win_values = await self.node_evaluator(node.children, self)
+        logger.trace(f"Found children win values: {children_win_values}")
+        for i, win_val in enumerate(children_win_values):
+            if win_val is not None:
+                node.children[i].win_value = win_val
+
+    def expand_rm_dupes(self, node: Node):
+        """Base expand method that calls child_finder, removes duplicates, and
+        calls node_evaluator, then updates visits. May be overridden in child
+        classes for additional functionality.
+        """
+        self.stats_expansion_count += 1
+
+        # Use child_finder to generate children
+        self.child_finder(node, self)
+
+        if not node.children:
+            logger.warning(f"Failed to expand node: {node}.")
+            self.stats_failed_expansion_count += 1
+            return
+
+        # Remove duplicate children based on their text property
+        node.remove_duplicate_children()
+
+        # Evaluate each child in a batched way
+        children_win_values = self.node_evaluator(node.children, self)
+        logger.trace(f"Found children win values: {children_win_values}")
+        for i, win_val in enumerate(children_win_values):
+            if win_val is not None:
+                node.children[i].win_value = win_val
+
+    async def async_expand_rm_dupes(self, node: Node):
+        """Async version of expand_rm_dupes method.
+
+        This method generates children using child_finder, removes duplicates,
+        and then evaluates them asynchronously. The async evaluation allows for
+        concurrent processing of children nodes.
+        """
+        self.stats_expansion_count += 1
+        logger.trace(f"Expanding node: {node}")
+
+        # Generate children
+        logger.trace(f"Calling child_finder for node {id(node)}...")
+        await self.child_finder(node, self)
+
+        if not node.children:
+            logger.warning(f"Failed to expand node: {node}.")
+            self.stats_failed_expansion_count += 1
+            return
+
+        # Remove duplicate children based on their text property
+        prev_child_count = len(node.children)
+        logger.trace(
+            f"Removing duplicate children: {node.children}"
+        )
+        node.remove_duplicate_children()
+        logger.debug(
+            f"Removed duplicates: {prev_child_count - len(node.children)} duplicate(s) removed. {len(node.children)} unique child(ren) remain."
+        )
+
+        # Evaluate each child in a async and batched way
+        children_win_values = await self.node_evaluator(node.children, self)
+        logger.trace(f"Found children win values: {children_win_values}")
+        for i, win_val in enumerate(children_win_values):
+            if win_val is not None:
+                node.children[i].win_value = win_val

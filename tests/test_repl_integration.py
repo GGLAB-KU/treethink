@@ -1,0 +1,108 @@
+import sys
+import tempfile
+import unittest
+
+from loguru import logger
+
+from tests.common import (
+    FirstPosOthersNegNodeEvaluator,
+    PreferTerminationChildFinder,
+    SetStrChildFinder,
+)
+from treethink import (  # noqa
+    InferenceTimeArgs,
+    InferenceTimeMethods,
+    LeanREPLArgs,
+)
+from treethink.graph import (  # noqa
+    extract_solution_from_graphviz,
+    save_tree_to_txt,
+)
+from treethink.methods import BFTS, MCTS, Node  # noqa
+
+
+class TestREPLIntegration(unittest.TestCase):
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.temp_file = tempfile.NamedTemporaryFile(
+            mode="w+", delete=False, suffix=".dot"
+        )
+        self.temp_file_path = self.temp_file.name
+        self._global_child_counter = 0
+
+        self.inftime_args = InferenceTimeArgs(
+            method_name="BFTS",
+            max_children=5,
+            expansion_count=10,
+            timeout=60,
+            graph_path=None,
+            termination_str="```\n",
+            store_method_class=False,
+            store_graph_stats=True,
+            remove_duplicate_children=True,
+            repl_args=LeanREPLArgs(),
+            max_repl=8,
+            repl_terminated_paths=False,  # to be modified in test functions
+            repl_encountered_termination=False,  # to be modified in test functions
+            beam_width=2,
+            exploration_weight=1.414213,
+            final_decision_mode="clear_frontier",
+        )
+
+    def test_repl_terminated_paths(self):
+        """Test of REPL checking finished proof trajectories."""
+
+        # Testing repl_terminated_paths
+        self.inftime_args.repl_terminated_paths = True
+        self.inftime_args.graph_path = "tests/outputs/repl_terminated_paths.txt"
+
+        # Sample proof from DeepSeekProverV2 on minif2f
+        proof_begin = "Complete the following lean code:\n```\nimport Mathlib\nimport Aesop\n\n\nopen BigOperators\nopen Real\nopen Nat\nopen Topology\ntheorem mathd_algebra_478\n  (b h v : \u211d)\n  (h\u2080 : 0 < b \u2227 0 < h \u2227 0 < v)\n  (h\u2081 : v = 1 / 3 * (b * h))\n  (h\u2082 : b = 30)\n  (h\u2083 : h = 13 / 2) :\n  v = 65 := by\n"
+        proof_cont = "  rw [h\u2081]\n  norm_num [h\u2082, h\u2083]\n  <;> ring\n  <;> norm_num\n  <;> linarith\n```\n"
+
+        method = MCTS(
+            root_node=Node(
+                "root", termination_str=self.inftime_args.termination_str
+            ),
+            child_finder=SetStrChildFinder(text=proof_cont, num_child=5),
+            node_evaluator=FirstPosOthersNegNodeEvaluator(),
+        )
+        inference_time = InferenceTimeMethods(
+            method=method, inftime_args=self.inftime_args
+        )
+
+        output = inference_time.generate(proof_begin)
+        logger.debug(f"inference_time output: {output}")
+        self.assertTrue(output.checked_and_true)
+
+    def test_repl_encountered_termination(self):
+        """Test of REPL checking encountered termination trajectories."""
+        self.inftime_args.repl_encountered_termination = True
+        self.inftime_args.graph_path = (
+            "tests/outputs/repl_encountered_termination.txt"
+        )
+
+        # Sample proof from DeepSeekProverV2 on minif2f
+        proof_begin = "Complete the following lean code:\n```\nimport Mathlib\nimport Aesop\n\n\nopen BigOperators\nopen Real\nopen Nat\nopen Topology\ntheorem mathd_algebra_478\n  (b h v : \u211d)\n  (h\u2080 : 0 < b \u2227 0 < h \u2227 0 < v)\n  (h\u2081 : v = 1 / 3 * (b * h))\n  (h\u2082 : b = 30)\n  (h\u2083 : h = 13 / 2) :\n  v = 65 := by\n"
+        proof_cont = "  rw [h\u2081]\n  norm_num [h\u2082, h\u2083]\n  <;> ring\n  <;> norm_num\n  <;> linarith\n```\n"
+
+        method = BFTS(
+            root_node=Node("root"),
+            child_finder=PreferTerminationChildFinder(),
+            node_evaluator=FirstPosOthersNegNodeEvaluator(),
+        )
+        inference_time = InferenceTimeMethods(
+            method=method, inftime_args=self.inftime_args
+        )
+        output = inference_time.generate(proof_begin)
+        logger.debug(f"inference_time output: {output}")
+        self.assertFalse(output.checked_and_true)
+
+
+if __name__ == "__main__":
+    # Also to run with pytest:
+    # pytest -s tests/test_repl_integration.py::TestREPLIntegration::test_repl_encountered_termination
+
+    logger.remove(0)
+    logger.add(sys.stderr, level="TRACE")
+    unittest.main()

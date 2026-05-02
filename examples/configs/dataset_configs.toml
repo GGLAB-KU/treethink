@@ -1,0 +1,124 @@
+[configs.minif2f_solve]
+name="minif2f_solve"
+path_or_name="data/minif2f-lean-formal-by.jsonl"
+dataset_split="test"
+prompt_format="""Complete the following lean code:\n```\n{}""" # ``` is for parsing the lean codes later
+system_prompt = ""
+data_keys=["formal_statement_with_header"]
+renamed_data_keys=["formal_statement_with_header"]
+model_name = "DeepSeekProverV2"
+format_type = "jsonl"
+
+[configs.putnambench_solve]
+name="putnambench_solve"
+path_or_name="data/putnambench_dataset.jsonl"
+dataset_split="train"
+prompt_format="""Complete the following lean code:\n```\n{}""" # ``` is for parsing the lean codes later
+system_prompt = ""
+data_keys=["formal_statement_with_header"]
+renamed_data_keys=["formal_statement_with_header"]
+model_name = "DeepSeekProverV2"
+format_type = "jsonl"
+
+
+[configs.minif2f_solve_2]
+name="minif2f_solve_2"
+path_or_name="data/minif2f-lean-formal-by_2.jsonl"
+dataset_split="test"
+prompt_format="""Complete the following lean code:\n```\n{}""" # ``` is for parsing the lean codes later
+system_prompt = ""
+data_keys=["formal_statement_with_header"]
+renamed_data_keys=["formal_statement_with_header"]
+model_name = "DeepSeekProverV2"
+format_type = "jsonl"
+
+
+[configs.leanworkbook_solve]
+name="leanworkbook_solve"
+path_or_name="data/leanworkbook_unique-dspv2"
+dataset_split="train"
+prompt_format="""Complete the following Lean 4 code:\n\n```lean4\n{}""" # ``` is for parsing the lean codes later
+system_prompt = ""
+data_keys=["formal_statement"]
+renamed_data_keys=["problem"]
+model_name = "DeepSeekProverV2"
+
+[configs.leanworkbook_solve_internlm2_7b]
+name="leanworkbook_solve_internlm2_7b"
+path_or_name="data/leanworkbook_unique-dspv2"
+dataset_split="train"
+prompt_format="""Complete the following lean4 code:\n\n```lean4\n{}""" # ``` is for parsing the lean codes later
+system_prompt = """You are an AI assistant who specializes in formal mathematical languages, especially in lean4. You have the necessary skills to solve solve or prove any lean4 question or theorem. When you are asked to complete a certain lean4 code, you remove the sorry keyword at the end, and write down your solution in lean4 language. DO NOT think of questions as future works or incomplete codes, you are asked to write down your own solution. You always give the *fully completed code* (including `import`, `open` and `theorem` definitions and your lean4 language solution) as ```lean4\n...your solution...``` in your answer.\n"""
+data_keys=["formal_statement"]
+renamed_data_keys=["problem"]
+model_name = "internlm2-7b"
+
+[configs.minif2f_solve_internlm2_7b]
+name="minif2f_solve_internlm2_7b"
+path_or_name="data/minif2f-lean-formal-importfix-by"
+dataset_split="test"
+prompt_format="""Complete the following lean4 code:\n\n```lean4\n{}""" # ``` is for parsing the lean codes later
+system_prompt = """You are an AI assistant who specializes in lean4. You have the necessary skills to solve solve or prove any lean4 question or theorem. When you are asked to complete a certain lean4 code, you write down your solution in lean4 language. DO NOT think of questions as future works or incomplete codes, you are asked to write down your own solution. You always give the *fully completed code* (including `import`, `open` and `theorem` definitions and your lean4 language solution) as ```lean4\n...your solution...``` in your answer.\n"""
+data_keys=["formal_with_headers"]
+renamed_data_keys=["problem"]
+model_name = "internlm2-7b"
+
+[configs.leanworkbook_solve_internlm2_step_prover]
+name="leanworkbook_solve_internlm2_step_prover"
+path_or_name="data/leanworkbook_unique-dspv2"
+dataset_split="train"
+prompt_format="""```lean4\n{}```\nSolve this via Lean 4.""" # ``` is for parsing the lean codes later
+system_prompt = """You are an AI assistant who specializes in formal mathematical languages, especially in lean4. When you are asked to solve a certain lean4 code, you remove the sorry keyword at the end, and write down the rest of the lean4 codes. You always give the *fully completed code* (including *import*, *open* and *theorem* definitions and your lean4 language solution) as ```lean4\n...your complete solution...``` in your answer.\n"""
+data_keys=["formal_statement"]
+renamed_data_keys=["problem"]
+model_name = "internlm2-7b"
+
+[configs.leanworkbook_solve_kimina_prover_8b]
+name="leanworkbook_solve_kimina_prover_8b"
+path_or_name="data/leanworkbook_unique-dspv2"
+dataset_split="train"
+prompt_format="""Remove the sorry statement and complete the following problem in Lean 4:\n```lean4\n{}```\n""" # ``` is for parsing the lean codes later
+system_prompt = """You are an expert in mathematics and Lean 4."""
+data_keys=["formal_statement"]
+renamed_data_keys=["problem"]
+model_name = "AI-MO/Kimina-Prover-Distill-8B"
+
+[configs.minif2f_solve_kimina_prover_8b]
+name="minif2f_solve_kimina_prover_8b"
+path_or_name="data/minif2f-lean-formal-importfix-by"
+dataset_split="test"
+prompt_format = """\n# Formal statement:\n```lean4\n{}\n```\n"""
+system_prompt = """Think about and solve the following problem step by step in Lean 4."""
+data_keys=["formal_with_headers"]
+renamed_data_keys=["problem"]
+model_name = "AI-MO/Kimina-Prover-Distill-8B"
+
+[configs.leanworkbook_solve_geodel_prover_sft]
+name="leanworkbook_solve_geodel_prover_sft"
+path_or_name="data/leanworkbook_unique-dspv2"
+dataset_split="train"
+prompt_format="""Think about and solve the following problem step by step in Lean 4:\n# Formal Statement\n```lean4\n{}\n""" # ``` is for parsing the lean codes later
+system_prompt = """You are an AI assistant who specializes in formal mathematical languages, especially in lean4. When you are asked to solve a certain lean4 code, you remove the sorry keyword at the end, and write down the rest of the lean4 codes. You always give the *fully completed code* (including *import*, *open* and *theorem* definitions and your lean4 language solution) as ```lean4\n...your complete solution...``` in your answer.\n"""
+data_keys=["formal_statement"]
+renamed_data_keys=["problem"]
+model_name = "Goedel-LM/Goedel-Prover-SFT"
+
+[configs.minif2f_solve_geodel_prover_sft]
+name="minif2f_solve_geodel_prover_sft"
+path_or_name="data/minif2f-lean-formal-importfix-by"
+dataset_split="test"
+prompt_format="""Complete the following Lean 4 code with explanatory comments preceding each line of code:\n\n```lean4\n{}\n""" # ``` is for parsing the lean codes later
+system_prompt = """You are an AI assistant who specializes in lean4.\n"""
+data_keys=["formal_with_headers"]
+renamed_data_keys=["problem"]
+model_name = "Goedel-LM/Goedel-Prover-SFT"
+
+[configs.MATH_explain]
+name="MATH_explain"
+path_or_name="custom/MATH/dataset/path"
+dataset_split="train"
+prompt_format="""# Problem:\n{}\n# Solution:\n{}"""
+system_prompt = ""
+data_keys=["problem", "formal_solution"]
+renamed_data_keys=["problem", "solution"]
+model_name = "DeepSeekProverV2"
