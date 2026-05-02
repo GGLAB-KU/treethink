@@ -128,7 +128,7 @@ class TreeThink:
             self.async_client = None
             logger.debug("REPL clients not initialized.")
 
-        logger.info(f"TreeThink initialized.")
+        logger.info("TreeThink initialized.")
 
     def generate(
         self, prompts: Union[str, List[str]], problem_id=None, *args, **kwargs

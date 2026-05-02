@@ -9,6 +9,7 @@ from .expanders import BaseExpander
 from .methods import Node
 from .utils import ExpanderArgs, ModelArgs, SamplingArgs
 
+
 class AsyncVLLMExpander(BaseExpander):
     """Async vLLM based inference for node expansion with batch processing support."""
 
@@ -497,7 +498,9 @@ def get_async_expander_from_config(
     config: ExpanderArgs, *args, **kwargs
 ) -> ASYNC_EXPANDER_TYPE:
     try:
-        logger.info(f"Instantiating async expander from config: {config.func_name}")
+        logger.info(
+            f"Instantiating async expander from config: {config.func_name}"
+        )
         return IMPLEMENTED_ASYNC_EXPANDERS[config.func_name](
             *args, **config, **kwargs
         )

@@ -11,6 +11,12 @@ import sys
 from kimina_client import KiminaClient
 from kimina_client.models import Infotree
 
+from treethink import (
+    LeanREPLArgs,
+    Node,
+    REPLEvaluator,
+)
+
 # Mock proofs for testing
 VALID_PROOFS = [
     """import Mathlib

@@ -66,9 +66,6 @@ class AsyncSampler:
                 "vLLM AsyncLLMEngine not found. Please upgrade vLLM."
             )
 
-        # Create engine args from expander config or defaults
-        model_name = expander_args.model.model
-
         # Initialize Shared Components
         # Use get_expander_from_config - it supports async expanders
         self.shared_expander = get_expander_from_config(
