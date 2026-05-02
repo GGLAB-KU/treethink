@@ -75,6 +75,8 @@ from treethink.utils import (
 )
 
 __all__ = [
+    "async_evaluators",
+    "async_expanders",
     "BFTS",
     "BaseArgs",
     "BaseExpander",
@@ -87,6 +89,13 @@ __all__ = [
     "LogprobEvaluator",
     "IMPLEMENTED_EXPANDERS",
     "IMPLEMENTED_EVALUATORS",
+    "ASYNC_EXPANDER_TYPE",
+    "ASYNC_EXPANDERS",
+    "IMPLEMENTED_ASYNC_EXPANDERS",
+    "AsyncBatchVLLMExpander",
+    "AsyncVLLMExpander",
+    "get_async_expander",
+    "get_async_expander_from_config",
     "TreeThinkOutputs",
     "InferenceTimeArgs",
     "TreeThink",
@@ -126,11 +135,3 @@ __all__ = [
     "split_proof_header",
     "utils",
 ]
-
-# Change recursion depth to avoid RecursionError
-import resource
-import sys
-
-# TODO(burak): We can dynamically change recursion depth with expansion_count too but to we need actually need it?
-resource.setrlimit(resource.RLIMIT_STACK, (2**29, -1))
-sys.setrecursionlimit(10**6)
