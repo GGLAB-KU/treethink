@@ -9,10 +9,10 @@ from loguru import logger
 from vllm import AsyncEngineArgs, AsyncLLMEngine
 
 from .methods import Node
-from .utils import ChildFinderArgs, ModelArgs, SamplingArgs
+from .utils import FinderArgs, ModelArgs, SamplingArgs
 
 
-class BaseChildFinder(ABC):
+class BaseFinder(ABC):
     def __init__(
         self,
         name: str,
@@ -41,7 +41,7 @@ class BaseChildFinder(ABC):
         return vllm.LLM(**model_args)
 
 
-class vllmChildFinder(BaseChildFinder):
+class VLLMFinder(BaseFinder):
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -51,7 +51,7 @@ class vllmChildFinder(BaseChildFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing vllmChildFinder.")
+        logger.debug("Initializing VLLMFinder.")
         super().__init__(name="vllm_child_finder")
         if isinstance(model, ModelArgs):
             logger.trace("ModelArgs is given, using init_model()")
@@ -85,7 +85,7 @@ class vllmChildFinder(BaseChildFinder):
         self._max_model_len = self.model.llm_engine.model_config.max_model_len
         self._tokenizer = self.model.get_tokenizer()
         logger.debug(f"Max model length: {self._max_model_len}")
-        logger.info(f"vllmChildFinder is initialized.")
+        logger.info(f"VLLMFinder is initialized.")
 
     def __call__(self, node: Node, method):
         proof_so_far = method.traverse_to_root(node, include_root=False)
@@ -139,7 +139,7 @@ class vllmChildFinder(BaseChildFinder):
         logger.debug(f"Added {len(children)} children to node {node}.")
 
 
-class DynamicSamplingChildFinder(BaseChildFinder):
+class DynamicFinder(BaseFinder):
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -150,7 +150,7 @@ class DynamicSamplingChildFinder(BaseChildFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing DynamicSamplingChildFinder.")
+        logger.debug("Initializing DynamicFinder.")
         super().__init__(name="dynamic_sampling_child_finder")
         if isinstance(model, ModelArgs):
             logger.trace("Model is ModelArgs, using init_model()")
@@ -170,11 +170,11 @@ class DynamicSamplingChildFinder(BaseChildFinder):
         self.system_prompt = system_prompt
 
         if isinstance(prompter, Callable):
-            logger.debug("Using custom prompter for DynamicSamplingChildFinder.")
+            logger.debug("Using custom prompter for DynamicFinder.")
             self.prompter = prompter
         else:
             logger.debug(
-                "Using default prompter for DynamicSamplingChildFinder."
+                "Using default prompter for DynamicFinder."
             )
             self.prompter = partial(
                 self.model.get_tokenizer().apply_chat_template,
@@ -191,7 +191,7 @@ class DynamicSamplingChildFinder(BaseChildFinder):
             logger.debug("Using default param_modifier function.")
             self.param_modifier = self._default_param_modifier
         
-        logger.info("DynamicSamplingChildFinder initialized.")
+        logger.info("DynamicFinder initialized.")
 
     def _default_param_modifier(self, node: Node) -> vllm.SamplingParams:
         new_params = self.sampling_params.clone()
@@ -262,7 +262,7 @@ class DynamicSamplingChildFinder(BaseChildFinder):
         logger.debug(f"Added {len(children)} children to node {node}.")
 
 
-class AsyncvllmChildFinder(BaseChildFinder):
+class AsyncVLLMFinder(BaseFinder):
     """Async vLLM based inference for node expansion with batch processing support."""
 
     def __init__(
@@ -274,7 +274,7 @@ class AsyncvllmChildFinder(BaseChildFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing AsyncvllmChildFinder.")
+        logger.debug("Initializing AsyncVLLMFinder.")
         super().__init__(name="async_vllm_child_finder")
 
         if isinstance(model, ModelArgs):
@@ -298,7 +298,7 @@ class AsyncvllmChildFinder(BaseChildFinder):
             )
         else:
             raise ValueError(
-                "model must be ModelArgs instance for AsyncvllmChildFinder."
+                "model must be ModelArgs instance for AsyncVLLMFinder."
             )
 
         self.sampling_params = (
@@ -311,12 +311,12 @@ class AsyncvllmChildFinder(BaseChildFinder):
         self._init_tokenizer_task = None
 
         if isinstance(prompter, Callable):
-            logger.debug("Using provided prompter for AsyncvllmChildFinder.")
+            logger.debug("Using provided prompter for AsyncVLLMFinder.")
             self.prompter = prompter
         else:
             self.prompter = self._default_prompter
 
-        logger.info("AsyncvllmChildFinder initialized.")
+        logger.info("AsyncVLLMFinder initialized.")
 
     async def _async_init_tokenizer(self):
         """Initialize tokenizer asynchronously."""
@@ -328,7 +328,7 @@ class AsyncvllmChildFinder(BaseChildFinder):
                 model_config.model, trust_remote_code=True
             )
             logger.debug(
-                "Tokenizer loaded successfully in AsyncvllmChildFinder."
+                "Tokenizer loaded successfully in AsyncVLLMFinder."
             )
         except Exception as e:
             logger.warning(
@@ -433,7 +433,7 @@ class AsyncvllmChildFinder(BaseChildFinder):
             logger.error(f"Single generation failed for {request_id}: {e}")
 
 
-class AsyncBatchvllmChildFinder(BaseChildFinder):
+class AsyncBatchVLLMFinder(BaseFinder):
     """
     Async vLLM child finder with smart batching across multiple nodes.
 
@@ -451,7 +451,7 @@ class AsyncBatchvllmChildFinder(BaseChildFinder):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing AsyncBatchvllmChildFinder.")
+        logger.debug("Initializing AsyncBatchVLLMFinder.")
         super().__init__(name="async_batch_vllm_child_finder")
 
         if isinstance(model, ModelArgs):
@@ -466,7 +466,7 @@ class AsyncBatchvllmChildFinder(BaseChildFinder):
                 dtype=getattr(model, "dtype", "auto"),
             )
             self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-            logger.debug("AsyncBatchvllmChildFinder AsyncLLMEngine initialized.")
+            logger.debug("AsyncBatchVLLMFinder AsyncLLMEngine initialized.")
             self._max_model_len = (
                 model.max_model_len if hasattr(model, "max_model_len") else 4096
             )
@@ -488,7 +488,7 @@ class AsyncBatchvllmChildFinder(BaseChildFinder):
         logger.debug("Tokenizer async initialization task created.")
 
         if isinstance(prompter, Callable):
-            logger.debug("Using custom prompter for AsyncBatchvllmChildFinder.")
+            logger.debug("Using custom prompter for AsyncBatchVLLMFinder.")
             self.prompter = prompter
         else:
             self.prompter = self._default_prompter
@@ -496,7 +496,7 @@ class AsyncBatchvllmChildFinder(BaseChildFinder):
         self._pending_nodes = []
         self._batch_lock = asyncio.Lock()
 
-        logger.debug("AsyncBatchvllmChildFinder initialized.")
+        logger.debug("AsyncBatchVLLMFinder initialized.")
     
     async def _async_init_tokenizer(self):
         try:
@@ -507,7 +507,7 @@ class AsyncBatchvllmChildFinder(BaseChildFinder):
                 model_config.model, trust_remote_code=True
             )
             logger.debug(
-                "Tokenizer loaded successfully for AsyncBatchvllmChildFinder."
+                "Tokenizer loaded successfully for AsyncBatchVLLMFinder."
             )
         except Exception as e:
             logger.warning(f"Failed to load tokenizer: {e}")
@@ -728,16 +728,16 @@ class AsyncBatchvllmChildFinder(BaseChildFinder):
 
 # Constants
 IMPLEMENTED_CF = {
-    "vllm_child_finder": vllmChildFinder,
-    "dynamic_sampling_child_finder": DynamicSamplingChildFinder,
-    "async_batch_vllm_child_finder": AsyncBatchvllmChildFinder,
-    "async_vllm_child_finder": AsyncvllmChildFinder,
+    "vllm_child_finder": VLLMFinder,
+    "dynamic_sampling_child_finder": DynamicFinder,
+    "async_batch_vllm_child_finder": AsyncBatchVLLMFinder,
+    "async_vllm_child_finder": AsyncVLLMFinder,
 }
 CHILD_FINDERS = list(IMPLEMENTED_CF.keys())
-CHILD_FINDER_TYPE = TypeVar("CHILD_FINDER_TYPE", bound=BaseChildFinder)
+CHILD_FINDER_TYPE = TypeVar("CHILD_FINDER_TYPE", bound=BaseFinder)
 
 
-def get_child_finder(func_name, *args, **kwargs) -> BaseChildFinder:
+def get_child_finder(func_name, *args, **kwargs) -> BaseFinder:
     try:
         logger.info(f"Instantiating child finder: {func_name}")
         return IMPLEMENTED_CF[func_name](*args, **kwargs)
@@ -749,7 +749,7 @@ def get_child_finder(func_name, *args, **kwargs) -> BaseChildFinder:
 
 
 def get_child_finder_from_config(
-    config: ChildFinderArgs, *args, **kwargs
+    config: FinderArgs, *args, **kwargs
 ) -> CHILD_FINDER_TYPE:
     try:
         logger.info(

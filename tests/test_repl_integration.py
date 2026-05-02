@@ -11,7 +11,7 @@ from tests.common import (
 )
 from treethink import (  # noqa
     InferenceTimeArgs,
-    InferenceTimeMethods,
+    TreeThink,
     LeanREPLArgs,
 )
 from treethink.graph import (  # noqa
@@ -67,7 +67,7 @@ class TestREPLIntegration(unittest.TestCase):
             child_finder=SetStrChildFinder(text=proof_cont, num_child=5),
             node_evaluator=FirstPosOthersNegNodeEvaluator(),
         )
-        inference_time = InferenceTimeMethods(
+        inference_time = TreeThink(
             method=method, inftime_args=self.inftime_args
         )
 
@@ -91,7 +91,7 @@ class TestREPLIntegration(unittest.TestCase):
             child_finder=PreferTerminationChildFinder(),
             node_evaluator=FirstPosOthersNegNodeEvaluator(),
         )
-        inference_time = InferenceTimeMethods(
+        inference_time = TreeThink(
             method=method, inftime_args=self.inftime_args
         )
         output = inference_time.generate(proof_begin)

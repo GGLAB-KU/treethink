@@ -1,10 +1,10 @@
 from treethink.utils.args import (
     BaseArgs,
-    ChildFinderArgs,
+    FinderArgs,
     InferenceTimeArgs,
     LeanREPLArgs,
     ModelArgs,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
     SamplingArgs,
 )
 from treethink.utils.str_manip import (
@@ -13,11 +13,11 @@ from treethink.utils.str_manip import (
 
 __all__ = [
     "BaseArgs",
-    "ChildFinderArgs",
+    "FinderArgs",
     "InferenceTimeArgs",
     "LeanREPLArgs",
     "ModelArgs",
-    "NodeEvaluatorArgs",
+    "EvaluatorArgs",
     "SamplingArgs",
     "extract_result",
 ]

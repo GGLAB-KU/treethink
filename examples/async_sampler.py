@@ -14,9 +14,9 @@ from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
 
 from treethink import (
-    ChildFinderArgs,
+    FinderArgs,
     InferenceTimeArgs,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
     get_inference_time_method,
 )
 from treethink.async_node_evaluators import get_async_node_evaluator_from_config
@@ -26,7 +26,7 @@ from treethink.child_finders import (
     get_child_finder_from_config,  # Has async support
 )
 from treethink.inference_time_methods import (
-    InferenceTimeMethods,
+    TreeThink,
 )  # Wrapper class
 
 # Check for AsyncEngine
@@ -44,8 +44,8 @@ class AsyncSampler:
 
     def __init__(
         self,
-        child_finder_args: ChildFinderArgs,
-        node_evaluator_args: NodeEvaluatorArgs,
+        child_finder_args: FinderArgs,
+        node_evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         prompter: Optional[Callable] = None,
         max_concurrent_datapoints: int = 16,
@@ -163,13 +163,13 @@ class AsyncSampler:
                 node_evaluator=self.shared_node_evaluator,
             )
 
-            wrapper = InferenceTimeMethods(method, self.inference_time_args)
+            wrapper = TreeThink(method, self.inference_time_args)
 
             # Use the wrapper's async generation which handles simulation,
             # REPL checks, and saving the tree safely.
             result = await wrapper.async_generate(prompt, problem_id=problem_id)
 
-            # Extract output from InfTimeRequestOutput
+            # Extract output from TreeThinkOutputs
             if result.outputs:
                 datapoint["output"] = [result.outputs[0].text]
             else:

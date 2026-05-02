@@ -145,15 +145,15 @@ def _get_optional_inner_type(type_hint):
 
 # Inference Time
 from treethink import (  # noqa: E402
-    ChildFinderArgs,
+    FinderArgs,
     InferenceTimeArgs,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
 )
 
 __inftime = {
     "inference_time": InferenceTimeArgs,
-    "child_finder": ChildFinderArgs,
-    "node_evaluator": NodeEvaluatorArgs,
+    "child_finder": FinderArgs,
+    "node_evaluator": EvaluatorArgs,
 }
 
 parse_inftime_conf = partial(_parse_yaml_file, section_class=__inftime)

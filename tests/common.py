@@ -3,14 +3,14 @@
 import itertools
 import random
 
-from treethink import BaseChildFinder, BaseNodeEvaluator, Node
+from treethink import BaseFinder, BaseEvaluator, Node
 
 # -------------
 # Child Finders
 # -------------
 
 
-class SimpleChildFinder(BaseChildFinder):
+class SimpleChildFinder(BaseFinder):
     def __init__(self, num_child: int = 5, *args, **kwargs):
         super().__init__(name="simple_child_finder", *args, **kwargs)
         self.num_child = num_child
@@ -34,7 +34,7 @@ class SimpleChildFinder(BaseChildFinder):
         return _child_finder(node, method)
 
 
-class SetStrChildFinder(BaseChildFinder):
+class SetStrChildFinder(BaseFinder):
     def __init__(
         self, text: str, num_child: int = 5, sep="\n", *args, **kwargs
     ):
@@ -75,7 +75,7 @@ class SetStrChildFinder(BaseChildFinder):
             )
 
 
-class PreferTerminationChildFinder(BaseChildFinder):
+class PreferTerminationChildFinder(BaseFinder):
     def __init__(
         self,
         termination_str: str = "```",
@@ -152,7 +152,7 @@ class PreferTerminationChildFinder(BaseChildFinder):
 # ---------------
 
 
-class RandomNodeEvaluator(BaseNodeEvaluator):
+class RandomNodeEvaluator(BaseEvaluator):
     def __init__(self, min_val=-20.0, max_val=0.0, *args, **kwargs):
         self.min_val = min_val
         self.max_val = max_val
@@ -172,7 +172,7 @@ class RandomNodeEvaluator(BaseNodeEvaluator):
         return _node_evaluator(node, method)
 
 
-class FirstPosOthersNegNodeEvaluator(BaseNodeEvaluator):
+class FirstPosOthersNegNodeEvaluator(BaseEvaluator):
     """Score nodes in decreasing order from 0 to max_children, setting the first
     element to be the highest among all other children by making it positive."""
 

@@ -13,8 +13,8 @@ from .methods import METHOD_TYPE, Node
 from .utils import InferenceTimeArgs
 
 
-class InfTimeRequestOutput(vllm.RequestOutput):
-    """vllm.RequestOutput subclassed version augmented for InferenceTimeMethods.
+class TreeThinkOutputs(vllm.RequestOutput):
+    """vllm.RequestOutput subclassed version augmented for TreeThink.
 
     Other than holding the generation output, this result may hold `method` for
     further playing with the method's inner variables. See
@@ -94,9 +94,9 @@ class InfTimeRequestOutput(vllm.RequestOutput):
             logger.error(f"Solution not found. self.outputs: {self.outputs}")
 
 
-class InferenceTimeMethods:
+class TreeThink:
     def __init__(self, method: METHOD_TYPE, inftime_args: InferenceTimeArgs):
-        logger.debug(f"Initializing InferenceTimeMethods with method: {method} and inftime_args: {inftime_args}")
+        logger.debug(f"Initializing TreeThink with method: {method} and inftime_args: {inftime_args}")
         self.method = method
         self.inftime_args = inftime_args
 
@@ -126,7 +126,7 @@ class InferenceTimeMethods:
             self.async_client = None
             logger.debug("REPL clients not initialized.")
         
-        logger.info(f"InferenceTimeMethods initialized.")
+        logger.info(f"TreeThink initialized.")
 
     def generate(
         self, prompts: Union[str, List[str]], problem_id=None, *args, **kwargs
@@ -166,7 +166,7 @@ class InferenceTimeMethods:
         )
 
         # Create the final output
-        generation_result = InfTimeRequestOutput()
+        generation_result = TreeThinkOutputs()
 
         # Check all terminated leaves via REPL
         _solution_found = False
@@ -287,7 +287,7 @@ class InferenceTimeMethods:
             )
 
         # Create Output
-        generation_result = InfTimeRequestOutput()
+        generation_result = TreeThinkOutputs()
 
         # Check terminated paths with REPL
         _solution_found = False
@@ -368,7 +368,7 @@ class InferenceTimeMethods:
         return generation_result
 
     def __str__(self) -> str:
-        return f"InferenceTimeMethods(model={self.inftime_args.model_name if hasattr(self.inftime_args, 'model_name') else 'unknown'}, method={self.method})"
+        return f"TreeThink(model={self.inftime_args.model_name if hasattr(self.inftime_args, 'model_name') else 'unknown'}, method={self.method})"
 
     def __repr__(self) -> str:
         return str(self)
