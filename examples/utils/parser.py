@@ -1,4 +1,4 @@
-from dataclasses import fields, is_dataclass
+from dataclasses import asdict, fields, is_dataclass
 from functools import partial
 from typing import (
     Any,
@@ -15,6 +15,26 @@ import yaml
 from loguru import logger
 
 T = TypeVar("T")
+
+
+def drop_none(value):
+    if isinstance(value, dict):
+        return {k: drop_none(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [drop_none(v) for v in value if v is not None]
+    return value
+
+
+def serialize_args(obj):
+    if obj is None:
+        return None
+    if is_dataclass(obj):
+        return drop_none(asdict(obj))
+    if isinstance(obj, dict):
+        return drop_none(obj)
+    if hasattr(obj, "__dict__"):
+        return drop_none(dict(obj.__dict__))
+    return obj
 
 
 def _parse_yaml_file(
