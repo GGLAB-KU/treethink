@@ -2918,6 +2918,7 @@ name = "treethink"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "datasets" },
     { name = "kimina-client" },
 ]
 
@@ -2933,7 +2934,10 @@ main = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "kimina-client", git = "https://github.com/project-numina/kimina-lean-server.git" }]
+requires-dist = [
+    { name = "datasets", specifier = ">=4.8.5" },
+    { name = "kimina-client", git = "https://github.com/project-numina/kimina-lean-server.git" },
+]
 
 [package.metadata.requires-dev]
 build = [{ name = "setuptools", specifier = ">=75.8.0" }]

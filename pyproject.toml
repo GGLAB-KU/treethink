@@ -5,6 +5,7 @@ description = "Formal Mathematical Reasoning of LLMs with Tree Search Methods"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "datasets>=4.8.5",
     "kimina-client",
 ]
 
