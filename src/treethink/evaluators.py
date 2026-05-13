@@ -59,7 +59,25 @@ class LogprobEvaluator(BaseEvaluator):
             node = [node]
 
         if all([n.vllm_output for n in node]):
-            return [n.vllm_output.cumulative_logprob for n in node]
+            # Just return the cumulative logprobs from vllm
+            if hasattr(node[0].vllm_output, "cumulative_logprob"):
+                return [n.vllm_output.cumulative_logprob for n in node]
+
+            # NOTE(burak): OpenAI does not store/calculate cumulative logprobs
+            # so we need to calculate it ourselves by summing token logprobs.
+            calculated_logprobs = []
+            for n in node:
+                if n.vllm_output.logprobs and n.vllm_output.logprobs.content:
+                    cumulative_logprob = sum(
+                        token.logprob
+                        for token in n.vllm_output.logprobs.content
+                    )
+                    calculated_logprobs.append(cumulative_logprob)
+                else:
+                    logger.warning(f"No token logprobs found for node: {n}")
+                    calculated_logprobs.append(0.0)
+
+            return calculated_logprobs
         else:
             # if it is root node
             if node[0].parent:

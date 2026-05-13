@@ -339,26 +339,11 @@ class VLLMServerExpander(BaseExpander):
         else:
             self.model_name = model or "default"
 
-        if isinstance(sampling, SamplingArgs):
-            self.sampling_dict = {
-                "max_tokens": sampling.max_tokens,
-                "temperature": sampling.temperature,
-                "top_p": sampling.top_p,
-                "n": sampling.n or 1,
-            }
-            if sampling.stop:
-                self.sampling_dict["stop"] = sampling.stop
-        elif isinstance(sampling, vllm.SamplingParams):
-            self.sampling_dict = {
-                "max_tokens": sampling.max_tokens,
-                "temperature": sampling.temperature,
-                "top_p": sampling.top_p,
-                "n": sampling.n or 1,
-            }
-            if sampling.stop:
-                self.sampling_dict["stop"] = list(sampling.stop)
-        else:
-            self.sampling_dict = {"max_tokens": 8192, "temperature": 1.0, "n": 1}
+        self.sampling_params = (
+            self.set_sampling_params(sampling)
+            if sampling
+            else vllm.SamplingParams(include_stop_str_in_output=True)
+        )
 
         self.system_prompt = system_prompt
         logger.info("VLLMServerExpander initialized.")
@@ -377,7 +362,15 @@ class VLLMServerExpander(BaseExpander):
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                **self.sampling_dict,
+                max_tokens=self.sampling_params.max_tokens,
+                temperature=self.sampling_params.temperature,
+                top_p=self.sampling_params.top_p,
+                seed=self.sampling_params.seed,
+                stop=self.sampling_params.stop,
+                n=self.sampling_params.n,
+                # In the Chat API, logprobs is a boolean and top_logprobs specifies the count
+                logprobs=True,
+                top_logprobs=self.sampling_params.logprobs,
             )
 
             children = []
