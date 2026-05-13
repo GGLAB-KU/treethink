@@ -8,6 +8,7 @@ import vllm
 from kimina_client import KiminaClient
 from kimina_client.models import Infotree
 from loguru import logger
+from vllm.lora.request import LoRARequest
 
 from treethink.grading import (
     extract_data,
@@ -167,6 +168,7 @@ class JudgeEvaluator(BaseEvaluator):
         repl_args: LeanREPLArgs,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
+        lora_path: Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -178,8 +180,17 @@ class JudgeEvaluator(BaseEvaluator):
                 llm_as_judge_model,
                 kwargs.get("llm_as_judge_visible_devices", "1"),
             )
+            self.enable_lora = llm_as_judge_model.enable_lora
         else:
             self.model = llm_as_judge_model
+            self.enable_lora = bool(kwargs.get("enable_lora", False))
+
+        self.lora_path = lora_path
+        if self.lora_path and not self.enable_lora:
+            logger.warning(
+                "lora_path provided but enable_lora is False. Ignoring lora_path."
+            )
+            self.lora_path = None
 
         self.sampling_params = (
             self.set_sampling_params(llm_as_judge_sampling)
@@ -202,6 +213,11 @@ class JudgeEvaluator(BaseEvaluator):
                 continue_final_message=False,
                 enable_thinking=False,
             )
+
+    def _get_lora_request(self) -> Optional[LoRARequest]:
+        if self.enable_lora and self.lora_path:
+            return LoRARequest("lora_adapter", 1, self.lora_path)
+        return None
 
     def set_sampling_params(
         self, sampling_params: Union[SamplingArgs, vllm.SamplingParams]
@@ -245,9 +261,18 @@ class JudgeEvaluator(BaseEvaluator):
         self, messages: Union[str, List[str]]
     ) -> List[str]:
         try:
-            output = self.model.generate(
-                messages, self.sampling_params, use_tqdm=False
-            )
+            lora_request = self._get_lora_request()
+            if lora_request:
+                output = self.model.generate(
+                    messages,
+                    self.sampling_params,
+                    use_tqdm=False,
+                    lora_request=lora_request,
+                )
+            else:
+                output = self.model.generate(
+                    messages, self.sampling_params, use_tqdm=False
+                )
             num_messages = len(messages) if isinstance(messages, list) else 1
             num_outputs = len(output)
             if num_outputs != num_messages:
@@ -889,7 +914,7 @@ IMPLEMENTED_EVALUATORS = {
     "normalized_lengths_evaluator": NormLenEvaluator,
     "normalized_lengths_probs_evaluator": NormLenProbEvaluator,
 }
-NODE_EVALUATORS = list(IMPLEMENTED_EVALUATORS.keys())
+EVALUATORS = list(IMPLEMENTED_EVALUATORS.keys())
 
 
 def get_evaluator(func_name, *args, **kwargs) -> Callable:

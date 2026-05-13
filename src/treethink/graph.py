@@ -38,7 +38,7 @@ def save_tree_to_txt(
             filename = f"tree_{safe_problem_id}_{timestamp}.txt"
         else:
             filename = f"tree_{timestamp}.txt"
-        output_path = output_path / "dev" / Path(filename)
+        output_path = output_path / Path(filename)
 
     with open(str(output_path), "w", encoding="utf-8") as f:
         f.write("graph\n{\n")

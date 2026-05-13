@@ -5,6 +5,7 @@ from typing import Callable, Optional, TypeVar, Union
 
 import vllm
 from loguru import logger
+from vllm.lora.request import LoRARequest
 
 from .methods import Node
 from .utils import ExpanderArgs, ModelArgs, SamplingArgs
@@ -46,6 +47,7 @@ class VLLMExpander(BaseExpander):
         sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
         system_prompt: str = "You are a helpful math assistant.",
         prompter: Optional[Callable] = None,
+        lora_path: Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -56,9 +58,18 @@ class VLLMExpander(BaseExpander):
             self.model = self.init_model(
                 model, kwargs.get("visible_devices", "0")
             )
+            self.enable_lora = model.enable_lora
         else:
             logger.trace("Model is pre-initialized LLM.")
             self.model = model
+            self.enable_lora = bool(kwargs.get("enable_lora", False))
+
+        self.lora_path = lora_path
+        if self.lora_path and not self.enable_lora:
+            logger.warning(
+                "lora_path provided but enable_lora is False. Ignoring lora_path."
+            )
+            self.lora_path = None
 
         self.sampling_params = (
             self.set_sampling_params(sampling)
@@ -84,6 +95,11 @@ class VLLMExpander(BaseExpander):
         self._tokenizer = self.model.get_tokenizer()
         logger.debug(f"Max model length: {self._max_model_len}")
         logger.info("VLLMExpander is initialized.")
+
+    def _get_lora_request(self) -> Optional[LoRARequest]:
+        if self.enable_lora and self.lora_path:
+            return LoRARequest("lora_adapter", 1, self.lora_path)
+        return None
 
     def __call__(self, node: Node, method):
         proof_so_far = method.traverse_to_root(node, include_root=False)
@@ -115,9 +131,18 @@ class VLLMExpander(BaseExpander):
             f"Set max_tokens for sampling: {self.sampling_params.max_tokens}"
         )
 
-        output = self.model.generate(
-            messages, self.sampling_params, use_tqdm=False
-        )
+        lora_request = self._get_lora_request()
+        if lora_request:
+            output = self.model.generate(
+                messages,
+                self.sampling_params,
+                use_tqdm=False,
+                lora_request=lora_request,
+            )
+        else:
+            output = self.model.generate(
+                messages, self.sampling_params, use_tqdm=False
+            )
 
         children = []
 
@@ -145,6 +170,7 @@ class DynamicExpander(BaseExpander):
         system_prompt: str = "You are a helpful math assistant.",
         prompter: Optional[Callable] = None,
         param_modifier: Optional[Callable] = None,
+        lora_path: Optional[str] = None,
         *args,
         **kwargs,
     ):
@@ -155,9 +181,18 @@ class DynamicExpander(BaseExpander):
             self.model = self.init_model(
                 model, kwargs.get("visible_devices", "0")
             )
+            self.enable_lora = model.enable_lora
         else:
             logger.trace("Model is pre-initialized LLM.")
             self.model = model
+            self.enable_lora = bool(kwargs.get("enable_lora", False))
+
+        self.lora_path = lora_path
+        if self.lora_path and not self.enable_lora:
+            logger.warning(
+                "lora_path provided but enable_lora is False. Ignoring lora_path."
+            )
+            self.lora_path = None
 
         self.sampling_params = (
             self.set_sampling_params(sampling)
@@ -188,6 +223,11 @@ class DynamicExpander(BaseExpander):
             self.param_modifier = self._default_param_modifier
 
         logger.info("DynamicExpander initialized.")
+
+    def _get_lora_request(self) -> Optional[LoRARequest]:
+        if self.enable_lora and self.lora_path:
+            return LoRARequest("lora_adapter", 1, self.lora_path)
+        return None
 
     def _default_param_modifier(self, node: Node) -> vllm.SamplingParams:
         new_params = self.sampling_params.clone()
@@ -237,7 +277,18 @@ class DynamicExpander(BaseExpander):
 
         sampling_params = self.param_modifier(node)
 
-        output = self.model.generate(messages, sampling_params, use_tqdm=False)
+        lora_request = self._get_lora_request()
+        if lora_request:
+            output = self.model.generate(
+                messages,
+                sampling_params,
+                use_tqdm=False,
+                lora_request=lora_request,
+            )
+        else:
+            output = self.model.generate(
+                messages, sampling_params, use_tqdm=False
+            )
 
         children = []
         for response in output:
