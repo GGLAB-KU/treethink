@@ -101,6 +101,7 @@ class SamplerBase:
         save_after_k_batches: int = None,
         save_final_outputs: bool = False,
         prompt_format: str = None,
+        lora_path: Optional[str] = None,
     ) -> list:
         if batch_size is None or batch_size <= 0:
             raise ValueError("batch_size must be a positive integer")
@@ -220,6 +221,7 @@ class TreeThinkSampler(SamplerBase):
         ] = None,
         prompter: Optional[Callable] = None,
         task_name="generate",
+        lora_path: Optional[str] = None,
     ):
         super().__init__(
             sample_params=sample_params,
@@ -230,7 +232,8 @@ class TreeThinkSampler(SamplerBase):
         self.expander_args = expander_args
         self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
-        self.enable_lora = False
+        self.enable_lora = expander_args.model.enable_lora
+        self.lora_path = lora_path
 
         self._init_inference_time_method()
 
@@ -239,10 +242,14 @@ class TreeThinkSampler(SamplerBase):
             f"Instantiating selected method: {self.inference_time_args.method_name}"
         )
         self.expander = get_expander_from_config(
-            self.expander_args, prompter=self.prompter
+            self.expander_args,
+            prompter=self.prompter,
+            lora_path=self.lora_path,
         )
         self.evaluator = get_evaluator_from_config(
-            self.evaluator_args, prompter=self.prompter
+            self.evaluator_args,
+            prompter=self.prompter,
+            lora_path=self.lora_path,
         )
         self.method = get_inference_time_method(
             inference_time_config=self.inference_time_args,
@@ -251,6 +258,15 @@ class TreeThinkSampler(SamplerBase):
             evaluator=self.evaluator,
         )
         self.model = TreeThink(self.method, self.inference_time_args)
+
+    def _set_lora_path(self, lora_path: Optional[str]):
+        if lora_path is None:
+            return
+        self.lora_path = lora_path
+        if hasattr(self, "expander"):
+            self.expander.lora_path = lora_path
+        if hasattr(self, "evaluator"):
+            self.evaluator.lora_path = lora_path
 
     def _generate_batch(self, batch_data, batch_messages):
         batch_responses = []
@@ -265,3 +281,7 @@ class TreeThinkSampler(SamplerBase):
             )
             batch_responses.append(response)
         return batch_responses
+
+    def batched_inference(self, *args, **kwargs):
+        self._set_lora_path(kwargs.pop("lora_path", None))
+        return super().batched_inference(*args, **kwargs)
