@@ -214,7 +214,7 @@ async def run_async_iterations(
     data_key,
     prompt_format,
     skip_existing,
-    show_graph_stats,
+    save_graph_stats,
 ):
     """Async helper to run iterations within a single event loop."""
     output_path = Path(output_dir)
@@ -266,7 +266,7 @@ async def run_async_iterations(
             logger.info(f"Moving graphs to {_graph_path}")
 
         graph_stats_payload = None
-        if show_graph_stats:
+        if save_graph_stats:
             graph_stats_payload = _build_graph_stats_payload(
                 model=model,
                 results=results,
@@ -311,7 +311,7 @@ def run_inference_loop(
     data_key,
     prompt_format,
     lora_path,
-    show_graph_stats,
+    save_graph_stats,
     use_parallel=False,
     use_async=False,
     skip_existing=True,
@@ -330,7 +330,7 @@ def run_inference_loop(
                 data_key=data_key,
                 prompt_format=prompt_format,
                 skip_existing=skip_existing,
-                show_graph_stats=show_graph_stats,
+                save_graph_stats=save_graph_stats,
             )
         )
     else:
@@ -370,7 +370,7 @@ def run_inference_loop(
                 logger.info(f"Moving graphs to {_graph_path}")
 
             graph_stats_payload = None
-            if show_graph_stats:
+            if save_graph_stats:
                 graph_stats_payload = _build_graph_stats_payload(
                     model=model,
                     results=results,
@@ -462,9 +462,9 @@ def parse_arguments():
         help="Path to LoRARequest",
     )
     parser.add_argument(
-        "--show-graph-stats",
+        "--no-save-graph-stats",
         action="store_true",
-        help="Calculate avg&mean of graph related statistics for each solution."
+        help="Do NOT calculate avg&mean of graph related statistics for each solution."
         "In order to see these, set `store_graph_stats=True` in InferenceTimeArgs.",
     )
     parser.add_argument(
@@ -611,7 +611,7 @@ def main():
         use_parallel=args.parallel,
         use_async=args.use_async,
         skip_existing=not args.no_skip_existing,  # Skip by default, unless --no-skip-existing
-        show_graph_stats=args.show_graph_stats,
+        save_graph_stats=not args.no_save_graph_stats,  # Save graph stats by default, unless --no-save-graph-stats
     )
     logger.success("Inference completed successfully!")
 

@@ -13,11 +13,6 @@ from typing import Callable, Dict, List, Optional
 from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
 
-# Import async components
-from treethink.expanders import (
-    get_expander_from_config,  # Has async support
-)
-
 from treethink import (
     EvaluatorArgs,
     ExpanderArgs,
@@ -26,6 +21,11 @@ from treethink import (
     get_inference_time_method,
 )  # Wrapper class
 from treethink.async_evaluators import get_async_evaluator_from_config
+
+# Import async components
+from treethink.expanders import (
+    get_expander_from_config,  # Has async support
+)
 
 # Check for AsyncEngine
 try:
