@@ -143,6 +143,8 @@ class Node:
         # to update default identifier arguments functions in graph.py
         color = "red"
         attr = "penwidth=2"
+
+        # Here we check if the solution is provided, no solution means we are not coloring the path at all
         if (
             solution is not None
             and solution[: len(self.text)] == self.text
