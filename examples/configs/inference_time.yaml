@@ -17,8 +17,8 @@ inference_time:
   beam_width:
   exploration_weight: 1.4142135623730951  # sqrt(2)
 
-expander:
-  func_name: "vllm_expander"
+policy:
+  func_name: "vllm_policy"
   model: 
     model: "internlm/internlm2-7b"
     max_model_len:

@@ -1,9 +1,9 @@
 from tests import common, methods, test_repl_integration
 from tests.common import (
-    PreferTerminationChildExpander,
+    PreferTerminationChildPolicy,
     RandomNodeEvaluator,
-    SetStrChildExpander,
-    SimpleChildExpander,
+    SetStrChildPolicy,
+    SimpleChildPolicy,
 )
 from tests.methods import (
     TestBeamSearch,
@@ -20,10 +20,10 @@ from tests.test_repl_integration import (
 )
 
 __all__ = [
-    "PreferTerminationChildExpander",
+    "PreferTerminationChildPolicy",
     "RandomNodeEvaluator",
-    "SetStrChildExpander",
-    "SimpleChildExpander",
+    "SetStrChildPolicy",
+    "SimpleChildPolicy",
     "TestBFTS",
     "TestBeamSearch",
     "TestMCTS",

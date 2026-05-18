@@ -40,12 +40,12 @@ METHOD_TYPE = TypeVar("METHOD_TYPE", bound=BaseMethod)
 
 
 def get_inference_time_method(
-    inference_time_config, root_node, expander, evaluator
+    inference_time_config, root_node, policy, evaluator
 ):
     try:
         return IMPLEMENTED_METHODS[inference_time_config.method_name](
             root_node=root_node,
-            expander=expander,
+            policy=policy,
             evaluator=evaluator,
             **inference_time_config,
         )

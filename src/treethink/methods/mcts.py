@@ -18,14 +18,14 @@ class MCTS(BaseMethod):
 
     Attributes:
         root_node (Node): The root node of the search tree.
-        expander: Function to generate child nodes.
+        policy: Function to generate child nodes.
         evaluator: Function to evaluate node quality.
     """
 
     def __init__(
         self,
         root_node: Optional[Node | str],
-        expander: Callable,
+        policy: Callable,
         evaluator: Callable,
         exploration_weight: float = 0.5,
         final_decision_mode: Literal[
@@ -36,7 +36,7 @@ class MCTS(BaseMethod):
     ):
         super().__init__(
             root_node=root_node,
-            expander=expander,
+            policy=policy,
             evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
@@ -249,7 +249,7 @@ class AsyncMCTS(MCTS):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        expander: Callable,
+        policy: Callable,
         evaluator: Callable,
         exploration_weight: float = 0.5,
         final_decision_mode: Literal[
@@ -263,7 +263,7 @@ class AsyncMCTS(MCTS):
 
         Args:
             root_node: The root node of the search tree
-            expander: Function to generate child nodes
+            policy: Function to generate child nodes
             evaluator: Async function to evaluate nodes
             exploration_weight: Weight for exploration term in UCT
             final_decision_mode: How to compute the final answer
@@ -271,7 +271,7 @@ class AsyncMCTS(MCTS):
         """
         super().__init__(
             root_node=root_node,
-            expander=expander,
+            policy=policy,
             evaluator=evaluator,
             exploration_weight=exploration_weight,
             final_decision_mode=final_decision_mode,

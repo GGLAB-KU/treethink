@@ -427,23 +427,21 @@ def _build_args_from_metadata(metadata):
     from treethink import EvaluatorArgs, InferenceTimeArgs, PolicyArgs
 
     inference_time_args = None
-    expander_args = None
+    policy_args = None
     evaluator_args = None
 
     if metadata.get("inference_time_args"):
         inference_time_args = _dataclass_from_dict(
             InferenceTimeArgs, metadata["inference_time_args"]
         )
-    if metadata.get("expander_args"):
-        expander_args = _dataclass_from_dict(
-            PolicyArgs, metadata["expander_args"]
-        )
+    if metadata.get("policy_args"):
+        policy_args = _dataclass_from_dict(PolicyArgs, metadata["policy_args"])
     if metadata.get("evaluator_args"):
         evaluator_args = _dataclass_from_dict(
             EvaluatorArgs, metadata["evaluator_args"]
         )
 
-    return inference_time_args, expander_args, evaluator_args
+    return inference_time_args, policy_args, evaluator_args
 
 
 def build_tree_from_graphviz(
@@ -504,7 +502,7 @@ def build_tree_from_graphviz(
 def load_graphviz_state(
     txt_path: Union[str, Path],
     metadata: Optional[Union[str, Path, Dict[str, Any]]] = None,
-    expander=None,
+    policy=None,
     evaluator=None,
 ):
     metadata_dict = _load_metadata(metadata)
@@ -513,28 +511,28 @@ def load_graphviz_state(
         content = f.read()
 
     root_node = build_tree_from_graphviz(content, metadata_dict)
-    inference_time_args, expander_args, evaluator_args = (
+    inference_time_args, policy_args, evaluator_args = (
         _build_args_from_metadata(metadata_dict)
     )
 
     method = None
     if inference_time_args:
-        if expander is None and expander_args is not None:
-            from treethink import get_expander_from_config
+        if policy is None and policy_args is not None:
+            from treethink import get_policy_from_config
 
-            expander = get_expander_from_config(expander_args)
+            policy = get_policy_from_config(policy_args)
         if evaluator is None and evaluator_args is not None:
             from treethink import get_evaluator_from_config
 
             evaluator = get_evaluator_from_config(evaluator_args)
 
-        if expander is not None and evaluator is not None:
+        if policy is not None and evaluator is not None:
             from treethink import get_inference_time_method
 
             method = get_inference_time_method(
                 inference_time_config=inference_time_args,
                 root_node=root_node,
-                expander=expander,
+                policy=policy,
                 evaluator=evaluator,
             )
 
@@ -542,7 +540,7 @@ def load_graphviz_state(
         "root_node": root_node,
         "method": method,
         "inference_time_args": inference_time_args,
-        "expander_args": expander_args,
+        "policy_args": policy_args,
         "evaluator_args": evaluator_args,
     }
 

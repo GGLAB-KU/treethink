@@ -14,7 +14,7 @@ from treethink.utils.str_manip import (
 
 __all__ = [
     "BaseArgs",
-    "ExpanderArgs",
+    "PolicyArgs",
     "InferenceTimeArgs",
     "LeanREPLArgs",
     "ModelArgs",

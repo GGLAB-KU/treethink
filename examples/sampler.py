@@ -13,8 +13,8 @@ from treethink import (
     PolicyArgs,
     TreeThink,
     get_evaluator_from_config,
-    get_expander_from_config,
     get_inference_time_method,
+    get_policy_from_config,
 )
 
 
@@ -213,7 +213,7 @@ class VLLMSampler(SamplerBase):
 class TreeThinkSampler(SamplerBase):
     def __init__(
         self,
-        expander_args: PolicyArgs,
+        policy_args: PolicyArgs,
         evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         sample_params: Optional[
@@ -227,12 +227,12 @@ class TreeThinkSampler(SamplerBase):
             sample_params=sample_params,
             prompter=prompter,
             task_name=task_name,
-            model_name=expander_args.model.model,
+            model_name=policy_args.model.model,
         )
-        self.expander_args = expander_args
+        self.policy_args = policy_args
         self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
-        self.enable_lora = expander_args.model.enable_lora
+        self.enable_lora = policy_args.model.enable_lora
         self.lora_path = lora_path
 
         self._init_inference_time_method()
@@ -241,8 +241,8 @@ class TreeThinkSampler(SamplerBase):
         logger.info(
             f"Instantiating selected method: {self.inference_time_args.method_name}"
         )
-        self.expander = get_expander_from_config(
-            self.expander_args,
+        self.policy = get_policy_from_config(
+            self.policy_args,
             prompter=self.prompter,
             lora_path=self.lora_path,
         )
@@ -254,7 +254,7 @@ class TreeThinkSampler(SamplerBase):
         self.method = get_inference_time_method(
             inference_time_config=self.inference_time_args,
             root_node=None,
-            expander=self.expander,
+            policy=self.policy,
             evaluator=self.evaluator,
         )
         self.model = TreeThink(self.method, self.inference_time_args)
@@ -263,8 +263,8 @@ class TreeThinkSampler(SamplerBase):
         if lora_path is None:
             return
         self.lora_path = lora_path
-        if hasattr(self, "expander"):
-            self.expander.lora_path = lora_path
+        if hasattr(self, "policy"):
+            self.policy.lora_path = lora_path
         if hasattr(self, "evaluator"):
             self.evaluator.lora_path = lora_path
 

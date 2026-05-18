@@ -172,7 +172,7 @@ from treethink import (  # noqa: E402
 
 __inftime = {
     "inference_time": InferenceTimeArgs,
-    "expander": PolicyArgs,
+    "policy": PolicyArgs,
     "evaluator": EvaluatorArgs,
 }
 

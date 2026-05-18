@@ -24,8 +24,8 @@ from utils import (
 from treethink import (
     TreeThink,
     get_evaluator_from_config,
-    get_expander_from_config,
     get_inference_time_method,
+    get_policy_from_config,
 )
 
 
@@ -53,7 +53,7 @@ class AsyncDatapointSampler:
 
     def __init__(
         self,
-        expander_args: Optional[PolicyArgs] = None,
+        policy_args: Optional[PolicyArgs] = None,
         evaluator_args: Optional[EvaluatorArgs] = None,
         inference_time_args: Optional[InferenceTimeArgs] = None,
         prompter: Optional[Callable] = None,
@@ -64,14 +64,14 @@ class AsyncDatapointSampler:
         Initialize AsyncDatapointSampler.
 
         Args:
-            expander_args: Configuration for expander
+            policy_args: Configuration for policy
             evaluator_args: Configuration for node evaluator
             inference_time_args: Configuration for inference time method
             prompter: Function to format prompts
             task_name: Name identifier for this task
             max_concurrent_datapoints: Maximum number of datapoints to process concurrently
         """
-        self.expander_args = expander_args
+        self.policy_args = policy_args
         self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
         self.task_name = task_name
@@ -83,8 +83,8 @@ class AsyncDatapointSampler:
             self.prompter = self._default_prompter
 
         # Get model name for logging
-        if expander_args:
-            self.model_name = expander_args.model.model
+        if policy_args:
+            self.model_name = policy_args.model.model
         else:
             self.model_name = "unknown"
 
@@ -104,9 +104,9 @@ class AsyncDatapointSampler:
         )
 
     def _init_shared_components(self):
-        """Initialize shared components (vLLM, expander, node evaluator)."""
+        """Initialize shared components (vLLM, policy, node evaluator)."""
         if not (
-            self.expander_args
+            self.policy_args
             and self.evaluator_args
             and self.inference_time_args
         ):
@@ -114,9 +114,9 @@ class AsyncDatapointSampler:
                 "All args must be provided for inference time methods"
             )
 
-        # Initialize shared expander (contains vLLM)
-        self.shared_expander = get_expander_from_config(
-            self.expander_args, prompter=self.prompter
+        # Initialize shared policy (contains vLLM)
+        self.shared_policy = get_policy_from_config(
+            self.policy_args, prompter=self.prompter
         )
 
         # Initialize shared node evaluator
@@ -283,7 +283,7 @@ class AsyncDatapointSampler:
             method = get_inference_time_method(
                 inference_time_config=self.inference_time_args,
                 root_node=None,
-                expander=self.shared_expander,  # Shared vLLM
+                policy=self.shared_policy,  # Shared vLLM
                 evaluator=self.shared_evaluator,  # Shared evaluator
             )
 
@@ -398,7 +398,7 @@ class AsyncDatapointSampler:
         Example:
             ```python
             sampler = AsyncDatapointSampler(
-                expander_args=cf_args,
+                policy_args=cf_args,
                 evaluator_args=ne_args,
                 inference_time_args=it_args,
                 max_concurrent_datapoints=4

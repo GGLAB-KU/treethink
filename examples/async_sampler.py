@@ -1,7 +1,7 @@
 """
 Fully Asynchronous Sampler for TreeThink.
 
-This sampler leverages AsyncMCTS, AsyncChildExpander, and AsyncNodeEvaluator
+This sampler leverages AsyncMCTS, AsyncChildPolicy, and AsyncNodeEvaluator
 to achieve high-throughput parallel inference on multiple datapoints.
 """
 
@@ -14,10 +14,6 @@ from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
 
 # Import async components
-from treethink.expanders import (
-    get_expander_from_config,  # Has async support
-)
-
 from treethink import (
     EvaluatorArgs,
     InferenceTimeArgs,
@@ -42,7 +38,7 @@ class AsyncSampler:
 
     def __init__(
         self,
-        expander_args: PolicyArgs,
+        policy_args: PolicyArgs,
         evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         prompter: Optional[Callable] = None,
@@ -52,7 +48,7 @@ class AsyncSampler:
         visible_devices: str = "0",
         task_name: str = "async_generate",
     ):
-        self.expander_args = expander_args
+        self.policy_args = policy_args
         self.evaluator_args = evaluator_args
         self.inference_time_args = inference_time_args
         self.max_concurrent_datapoints = max_concurrent_datapoints
@@ -67,9 +63,9 @@ class AsyncSampler:
             )
 
         # Initialize Shared Components
-        # Use get_expander_from_config - it supports async expanders
-        self.shared_expander = get_expander_from_config(
-            expander_args, prompter=self.prompter
+        # Use get_policy_from_config - it supports async policies
+        self.shared_policy = get_policy_from_config(
+            policy_args, prompter=self.prompter
         )
 
         # For Judge, if it uses the same model, we can reuse the engine
@@ -154,7 +150,7 @@ class AsyncSampler:
             method = get_inference_time_method(
                 inference_time_config=self.inference_time_args,
                 root_node=None,
-                expander=self.shared_expander,
+                policy=self.shared_policy,
                 evaluator=self.shared_evaluator,
             )
 

@@ -110,7 +110,7 @@ def _build_graph_stats_payload(
         return None
 
     inference_time_args = getattr(model, "inference_time_args", None)
-    expander_args = getattr(model, "expander_args", None)
+    policy_args = getattr(model, "policy_args", None)
     evaluator_args = getattr(model, "evaluator_args", None)
     method_name = (
         inference_time_args.method_name
@@ -133,7 +133,7 @@ def _build_graph_stats_payload(
         else None,
         "method_name": method_name,
         "inference_time_args": serialize_args(inference_time_args),
-        "expander_args": serialize_args(expander_args),
+        "policy_args": serialize_args(policy_args),
         "evaluator_args": serialize_args(evaluator_args),
         "graph_stats_summary": analyze_graph_stats(graph_stats_list),
         "graph_stats_count": len(graph_stats_list),
@@ -150,13 +150,13 @@ def setup_model(
     """Initialize the model with given parameters."""
     _args, _inference_type = parse_inference_arguments(gen_config_path)
     if _inference_type == "inftime":
-        inference_time_args, expander_args, evaluator_args = _args
+        inference_time_args, policy_args, evaluator_args = _args
 
         if use_async:
-            # Pure async stack: AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
             logger.info("Using pure async stack (AsyncSampler)")
             model = AsyncSampler(
-                expander_args=expander_args,
+                policy_args=policy_args,
                 evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
@@ -169,7 +169,7 @@ def setup_model(
                 "Using parallel datapoint sampler (AsyncDatapointSampler)"
             )
             model = AsyncDatapointSampler(
-                expander_args=expander_args,
+                policy_args=policy_args,
                 evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
@@ -180,7 +180,7 @@ def setup_model(
             # Sequential processing
             logger.info("Using sequential TreeThink sampler (TreeThinkSampler)")
             model = TreeThinkSampler(
-                expander_args=expander_args,
+                policy_args=policy_args,
                 evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
                 sample_params=None,
@@ -229,7 +229,7 @@ async def run_async_iterations(
         logger.info(f"Running iteration {i + 1}/{num_iterations}")
 
         if isinstance(model, AsyncSampler):
-            # Pure async stack: AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
             logger.info("Running with AsyncSampler (pure async stack)")
             results = await model.async_inference(
                 data=datapoints,
@@ -511,7 +511,7 @@ def parse_arguments():
         "--async",
         dest="use_async",
         action="store_true",
-        help="Enable pure async stack (AsyncMCTS + AsyncChildExpander + AsyncNodeEvaluator). "
+        help="Enable pure async stack (AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator). "
         "Fully asynchronous tree search with concurrent child generation and evaluation. "
         "Recommended for maximum throughput.",
     )

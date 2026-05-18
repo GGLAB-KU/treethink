@@ -4,7 +4,7 @@ import unittest
 
 from loguru import logger
 
-from tests.common import RandomNodeEvaluator, SimpleChildExpander
+from tests.common import RandomNodeEvaluator, SimpleChildPolicy
 from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
     save_tree_to_txt,
@@ -26,11 +26,11 @@ class TestBFTS(unittest.TestCase):
 
         root = Node("root")
         evaluator_func = RandomNodeEvaluator()
-        expander_func = SimpleChildExpander()
+        policy_func = SimpleChildPolicy()
 
         bfts = BFTS(
             root_node=None,
-            expander=expander_func,
+            policy=policy_func,
             evaluator=evaluator_func,
         )
         bfts.set_root_node(root)

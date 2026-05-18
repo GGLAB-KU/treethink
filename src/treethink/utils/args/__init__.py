@@ -13,7 +13,7 @@ from treethink.utils.args.inftime_args import (
 
 __all__ = [
     "BaseArgs",
-    "ExpanderArgs",
+    "PolicyArgs",
     "InferenceTimeArgs",
     "LeanREPLArgs",
     "ModelArgs",

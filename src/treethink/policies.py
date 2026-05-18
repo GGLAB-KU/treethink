@@ -52,8 +52,8 @@ class VLLMPolicy(BasePolicy):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing VLLMExpander.")
-        super().__init__(name="vllm_expander")
+        logger.debug("Initializing VLLMPolicy.")
+        super().__init__(name="vllm_policy")
         if isinstance(model, ModelArgs):
             logger.trace("ModelArgs is given, using init_model()")
             self.model = self.init_model(
@@ -95,7 +95,7 @@ class VLLMPolicy(BasePolicy):
         self._max_model_len = self.model.llm_engine.model_config.max_model_len
         self._tokenizer = self.model.get_tokenizer()
         logger.debug(f"Max model length: {self._max_model_len}")
-        logger.info("VLLMExpander is initialized.")
+        logger.info("VLLMPolicy is initialized.")
 
     def _get_lora_request(self) -> Optional[LoRARequest]:
         if self.enable_lora and self.lora_path:
@@ -175,8 +175,8 @@ class DynamicPolicy(BasePolicy):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing DynamicExpander.")
-        super().__init__(name="dynamic_expander")
+        logger.debug("Initializing DynamicPolicy.")
+        super().__init__(name="dynamic_policy")
         if isinstance(model, ModelArgs):
             logger.trace("Model is ModelArgs, using init_model()")
             self.model = self.init_model(
@@ -204,10 +204,10 @@ class DynamicPolicy(BasePolicy):
         self.system_prompt = system_prompt
 
         if isinstance(prompter, Callable):
-            logger.debug("Using custom prompter for DynamicExpander.")
+            logger.debug("Using custom prompter for DynamicPolicy.")
             self.prompter = prompter
         else:
-            logger.debug("Using default prompter for DynamicExpander.")
+            logger.debug("Using default prompter for DynamicPolicy.")
             self.prompter = partial(
                 self.model.get_tokenizer().apply_chat_template,
                 tokenize=False,
@@ -223,7 +223,7 @@ class DynamicPolicy(BasePolicy):
             logger.debug("Using default param_modifier function.")
             self.param_modifier = self._default_param_modifier
 
-        logger.info("DynamicExpander initialized.")
+        logger.info("DynamicPolicy initialized.")
 
     def _get_lora_request(self) -> Optional[LoRARequest]:
         if self.enable_lora and self.lora_path:
@@ -322,8 +322,8 @@ class VLLMServerPolicy(BasePolicy):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing VLLMServerExpander.")
-        super().__init__(name="vllm_server_expander")
+        logger.debug("Initializing VLLMServerPolicy.")
+        super().__init__(name="vllm_server_policy")
 
         self.server_args = server if server else ServerArgs()
         self.client = openai.OpenAI(
@@ -346,7 +346,7 @@ class VLLMServerPolicy(BasePolicy):
         )
 
         self.system_prompt = system_prompt
-        logger.info("VLLMServerExpander initialized.")
+        logger.info("VLLMServerPolicy initialized.")
 
     def __call__(self, node: Node, method):
         proof_so_far = method.traverse_to_root(node, include_root=False)
@@ -389,14 +389,14 @@ class VLLMServerPolicy(BasePolicy):
             node.add_children(children=children)
             logger.debug(f"Added {len(children)} children to node {node}.")
         except Exception as e:
-            logger.error(f"VLLMServerExpander generation failed: {e}")
+            logger.error(f"VLLMServerPolicy generation failed: {e}")
 
 
 # Constants
 IMPLEMENTED_POLICIES = {
-    "vllm_expander": VLLMPolicy,
-    "dynamic_expander": DynamicPolicy,
-    "vllm_server_expander": VLLMServerPolicy,
+    "vllm_policy": VLLMPolicy,
+    "dynamic_policy": DynamicPolicy,
+    "vllm_server_policy": VLLMServerPolicy,
 }
 POLICIES = list(IMPLEMENTED_POLICIES.keys())
 POLICY_TYPE = TypeVar("POLICY_TYPE", bound=BasePolicy)
@@ -404,21 +404,21 @@ POLICY_TYPE = TypeVar("POLICY_TYPE", bound=BasePolicy)
 
 def get_policy(func_name, *args, **kwargs) -> BasePolicy:
     try:
-        logger.info(f"Instantiating expander: {func_name}")
+        logger.info(f"Instantiating policy: {func_name}")
         return IMPLEMENTED_POLICIES[func_name](*args, **kwargs)
     except KeyError:
         logger.error(
-            f"Could not initialize expander: {func_name}"
-            + f"Available expanders: {list(IMPLEMENTED_POLICIES.keys())}"
+            f"Could not initialize policy: {func_name}"
+            + f"Available policies: {list(IMPLEMENTED_POLICIES.keys())}"
         )
 
 
 def get_policy_from_config(config: PolicyArgs, *args, **kwargs) -> POLICY_TYPE:
     try:
-        logger.info(f"Instantiating expander from config: {config.func_name}")
+        logger.info(f"Instantiating policy from config: {config.func_name}")
         return IMPLEMENTED_POLICIES[config.func_name](*args, **config, **kwargs)
     except KeyError:
         logger.error(
-            f"Could not initialize expander: {config.func_name}"
-            + f"Available expander: {list(IMPLEMENTED_POLICIES.keys())}"
+            f"Could not initialize policy: {config.func_name}"
+            + f"Available policy: {list(IMPLEMENTED_POLICIES.keys())}"
         )

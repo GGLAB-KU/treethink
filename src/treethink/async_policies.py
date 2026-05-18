@@ -6,12 +6,12 @@ import vllm
 from loguru import logger
 from vllm import AsyncEngineArgs, AsyncLLMEngine
 
-from .expanders import BaseExpander
 from .methods import Node
+from .policies import BasePolicy
 from .utils import ModelArgs, PolicyArgs, SamplingArgs, ServerArgs
 
 
-class AsyncVLLMExpander(BaseExpander):
+class AsyncVLLMPolicy(BasePolicy):
     """Async vLLM based inference for node expansion with batch processing support."""
 
     def __init__(
@@ -23,8 +23,8 @@ class AsyncVLLMExpander(BaseExpander):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing AsyncVLLMExpander.")
-        super().__init__(name="async_vllm_expander")
+        logger.debug("Initializing AsyncVLLMPolicy.")
+        super().__init__(name="async_vllm_policy")
 
         if isinstance(model, ModelArgs):
             engine_args = AsyncEngineArgs(
@@ -47,7 +47,7 @@ class AsyncVLLMExpander(BaseExpander):
             )
         else:
             raise ValueError(
-                "model must be ModelArgs instance for AsyncVLLMExpander."
+                "model must be ModelArgs instance for AsyncVLLMPolicy."
             )
 
         self.sampling_params = (
@@ -60,12 +60,12 @@ class AsyncVLLMExpander(BaseExpander):
         self._init_tokenizer_task = None
 
         if isinstance(prompter, Callable):
-            logger.debug("Using provided prompter for AsyncVLLMExpander.")
+            logger.debug("Using provided prompter for AsyncVLLMPolicy.")
             self.prompter = prompter
         else:
             self.prompter = self._default_prompter
 
-        logger.info("AsyncVLLMExpander initialized.")
+        logger.info("AsyncVLLMPolicy initialized.")
 
     async def _async_init_tokenizer(self):
         """Initialize tokenizer asynchronously."""
@@ -76,7 +76,7 @@ class AsyncVLLMExpander(BaseExpander):
             self._tokenizer = AutoTokenizer.from_pretrained(
                 model_config.model, trust_remote_code=True
             )
-            logger.debug("Tokenizer loaded successfully in AsyncVLLMExpander.")
+            logger.debug("Tokenizer loaded successfully in AsyncVLLMPolicy.")
         except Exception as e:
             logger.warning(
                 f"Failed to load tokenizer: {e}. Token counting disabled."
@@ -180,11 +180,11 @@ class AsyncVLLMExpander(BaseExpander):
             logger.error(f"Single generation failed for {request_id}: {e}")
 
 
-class AsyncBatchVLLMExpander(BaseExpander):
+class AsyncBatchVLLMPolicy(BasePolicy):
     """
-    Async vLLM expander with smart batching across multiple nodes.
+    Async vLLM policy with smart batching across multiple nodes.
 
-    This expander can batch multiple node expansions into a single vLLM call,
+    This policy can batch multiple node expansions into a single vLLM call,
     significantly improving throughput.
     """
 
@@ -198,8 +198,8 @@ class AsyncBatchVLLMExpander(BaseExpander):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing AsyncBatchVLLMExpander.")
-        super().__init__(name="async_batch_vllm_expander")
+        logger.debug("Initializing AsyncBatchVLLMPolicy.")
+        super().__init__(name="async_batch_vllm_policy")
 
         if isinstance(model, ModelArgs):
             engine_args = AsyncEngineArgs(
@@ -213,7 +213,7 @@ class AsyncBatchVLLMExpander(BaseExpander):
                 dtype=getattr(model, "dtype", "auto"),
             )
             self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-            logger.debug("AsyncBatchVLLMExpander AsyncLLMEngine initialized.")
+            logger.debug("AsyncBatchVLLMPolicy AsyncLLMEngine initialized.")
             self._max_model_len = (
                 model.max_model_len if hasattr(model, "max_model_len") else 4096
             )
@@ -235,7 +235,7 @@ class AsyncBatchVLLMExpander(BaseExpander):
         logger.debug("Tokenizer async initialization task created.")
 
         if isinstance(prompter, Callable):
-            logger.debug("Using custom prompter for AsyncBatchVLLMExpander.")
+            logger.debug("Using custom prompter for AsyncBatchVLLMPolicy.")
             self.prompter = prompter
         else:
             self.prompter = self._default_prompter
@@ -243,7 +243,7 @@ class AsyncBatchVLLMExpander(BaseExpander):
         self._pending_nodes = []
         self._batch_lock = asyncio.Lock()
 
-        logger.debug("AsyncBatchVLLMExpander initialized.")
+        logger.debug("AsyncBatchVLLMPolicy initialized.")
 
     async def _async_init_tokenizer(self):
         try:
@@ -254,7 +254,7 @@ class AsyncBatchVLLMExpander(BaseExpander):
                 model_config.model, trust_remote_code=True
             )
             logger.debug(
-                "Tokenizer loaded successfully for AsyncBatchVLLMExpander."
+                "Tokenizer loaded successfully for AsyncBatchVLLMPolicy."
             )
         except Exception as e:
             logger.warning(f"Failed to load tokenizer: {e}")
@@ -475,7 +475,7 @@ class AsyncBatchVLLMExpander(BaseExpander):
             raise
 
 
-class AsyncVLLMServerExpander(BaseExpander):
+class AsyncVLLMServerPolicy(BasePolicy):
     """Async vLLM Server based inference for node expansion."""
 
     def __init__(
@@ -487,8 +487,8 @@ class AsyncVLLMServerExpander(BaseExpander):
         *args,
         **kwargs,
     ):
-        logger.debug("Initializing AsyncVLLMServerExpander.")
-        super().__init__(name="async_vllm_server_expander")
+        logger.debug("Initializing AsyncVLLMServerPolicy.")
+        super().__init__(name="async_vllm_server_policy")
 
         self.server_args = server if server else ServerArgs()
         self.client = openai.AsyncOpenAI(
@@ -530,7 +530,7 @@ class AsyncVLLMServerExpander(BaseExpander):
             }
 
         self.system_prompt = system_prompt
-        logger.info("AsyncVLLMServerExpander initialized.")
+        logger.info("AsyncVLLMServerPolicy initialized.")
 
     async def __call__(self, node: Node, method):
         proof_so_far = method.traverse_to_root(node, include_root=False)
@@ -565,42 +565,42 @@ class AsyncVLLMServerExpander(BaseExpander):
             node.add_children(children=children)
             logger.debug(f"Added {len(children)} children to node {node}.")
         except Exception as e:
-            logger.error(f"AsyncVLLMServerExpander generation failed: {e}")
+            logger.error(f"AsyncVLLMServerPolicy generation failed: {e}")
 
 
 # Constants
-IMPLEMENTED_ASYNC_EXPANDERS = {
-    "async_batch_vllm_expander": AsyncBatchVLLMExpander,
-    "async_vllm_expander": AsyncVLLMExpander,
-    "async_vllm_server_expander": AsyncVLLMServerExpander,
+IMPLEMENTED_ASYNC_POLICIES = {
+    "async_batch_vllm_policy": AsyncBatchVLLMPolicy,
+    "async_vllm_policy": AsyncVLLMPolicy,
+    "async_vllm_server_policy": AsyncVLLMServerPolicy,
 }
-ASYNC_EXPANDERS = list(IMPLEMENTED_ASYNC_EXPANDERS.keys())
-ASYNC_EXPANDER_TYPE = TypeVar("ASYNC_EXPANDER_TYPE", bound=BaseExpander)
+ASYNC_POLICIES = list(IMPLEMENTED_ASYNC_POLICIES.keys())
+ASYNC_POLICY_TYPE = TypeVar("ASYNC_POLICY_TYPE", bound=BasePolicy)
 
 
-def get_async_expander(func_name, *args, **kwargs) -> BaseExpander:
+def get_async_policy(func_name, *args, **kwargs) -> BasePolicy:
     try:
-        logger.info(f"Instantiating async expander: {func_name}")
-        return IMPLEMENTED_ASYNC_EXPANDERS[func_name](*args, **kwargs)
+        logger.info(f"Instantiating async policy: {func_name}")
+        return IMPLEMENTED_ASYNC_POLICIES[func_name](*args, **kwargs)
     except KeyError:
         logger.error(
-            f"Could not initialize async expander: {func_name}\n"
-            + f"Available async expanders: {list(IMPLEMENTED_ASYNC_EXPANDERS.keys())}"
+            f"Could not initialize async policy: {func_name}\n"
+            + f"Available async policies: {list(IMPLEMENTED_ASYNC_POLICIES.keys())}"
         )
 
 
-def get_async_expander_from_config(
+def get_async_policy_from_config(
     config: PolicyArgs, *args, **kwargs
-) -> ASYNC_EXPANDER_TYPE:
+) -> ASYNC_POLICY_TYPE:
     try:
         logger.info(
-            f"Instantiating async expander from config: {config.func_name}"
+            f"Instantiating async policy from config: {config.func_name}"
         )
-        return IMPLEMENTED_ASYNC_EXPANDERS[config.func_name](
+        return IMPLEMENTED_ASYNC_POLICIES[config.func_name](
             *args, **config, **kwargs
         )
     except KeyError:
         logger.error(
-            f"Could not initialize async expander: {config.func_name}\n"
-            + f"Available async expander: {list(IMPLEMENTED_ASYNC_EXPANDERS.keys())}"
+            f"Could not initialize async policy: {config.func_name}\n"
+            + f"Available async policy: {list(IMPLEMENTED_ASYNC_POLICIES.keys())}"
         )

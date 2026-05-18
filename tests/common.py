@@ -3,23 +3,23 @@
 import itertools
 import random
 
-from treethink import BaseEvaluator, BaseExpander, Node
+from treethink import BaseEvaluator, BasePolicy, Node
 
 # -------------
-# Expanders
+# POLICIES
 # -------------
 
 
-class SimpleChildExpander(BaseExpander):
+class SimpleChildPolicy(BasePolicy):
     def __init__(self, num_child: int = 5, *args, **kwargs):
-        super().__init__(name="simple_expander", *args, **kwargs)
+        super().__init__(name="simple_policy", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
         self._id_gen = itertools.count(0)  # Infinite counter
 
     def __call__(self, node, method):
-        def _expander(x: Node, y):
+        def _policy(x: Node, y):
             for i in range(self.num_child - 1):
                 child_id = next(self._id_gen)
                 node.add_child(
@@ -31,14 +31,14 @@ class SimpleChildExpander(BaseExpander):
                     )
                 )
 
-        return _expander(node, method)
+        return _policy(node, method)
 
 
-class SetStrChildExpander(BaseExpander):
+class SetStrChildPolicy(BasePolicy):
     def __init__(
         self, text: str, num_child: int = 5, sep="\n", *args, **kwargs
     ):
-        super().__init__(name="set_str_expander", *args, **kwargs)
+        super().__init__(name="set_str_policy", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
@@ -75,7 +75,7 @@ class SetStrChildExpander(BaseExpander):
             )
 
 
-class PreferTerminationChildExpander(BaseExpander):
+class PreferTerminationChildPolicy(BasePolicy):
     def __init__(
         self,
         termination_str: str = "```",
@@ -87,7 +87,7 @@ class PreferTerminationChildExpander(BaseExpander):
     ):
         """Occasionally produce a node with text `termination_str` to test if
         we can REPL that proof trajectory."""
-        super().__init__(name="prefer_termination_expander", *args, **kwargs)
+        super().__init__(name="prefer_termination_policy", *args, **kwargs)
         self.termination_str = termination_str
         self.num_child = num_child
         self.start_prob = start_prob

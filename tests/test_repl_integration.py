@@ -6,8 +6,8 @@ from loguru import logger
 
 from tests.common import (
     FirstPosOthersNegNodeEvaluator,
-    PreferTerminationChildExpander,
-    SetStrChildExpander,
+    PreferTerminationChildPolicy,
+    SetStrChildPolicy,
 )
 from treethink import (  # noqa
     InferenceTimeArgs,
@@ -64,7 +64,7 @@ class TestREPLIntegration(unittest.TestCase):
             root_node=Node(
                 "root", termination_str=self.inftime_args.termination_str
             ),
-            expander=SetStrChildExpander(text=proof_cont, num_child=5),
+            policy=SetStrChildPolicy(text=proof_cont, num_child=5),
             evaluator=FirstPosOthersNegNodeEvaluator(),
         )
         inference_time = TreeThink(
@@ -88,7 +88,7 @@ class TestREPLIntegration(unittest.TestCase):
 
         method = BFTS(
             root_node=Node("root"),
-            expander=PreferTerminationChildExpander(),
+            policy=PreferTerminationChildPolicy(),
             evaluator=FirstPosOthersNegNodeEvaluator(),
         )
         inference_time = TreeThink(
