@@ -518,15 +518,25 @@ def load_graphviz_state(
     )
 
     method = None
-    if inference_time_args and expander is not None and evaluator is not None:
-        from treethink import get_inference_time_method
+    if inference_time_args:
+        if expander is None and expander_args is not None:
+            from treethink import get_expander_from_config
 
-        method = get_inference_time_method(
-            inference_time_config=inference_time_args,
-            root_node=root_node,
-            expander=expander,
-            evaluator=evaluator,
-        )
+            expander = get_expander_from_config(expander_args)
+        if evaluator is None and evaluator_args is not None:
+            from treethink import get_evaluator_from_config
+
+            evaluator = get_evaluator_from_config(evaluator_args)
+
+        if expander is not None and evaluator is not None:
+            from treethink import get_inference_time_method
+
+            method = get_inference_time_method(
+                inference_time_config=inference_time_args,
+                root_node=root_node,
+                expander=expander,
+                evaluator=evaluator,
+            )
 
     return {
         "root_node": root_node,

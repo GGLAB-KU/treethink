@@ -291,12 +291,12 @@ async def run_async_iterations(
                 )
 
         if graph_stats_payload:
-            stats_path = (
-                output_path / f"{i}_graph_stats_{run_name}_{_time}.json"
-            )
+            stats_path = output_path / f"{i}_exp_{run_name}_{_time}.json"
             with open(stats_path, "w", encoding="utf-8") as f:
                 json.dump(graph_stats_payload, f, indent=2, ensure_ascii=False)
-            logger.success(f"Graph stats saved to {stats_path}.")
+            logger.success(
+                f"Experiment parameters and graph stats saved to {stats_path}."
+            )
         logger.success(f"Answers saved to {_path}.")
 
 
@@ -397,13 +397,15 @@ def run_inference_loop(
 
             if graph_stats_payload:
                 stats_path = (
-                    output_path / f"{i}_graph_stats_{run_name}_{_time}.json"
+                    output_path / f"{i}_exp_stats_{run_name}_{_time}.json"
                 )
                 with open(stats_path, "w", encoding="utf-8") as f:
                     json.dump(
                         graph_stats_payload, f, indent=2, ensure_ascii=False
                     )
-                logger.success(f"Graph stats saved to {stats_path}.")
+                logger.success(
+                    f"Experiment parameters and graph stats saved to {stats_path}."
+                )
             logger.success(f"Answers saved to {_path}")
 
 
