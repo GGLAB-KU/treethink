@@ -35,7 +35,7 @@ class TestLoadingTreeState(unittest.TestCase):
 
     def test_create_and_load_tree_state(self):
         root = self._build_sample_tree()
-        tree_path = Path(__file__).parent / "outputs/tree.txt"
+        tree_path = Path(__file__).parent / "outputs/load_state_tree.txt"
         save_tree_to_txt(root, tree_path)
 
         metadata = {
