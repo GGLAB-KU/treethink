@@ -13,19 +13,19 @@ from typing import Callable, Dict, List, Optional
 from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
 
-from treethink import (
-    EvaluatorArgs,
-    ExpanderArgs,
-    InferenceTimeArgs,
-    TreeThink,
-    get_inference_time_method,
-)  # Wrapper class
-from treethink.async_evaluators import get_async_evaluator_from_config
-
 # Import async components
 from treethink.expanders import (
     get_expander_from_config,  # Has async support
 )
+
+from treethink import (
+    EvaluatorArgs,
+    InferenceTimeArgs,
+    PolicyArgs,
+    TreeThink,
+    get_inference_time_method,
+)  # Wrapper class
+from treethink.async_evaluators import get_async_evaluator_from_config
 
 # Check for AsyncEngine
 try:
@@ -42,7 +42,7 @@ class AsyncSampler:
 
     def __init__(
         self,
-        expander_args: ExpanderArgs,
+        expander_args: PolicyArgs,
         evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         prompter: Optional[Callable] = None,

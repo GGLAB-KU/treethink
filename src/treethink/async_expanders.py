@@ -8,7 +8,7 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine
 
 from .expanders import BaseExpander
 from .methods import Node
-from .utils import ExpanderArgs, ModelArgs, SamplingArgs, ServerArgs
+from .utils import ModelArgs, PolicyArgs, SamplingArgs, ServerArgs
 
 
 class AsyncVLLMExpander(BaseExpander):
@@ -590,7 +590,7 @@ def get_async_expander(func_name, *args, **kwargs) -> BaseExpander:
 
 
 def get_async_expander_from_config(
-    config: ExpanderArgs, *args, **kwargs
+    config: PolicyArgs, *args, **kwargs
 ) -> ASYNC_EXPANDER_TYPE:
     try:
         logger.info(

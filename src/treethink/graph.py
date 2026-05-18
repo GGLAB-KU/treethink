@@ -424,7 +424,7 @@ def _build_args_from_metadata(metadata):
     if not metadata:
         return None, None, None
 
-    from treethink import EvaluatorArgs, ExpanderArgs, InferenceTimeArgs
+    from treethink import EvaluatorArgs, InferenceTimeArgs, PolicyArgs
 
     inference_time_args = None
     expander_args = None
@@ -436,7 +436,7 @@ def _build_args_from_metadata(metadata):
         )
     if metadata.get("expander_args"):
         expander_args = _dataclass_from_dict(
-            ExpanderArgs, metadata["expander_args"]
+            PolicyArgs, metadata["expander_args"]
         )
     if metadata.get("evaluator_args"):
         evaluator_args = _dataclass_from_dict(

@@ -9,8 +9,8 @@ from vllm.lora.request import LoRARequest
 
 from treethink import (
     EvaluatorArgs,
-    ExpanderArgs,
     InferenceTimeArgs,
+    PolicyArgs,
     TreeThink,
     get_evaluator_from_config,
     get_expander_from_config,
@@ -213,7 +213,7 @@ class VLLMSampler(SamplerBase):
 class TreeThinkSampler(SamplerBase):
     def __init__(
         self,
-        expander_args: ExpanderArgs,
+        expander_args: PolicyArgs,
         evaluator_args: EvaluatorArgs,
         inference_time_args: InferenceTimeArgs,
         sample_params: Optional[

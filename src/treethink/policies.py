@@ -9,10 +9,10 @@ from loguru import logger
 from vllm.lora.request import LoRARequest
 
 from .methods import Node
-from .utils import ExpanderArgs, ModelArgs, SamplingArgs, ServerArgs
+from .utils import ModelArgs, PolicyArgs, SamplingArgs, ServerArgs
 
 
-class BaseExpander(ABC):
+class BasePolicy(ABC):
     def __init__(
         self,
         name: str,
@@ -41,7 +41,7 @@ class BaseExpander(ABC):
         return vllm.LLM(**model_args)
 
 
-class VLLMExpander(BaseExpander):
+class VLLMPolicy(BasePolicy):
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -163,7 +163,7 @@ class VLLMExpander(BaseExpander):
         logger.debug(f"Added {len(children)} children to node {node}.")
 
 
-class DynamicExpander(BaseExpander):
+class DynamicPolicy(BasePolicy):
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -310,7 +310,7 @@ class DynamicExpander(BaseExpander):
         logger.debug(f"Added {len(children)} children to node {node}.")
 
 
-class VLLMServerExpander(BaseExpander):
+class VLLMServerPolicy(BasePolicy):
     """vLLM Server based inference for node expansion."""
 
     def __init__(
@@ -393,36 +393,32 @@ class VLLMServerExpander(BaseExpander):
 
 
 # Constants
-IMPLEMENTED_EXPANDERS = {
-    "vllm_expander": VLLMExpander,
-    "dynamic_expander": DynamicExpander,
-    "vllm_server_expander": VLLMServerExpander,
+IMPLEMENTED_POLICIES = {
+    "vllm_expander": VLLMPolicy,
+    "dynamic_expander": DynamicPolicy,
+    "vllm_server_expander": VLLMServerPolicy,
 }
-EXPANDERS = list(IMPLEMENTED_EXPANDERS.keys())
-EXPANDER_TYPE = TypeVar("EXPANDER_TYPE", bound=BaseExpander)
+POLICIES = list(IMPLEMENTED_POLICIES.keys())
+POLICY_TYPE = TypeVar("POLICY_TYPE", bound=BasePolicy)
 
 
-def get_expander(func_name, *args, **kwargs) -> BaseExpander:
+def get_policy(func_name, *args, **kwargs) -> BasePolicy:
     try:
         logger.info(f"Instantiating expander: {func_name}")
-        return IMPLEMENTED_EXPANDERS[func_name](*args, **kwargs)
+        return IMPLEMENTED_POLICIES[func_name](*args, **kwargs)
     except KeyError:
         logger.error(
             f"Could not initialize expander: {func_name}"
-            + f"Available expanders: {list(IMPLEMENTED_EXPANDERS.keys())}"
+            + f"Available expanders: {list(IMPLEMENTED_POLICIES.keys())}"
         )
 
 
-def get_expander_from_config(
-    config: ExpanderArgs, *args, **kwargs
-) -> EXPANDER_TYPE:
+def get_policy_from_config(config: PolicyArgs, *args, **kwargs) -> POLICY_TYPE:
     try:
         logger.info(f"Instantiating expander from config: {config.func_name}")
-        return IMPLEMENTED_EXPANDERS[config.func_name](
-            *args, **config, **kwargs
-        )
+        return IMPLEMENTED_POLICIES[config.func_name](*args, **config, **kwargs)
     except KeyError:
         logger.error(
             f"Could not initialize expander: {config.func_name}"
-            + f"Available expander: {list(IMPLEMENTED_EXPANDERS.keys())}"
+            + f"Available expander: {list(IMPLEMENTED_POLICIES.keys())}"
         )

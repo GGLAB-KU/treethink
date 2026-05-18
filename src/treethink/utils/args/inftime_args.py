@@ -158,7 +158,7 @@ class ServerArgs(BaseArgs):
 
 
 @dataclass
-class ExpanderArgs(BaseArgs):
+class PolicyArgs(BaseArgs):
     """
     Args:
         func_name (str): The name of the function to use for finding children.

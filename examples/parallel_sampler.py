@@ -17,8 +17,8 @@ from typing import Callable, List, Optional
 from loguru import logger
 from utils import (
     EvaluatorArgs,
-    ExpanderArgs,
     InferenceTimeArgs,
+    PolicyArgs,
 )
 
 from treethink import (
@@ -53,7 +53,7 @@ class AsyncDatapointSampler:
 
     def __init__(
         self,
-        expander_args: Optional[ExpanderArgs] = None,
+        expander_args: Optional[PolicyArgs] = None,
         evaluator_args: Optional[EvaluatorArgs] = None,
         inference_time_args: Optional[InferenceTimeArgs] = None,
         prompter: Optional[Callable] = None,

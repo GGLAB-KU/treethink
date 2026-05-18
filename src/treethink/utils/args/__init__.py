@@ -3,10 +3,10 @@ from treethink.utils.args.base_args import (
 )
 from treethink.utils.args.inftime_args import (
     EvaluatorArgs,
-    ExpanderArgs,
     InferenceTimeArgs,
     LeanREPLArgs,
     ModelArgs,
+    PolicyArgs,
     SamplingArgs,
     ServerArgs,
 )
