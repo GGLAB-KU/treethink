@@ -18,7 +18,6 @@ from dataset_prep import (
     prepare_datapoints,
 )
 from loguru import logger
-from parallel_sampler import AsyncDatapointSampler
 from sampler import TreeThinkSampler, VLLMSampler
 from utils.parser import (
     parse_inftime_conf,
@@ -143,7 +142,6 @@ def _build_graph_stats_payload(
 def setup_model(
     gen_config_path,
     run_name,
-    use_parallel=False,
     use_async=False,
     max_concurrent=4,
 ):
@@ -156,19 +154,6 @@ def setup_model(
             # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
             logger.info("Using pure async stack (AsyncSampler)")
             model = AsyncSampler(
-                policy_args=policy_args,
-                evaluator_args=evaluator_args,
-                inference_time_args=inference_time_args,
-                prompter=simple_messages_to_string,
-                task_name=run_name,
-                max_concurrent_datapoints=max_concurrent,
-            )
-        elif use_parallel:
-            # Hybrid stack: Sync MCTS with async REPL parallelization
-            logger.info(
-                "Using parallel datapoint sampler (AsyncDatapointSampler)"
-            )
-            model = AsyncDatapointSampler(
                 policy_args=policy_args,
                 evaluator_args=evaluator_args,
                 inference_time_args=inference_time_args,
@@ -239,17 +224,6 @@ async def run_async_iterations(
                 skip_if_exists=skip_existing,
                 show_progress=True,
             )
-        elif isinstance(model, AsyncDatapointSampler):
-            # Hybrid stack: Sync MCTS with async REPL parallelization
-            logger.info("Running with AsyncDatapointSampler (parallel REPL)")
-            results = await model.async_inference(
-                data=datapoints,
-                system_prompt=system_prompt,
-                data_key=data_key,
-                prompt_format=prompt_format,
-                show_progress=True,
-                skip_if_exists=skip_existing,
-            )
 
         _time = get_time()
         _path = output_path / f"{i}_answers_{run_name}_{_time}.json"
@@ -312,12 +286,11 @@ def run_inference_loop(
     prompt_format,
     lora_path,
     save_graph_stats,
-    use_parallel=False,
     use_async=False,
     skip_existing=True,
 ):
     """Run the main inference loop and save results."""
-    if use_async or use_parallel:
+    if use_async:
         # Use a single asyncio.run for async models to avoid loop issues
         asyncio.run(
             run_async_iterations(
@@ -499,14 +472,6 @@ def parse_arguments():
         help="Whether to take only 4 many examples as debugging purpose.",
     )
 
-    # Parallel processing arguments
-    parser.add_argument(
-        "--parallel",
-        action="store_true",
-        help="Enable concurrent datapoint processing (hybrid mode). "
-        "vLLM is shared (serialized), REPL is parallelized. "
-        "Provides speedup for REPL-heavy workloads.",
-    )
     parser.add_argument(
         "--async",
         dest="use_async",
@@ -591,7 +556,6 @@ def main():
     model = setup_model(
         gen_config_path=args.gen_config_path,
         run_name=args.run_name,
-        use_parallel=args.parallel,
         use_async=args.use_async,
         max_concurrent=args.max_concurrent,
     )
@@ -610,7 +574,6 @@ def main():
         else data_config.data_keys,
         prompt_format=data_config.prompt_format,
         lora_path=args.lora_path,
-        use_parallel=args.parallel,
         use_async=args.use_async,
         skip_existing=not args.no_skip_existing,  # Skip by default, unless --no-skip-existing
         save_graph_stats=not args.no_save_graph_stats,  # Save graph stats by default, unless --no-save-graph-stats

@@ -4,13 +4,14 @@ from typing import Callable, Optional, Union
 import vllm
 from loguru import logger
 from transformers import AutoTokenizer
-from utils import ModelArgs, SamplingArgs
 from vllm.lora.request import LoRARequest
 
 from treethink import (
     EvaluatorArgs,
     InferenceTimeArgs,
+    ModelArgs,
     PolicyArgs,
+    SamplingArgs,
     TreeThink,
     get_evaluator_from_config,
     get_inference_time_method,
