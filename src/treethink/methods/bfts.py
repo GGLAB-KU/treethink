@@ -4,10 +4,11 @@ import asyncio
 import heapq
 import random
 import time
-from typing import Callable, List, Literal, Optional
+from typing import Callable, List, Optional
 
 from loguru import logger
 
+from ..utils.enums import BestAnswerReason, FinalDecisionMode
 from .base_method import BaseMethod
 from .node import Node
 
@@ -18,9 +19,7 @@ class BFTS(BaseMethod):
         root_node: Optional[Node | str],
         policy: Callable,
         evaluator: Callable,
-        final_decision_mode: Literal[
-            "clear_frontier", "native"
-        ] = "clear_frontier",
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.CLEAR_FRONTIER,
         *args,
         **kwargs,
     ):
@@ -49,14 +48,14 @@ class BFTS(BaseMethod):
             final_decision_mode=final_decision_mode,
         )
 
-        if self.final_decision_mode == "clear_frontier":
+        if self.final_decision_mode == FinalDecisionMode.CLEAR_FRONTIER:
             self._compute_best_answer = self._best_answer_clear_frontier
-        elif self.final_decision_mode == "native":
+        elif self.final_decision_mode == FinalDecisionMode.NATIVE:
             # already set in BaseMethod
             pass
         else:
             logger.warning(
-                f"Given {self.final_decision_mode} is not supported, "
+                f"Given {self.final_decision_mode.value} is not supported, "
                 + "falling back to `native` implementation."
             )
 
@@ -167,7 +166,7 @@ class BFTS(BaseMethod):
                 answer = termination_encountered_fn(current_node)
                 if answer:
                     self.best_answer = answer
-                    self.best_answer_reason = "checked_and_true"
+                    self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
             # Skip if node was already expanded
@@ -269,9 +268,7 @@ class AsyncBFTS(BFTS):
         policy: Callable,
         evaluator: Callable,
         max_concurrent_expansions: int = 8,
-        final_decision_mode: Literal[
-            "clear_frontier", "native"
-        ] = "clear_frontier",
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.CLEAR_FRONTIER,
         *args,
         **kwargs,
     ):
@@ -342,7 +339,7 @@ class AsyncBFTS(BFTS):
 
                 if answer:
                     self.best_answer = answer
-                    self.best_answer_reason = "checked_and_true"
+                    self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
             # Skip if node was already expanded

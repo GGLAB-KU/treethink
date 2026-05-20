@@ -3,6 +3,7 @@ import re
 import subprocess
 from dataclasses import is_dataclass
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
@@ -21,6 +22,8 @@ from loguru import logger
 from tqdm import tqdm
 
 from treethink.methods import Node
+
+from .utils.enums import coerce_enum
 
 
 def save_tree_to_txt(
@@ -226,6 +229,26 @@ def _get_optional_inner_type(type_hint):
     return next(arg for arg in get_args(type_hint) if arg is not type(None))
 
 
+def _is_enum_type(type_hint) -> bool:
+    return isinstance(type_hint, type) and issubclass(type_hint, Enum)
+
+
+def _coerce_dataclass_value(expected_type, value):
+    if _is_optional_type(expected_type):
+        inner_type = _get_optional_inner_type(expected_type)
+        if value is None:
+            return None
+        return _coerce_dataclass_value(inner_type, value)
+
+    if is_dataclass(expected_type) and isinstance(value, dict):
+        return _dataclass_from_dict(expected_type, value)
+
+    if _is_enum_type(expected_type):
+        return coerce_enum(value, expected_type)
+
+    return value
+
+
 def _dataclass_from_dict(dataclass_type, data: Dict[str, Any]):
     if data is None:
         return None
@@ -238,12 +261,7 @@ def _dataclass_from_dict(dataclass_type, data: Dict[str, Any]):
         if key not in type_hints:
             continue
         expected = type_hints[key]
-        if _is_optional_type(expected):
-            expected = _get_optional_inner_type(expected)
-        if is_dataclass(expected) and isinstance(value, dict):
-            parsed[key] = _dataclass_from_dict(expected, value)
-        else:
-            parsed[key] = value
+        parsed[key] = _coerce_dataclass_value(expected, value)
     return dataclass_type(**parsed)
 
 

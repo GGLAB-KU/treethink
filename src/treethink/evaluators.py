@@ -1,6 +1,7 @@
 import math
 import os
 from abc import ABC, abstractmethod
+from enum import Enum
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -936,38 +937,44 @@ class NormLenProbEvaluator(BaseEvaluator):
         return [whole_path_cumulative_probs / (L**self.length_norm)]
 
 
-IMPLEMENTED_EVALUATORS = {
-    "cumulative_logprob_evaluator": LogprobEvaluator,
-    "repl_evaluator": REPLEvaluator,
-    "llm_as_judge_evaluator": JudgeEvaluator,
-    "normalized_lengths_evaluator": NormLenEvaluator,
-    "normalized_lengths_probs_evaluator": NormLenProbEvaluator,
-}
-EVALUATORS = list(IMPLEMENTED_EVALUATORS.keys())
+class EvaluatorType(Enum):
+    CUMULATIVE_LOGPROB = LogprobEvaluator
+    REPL = REPLEvaluator
+    LLM_AS_JUDGE = JudgeEvaluator
+    TOURNAMENT = TournamentEvaluator
+    NORMALIZED_LENGTHS = NormLenEvaluator
+    NORMALIZED_LENGTHS_PROBS = NormLenProbEvaluator
+
+    @classmethod
+    def from_str(cls, name: str) -> "EvaluatorType":
+        normalized = name.strip().lower().replace("-", "_")
+        for suffix in ("_evaluator", "_policy"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+        for member in cls:
+            if normalized == member.name.lower():
+                return member
+        valid_keys = [member.name.lower() for member in cls]
+        raise ValueError(
+            f"Unknown evaluator '{name}'. Valid options: {valid_keys}"
+        )
+
+    def initialize(self, *args, **kwargs) -> Callable:
+        return self.value(*args, **kwargs)
+
+
+IMPLEMENTED_EVALUATORS = EvaluatorType
+EVALUATORS = [member.name.lower() for member in EvaluatorType]
 
 
 def get_evaluator(func_name, *args, **kwargs) -> Callable:
-    try:
-        return IMPLEMENTED_EVALUATORS[func_name](*args, **kwargs)
-    except KeyError:
-        logger.error(
-            f"Could not initialize node evaluator: {func_name}"
-            + f"Available node evaluators: {list(IMPLEMENTED_EVALUATORS.keys())}"
-        )
+    return EvaluatorType.from_str(func_name).initialize(*args, **kwargs)
 
 
 def get_evaluator_from_config(
     config: EvaluatorArgs, *args, **kwargs
 ) -> Callable:
-    try:
-        logger.info(
-            f"Instantiating node evaluator from config: {config.func_name}"
-        )
-        return IMPLEMENTED_EVALUATORS[config.func_name](
-            *args, **config, **kwargs
-        )
-    except KeyError:
-        logger.error(
-            f"Could not initialize node evaluator: {config.func_name}"
-            + f"Available node evaluators: {list(IMPLEMENTED_EVALUATORS.keys())}"
-        )
+    logger.info(f"Instantiating node evaluator from config: {config.func_name}")
+    return EvaluatorType.from_str(config.func_name).initialize(
+        *args, **dict(vars(config)), **kwargs
+    )

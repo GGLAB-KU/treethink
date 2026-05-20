@@ -10,6 +10,7 @@ from treethink.graph import (  # noqa
     save_tree_to_txt,
 )
 from treethink.methods import BFTS, Node  # noqa
+from treethink.utils.enums import FinalDecisionMode
 
 
 class TestBFTS(unittest.TestCase):
@@ -32,6 +33,7 @@ class TestBFTS(unittest.TestCase):
             root_node=None,
             policy=policy_func,
             evaluator=evaluator_func,
+            final_decision_mode=FinalDecisionMode.CLEAR_FRONTIER,
         )
         bfts.set_root_node(root)
         bfts.simulate(expansion_count=10)

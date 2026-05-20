@@ -10,6 +10,7 @@ from treethink.graph import (  # noqa
     save_tree_to_txt,
 )
 from treethink.methods import BeamSearch, Node  # noqa
+from treethink.utils.enums import FinalDecisionMode, TieBreaker
 
 
 class TestBeamSearch(unittest.TestCase):
@@ -33,6 +34,8 @@ class TestBeamSearch(unittest.TestCase):
             policy=policy_func,
             evaluator=evaluator_func,
             beam_width=2,
+            final_decision_mode=FinalDecisionMode.NATIVE,
+            tie_breaker=TieBreaker.RANDOM,
         )
         beam.set_root_node(root)
         beam.simulate(expansion_count=2)

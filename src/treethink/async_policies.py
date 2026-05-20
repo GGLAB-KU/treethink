@@ -1,4 +1,5 @@
 import asyncio
+from enum import Enum
 from typing import Callable, Optional, TypeVar, Union
 
 import openai
@@ -559,39 +560,43 @@ class AsyncVLLMServerPolicy(BasePolicy):
             logger.error(f"AsyncVLLMServerPolicy generation failed: {e}")
 
 
-# Constants
-IMPLEMENTED_ASYNC_POLICIES = {
-    "async_batch_vllm_policy": AsyncBatchVLLMPolicy,
-    "async_vllm_policy": AsyncVLLMPolicy,
-    "async_vllm_server_policy": AsyncVLLMServerPolicy,
-}
-ASYNC_POLICIES = list(IMPLEMENTED_ASYNC_POLICIES.keys())
+class AsyncPolicyType(Enum):
+    ASYNC_BATCH_VLLM = AsyncBatchVLLMPolicy
+    ASYNC_VLLM = AsyncVLLMPolicy
+    ASYNC_VLLM_SERVER = AsyncVLLMServerPolicy
+
+    @classmethod
+    def from_str(cls, name: str) -> "AsyncPolicyType":
+        normalized = name.strip().lower().replace("-", "_")
+        for suffix in ("_policy", "_evaluator"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+        for member in cls:
+            if normalized == member.name.lower():
+                return member
+        valid_keys = [member.name.lower() for member in cls]
+        raise ValueError(
+            f"Unknown async policy '{name}'. Valid options: {valid_keys}"
+        )
+
+    def initialize(self, *args, **kwargs) -> BasePolicy:
+        return self.value(*args, **kwargs)
+
+
+IMPLEMENTED_ASYNC_POLICIES = AsyncPolicyType
+ASYNC_POLICIES = [member.name.lower() for member in AsyncPolicyType]
 ASYNC_POLICY_TYPE = TypeVar("ASYNC_POLICY_TYPE", bound=BasePolicy)
 
 
 def get_async_policy(func_name, *args, **kwargs) -> BasePolicy:
-    try:
-        logger.info(f"Instantiating async policy: {func_name}")
-        return IMPLEMENTED_ASYNC_POLICIES[func_name](*args, **kwargs)
-    except KeyError:
-        logger.error(
-            f"Could not initialize async policy: {func_name}\n"
-            + f"Available async policies: {list(IMPLEMENTED_ASYNC_POLICIES.keys())}"
-        )
+    logger.info(f"Instantiating async policy: {func_name}")
+    return AsyncPolicyType.from_str(func_name).initialize(*args, **kwargs)
 
 
 def get_async_policy_from_config(
     config: PolicyArgs, *args, **kwargs
 ) -> ASYNC_POLICY_TYPE:
-    try:
-        logger.info(
-            f"Instantiating async policy from config: {config.func_name}"
-        )
-        return IMPLEMENTED_ASYNC_POLICIES[config.func_name](
-            *args, **config, **kwargs
-        )
-    except KeyError:
-        logger.error(
-            f"Could not initialize async policy: {config.func_name}\n"
-            + f"Available async policy: {list(IMPLEMENTED_ASYNC_POLICIES.keys())}"
-        )
+    logger.info(f"Instantiating async policy from config: {config.func_name}")
+    return AsyncPolicyType.from_str(config.func_name).initialize(
+        *args, **dict(vars(config)), **kwargs
+    )

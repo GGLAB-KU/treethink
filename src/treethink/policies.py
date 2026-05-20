@@ -1,5 +1,6 @@
 import os
 from abc import ABC, abstractmethod
+from enum import Enum
 from functools import partial
 from typing import Callable, Optional, TypeVar, Union
 
@@ -392,33 +393,41 @@ class VLLMServerPolicy(BasePolicy):
             logger.error(f"VLLMServerPolicy generation failed: {e}")
 
 
-# Constants
-IMPLEMENTED_POLICIES = {
-    "vllm_policy": VLLMPolicy,
-    "dynamic_policy": DynamicPolicy,
-    "vllm_server_policy": VLLMServerPolicy,
-}
-POLICIES = list(IMPLEMENTED_POLICIES.keys())
+class PolicyType(Enum):
+    VLLM = VLLMPolicy
+    DYNAMIC = DynamicPolicy
+    VLLM_SERVER = VLLMServerPolicy
+
+    @classmethod
+    def from_str(cls, name: str) -> "PolicyType":
+        normalized = name.strip().lower().replace("-", "_")
+        for suffix in ("_policy", "_evaluator"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+        for member in cls:
+            if normalized == member.name.lower():
+                return member
+        valid_keys = [member.name.lower() for member in cls]
+        raise ValueError(
+            f"Unknown policy '{name}'. Valid options: {valid_keys}"
+        )
+
+    def initialize(self, *args, **kwargs) -> BasePolicy:
+        return self.value(*args, **kwargs)
+
+
+IMPLEMENTED_POLICIES = PolicyType
+POLICIES = [member.name.lower() for member in PolicyType]
 POLICY_TYPE = TypeVar("POLICY_TYPE", bound=BasePolicy)
 
 
 def get_policy(func_name, *args, **kwargs) -> BasePolicy:
-    try:
-        logger.info(f"Instantiating policy: {func_name}")
-        return IMPLEMENTED_POLICIES[func_name](*args, **kwargs)
-    except KeyError:
-        logger.error(
-            f"Could not initialize policy: {func_name}"
-            + f"Available policies: {list(IMPLEMENTED_POLICIES.keys())}"
-        )
+    logger.info(f"Instantiating policy: {func_name}")
+    return PolicyType.from_str(func_name).initialize(*args, **kwargs)
 
 
 def get_policy_from_config(config: PolicyArgs, *args, **kwargs) -> POLICY_TYPE:
-    try:
-        logger.info(f"Instantiating policy from config: {config.func_name}")
-        return IMPLEMENTED_POLICIES[config.func_name](*args, **config, **kwargs)
-    except KeyError:
-        logger.error(
-            f"Could not initialize policy: {config.func_name}"
-            + f"Available policy: {list(IMPLEMENTED_POLICIES.keys())}"
-        )
+    logger.info(f"Instantiating policy from config: {config.func_name}")
+    return PolicyType.from_str(config.func_name).initialize(
+        *args, **dict(vars(config)), **kwargs
+    )
