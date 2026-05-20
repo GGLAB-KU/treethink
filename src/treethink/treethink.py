@@ -1,8 +1,8 @@
 import asyncio
 import inspect
-from typing import List, Union
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Union
 
-import vllm
 from loguru import logger
 
 from .graph import save_tree_to_txt
@@ -11,85 +11,81 @@ from .utils import TreeThinkArgs
 from .utils.enums import BestAnswerReason
 
 
-class TreeThinkOutputs(vllm.RequestOutput):
-    """vllm.RequestOutput subclassed version augmented for TreeThink.
+@dataclass
+class TreeThinkOutputs:
+    """TreeThink-native generation result.
 
-    Other than holding the generation output, this result may hold `method` for
-    further playing with the method's inner variables. See
-    `treethink_args.py:TreeThinkArgs:store_method_class`.
+    This object intentionally stays small and serialization-friendly. It holds
+    the generated solution text(s) plus TreeThink-specific metadata, without
+    inheriting from vLLM request types.
     """
 
-    def __init__(
-        self,
-        request_id=None,
-        prompt=None,
-        prompt_token_ids=None,
-        prompt_logprobs=None,
-        outputs=None,
-        finished=None,
-        metrics=None,
-        lora_request=None,
-        encoder_prompt=None,
-        encoder_prompt_token_ids=None,
-        num_cached_tokens=None,
-        *,
-        multi_modal_placeholders=None,
-        method=None,
-        graph_stats=None,
-        checked_and_true=False,
-    ):
-        self.method = method
-        self.graph_stats = graph_stats
-        self.checked_and_true = checked_and_true
+    solution_text: str = ""
+    outputs: List[str] = field(default_factory=list)
+    method: Any = None
+    graph_stats: Dict[str, Any] = field(default_factory=dict)
+    checked_and_true: bool = False
+    raw_output: Any = None
+    generation_meta: Dict[str, Any] = field(default_factory=dict)
 
-        super().__init__(
-            request_id,
-            prompt,
-            prompt_token_ids,
-            prompt_logprobs,
-            outputs,
-            finished,
-            metrics,
-            lora_request,
-            encoder_prompt,
-            encoder_prompt_token_ids,
-            num_cached_tokens,
-            multi_modal_placeholders=multi_modal_placeholders,
-        )
+    def __post_init__(self):
+        if self.solution_text and not self.outputs:
+            self.outputs = [self.solution_text]
+        elif self.outputs and not self.solution_text:
+            self.solution_text = self.outputs[0]
 
     def solution_to_outputs(self, solution: Union[str, List[str]]):
-        """Insert solution to self.outputs[i].text
-
-        Args:
-            solution (str): Found solution(s).
-
-        Returns:
-            None. Updates self.outputs with the solution.
-        """
+        """Store solution text in the result object."""
 
         if isinstance(solution, str):
             solution = [solution]
 
-        outputs = []
-        for i, s in enumerate(solution):
-            outputs.append(
-                vllm.CompletionOutput(
-                    index=i,
-                    text=s,
-                    token_ids=None,
-                    cumulative_logprob=None,
-                    logprobs=None,
-                )
-            )
-
-        self.outputs = outputs
+        self.outputs = list(solution)
+        self.solution_text = self.outputs[0] if self.outputs else ""
 
     @property
     def solution(self):
-        try:
-            return self.outputs[0].text
-        except IndexError:
-            logger.error(f"Solution not found. self.outputs: {self.outputs}")
+        return self.solution_text
+
+    @property
+    def has_solution(self) -> bool:
+        return bool(self.solution_text)
+
+    @property
+    def is_checked_and_true(self) -> bool:
+        return self.checked_and_true
+
+    def to_dict(
+        self,
+        *,
+        include_method: bool = False,
+        include_raw_output: bool = False,
+    ) -> Dict[str, Any]:
+        data: Dict[str, Any] = {
+            "solution_text": self.solution_text,
+            "outputs": list(self.outputs),
+            "graph_stats": dict(self.graph_stats),
+            "checked_and_true": self.checked_and_true,
+            "generation_meta": dict(self.generation_meta),
+        }
+        if include_method:
+            data["method"] = self.method
+        if include_raw_output:
+            data["raw_output"] = self.raw_output
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "TreeThinkOutputs":
+        return cls(**data)
+
+    def summary(self) -> Dict[str, Any]:
+        return {
+            "has_solution": self.has_solution,
+            "solution_length": len(self.solution_text),
+            "output_count": len(self.outputs),
+            "checked_and_true": self.checked_and_true,
+            "graph_stats_keys": list(self.graph_stats.keys()),
+        }
 
 
 class TreeThink:
