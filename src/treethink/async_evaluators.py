@@ -9,6 +9,7 @@ operations like REPL verification and LLM-as-judge scoring.
 import asyncio
 import os
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Callable, List, Optional, Union
 
 import vllm
@@ -389,26 +390,42 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
         return scores
 
 
-# Registry
-ASYNC_IMPLEMENTED_EVALUATORS = {
-    "async_repl_evaluator": AsyncREPLEvaluator,
-    "async_judge_evaluator": AsyncJudgeEvaluator,
-    "async_normalized_lengths_evaluator": AsyncNormLenEvaluator,
-}
+class AsyncEvaluatorType(Enum):
+    ASYNC_REPL = AsyncREPLEvaluator
+    ASYNC_JUDGE = AsyncJudgeEvaluator
+    ASYNC_NORMALIZED_LENGTHS = AsyncNormLenEvaluator
+
+    @classmethod
+    def from_str(cls, name: str) -> "AsyncEvaluatorType":
+        normalized = name.strip().lower().replace("-", "_")
+        for suffix in ("_evaluator", "_policy"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+        for member in cls:
+            if normalized == member.name.lower():
+                return member
+        valid_keys = [member.name.lower() for member in cls]
+        raise ValueError(
+            f"Unknown async evaluator '{name}'. Valid options: {valid_keys}"
+        )
+
+    def initialize(self, *args, **kwargs) -> Callable:
+        return self.value(*args, **kwargs)
+
+
+ASYNC_IMPLEMENTED_EVALUATORS = AsyncEvaluatorType
+ASYNC_EVALUATORS = [member.name.lower() for member in AsyncEvaluatorType]
 
 
 def get_async_evaluator_from_config(config: EvaluatorArgs, *args, **kwargs):
-    try:
-        func_name = config.func_name
-        if not func_name.startswith("async_"):
-            logger.warning(
-                f"EvaluatorArgs func_name '{func_name}' does not start with 'async_', "
-                + "but we're in async_evaluators. Prepending 'async_' to func_name."
-            )
-            func_name = "async_" + func_name
-        return ASYNC_IMPLEMENTED_EVALUATORS[func_name](
-            *args, **config, **kwargs
+    func_name = config.func_name
+    if not func_name.startswith("async_"):
+        logger.warning(
+            f"EvaluatorArgs func_name '{func_name}' does not start with 'async_', "
+            + "but we're in async_evaluators. Prepending 'async_' to func_name."
         )
-    except KeyError:
-        logger.error(f"Async node evaluator not found: {config.func_name}")
-        return None
+        func_name = "async_" + func_name
+
+    return AsyncEvaluatorType.from_str(func_name).initialize(
+        *args, **dict(vars(config)), **kwargs
+    )
