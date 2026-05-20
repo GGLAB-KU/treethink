@@ -8,6 +8,9 @@ from treethink.utils.args import (
     ServerArgs,
     TreeThinkArgs,
 )
+from treethink.utils.funcs import (
+    calculate_logprobs,
+)
 from treethink.utils.str_manip import (
     extract_result,
 )
@@ -22,4 +25,5 @@ __all__ = [
     "SamplingArgs",
     "ServerArgs",
     "extract_result",
+    "calculate_logprobs",
 ]

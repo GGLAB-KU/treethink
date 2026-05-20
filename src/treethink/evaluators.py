@@ -20,6 +20,7 @@ from treethink.utils import (
     LeanREPLArgs,
     ModelArgs,
     SamplingArgs,
+    calculate_logprobs,
     extract_result,
 )
 
@@ -63,21 +64,8 @@ class LogprobEvaluator(BaseEvaluator):
             if hasattr(node[0].vllm_output, "cumulative_logprob"):
                 return [n.vllm_output.cumulative_logprob for n in node]
 
-            # NOTE(burak): OpenAI does not store/calculate cumulative logprobs
-            # so we need to calculate it ourselves by summing token logprobs.
-            calculated_logprobs = []
-            for n in node:
-                if n.vllm_output.logprobs and n.vllm_output.logprobs.content:
-                    cumulative_logprob = sum(
-                        token.logprob
-                        for token in n.vllm_output.logprobs.content
-                    )
-                    calculated_logprobs.append(cumulative_logprob)
-                else:
-                    logger.warning(f"No token logprobs found for node: {n}")
-                    calculated_logprobs.append(0.0)
-
-            return calculated_logprobs
+            # Otherwise calculate cumulative logprobs by hand
+            return calculate_logprobs(node)
         else:
             # if it is root node
             if node[0].parent:
@@ -97,7 +85,15 @@ class ProbEvaluator(BaseEvaluator):
 
         if all([n.vllm_output for n in node]):
             # math.exp is x2 faster than np.exp for small lists
-            return [math.exp(n.vllm_output.cumulative_logprob) for n in node]
+            if hasattr(node[0].vllm_output, "cumulative_logprob"):
+                return [
+                    math.exp(n.vllm_output.cumulative_logprob) for n in node
+                ]
+
+            # Otherwise calculate cumulative logprobs by hand and exponentiate
+            _logprobs = calculate_logprobs(node)
+            return [math.exp(lp) for lp in _logprobs]
+
         else:
             # if it is root node
             if node[0].parent:
@@ -862,11 +858,18 @@ class NormLenEvaluator(BaseEvaluator):
         if not node.parent:
             return [0.0]
 
-        while node.parent:
-            whole_path_cumulative_logprobs += (
-                node.vllm_output.cumulative_logprob
-            )
-            node = node.parent
+        # Traverse back and sum the cumulative log probs.
+        if hasattr(node.vllm_output, "cumulative_logprob"):
+            while node.parent:
+                whole_path_cumulative_logprobs += (
+                    node.vllm_output.cumulative_logprob
+                )
+                node = node.parent
+        # If cumulative_logprob is not available, calculate logprobs by hand.
+        else:
+            while node.parent:
+                whole_path_cumulative_logprobs += calculate_logprobs([node])[0]
+                node = node.parent
 
         return [whole_path_cumulative_logprobs / (L**self.length_norm)]
 
@@ -915,12 +918,20 @@ class NormLenProbEvaluator(BaseEvaluator):
         if not node.parent:
             return [0.0]
 
-        while node.parent:
-            # math.exp is x2 faster than np.exp for single values
-            whole_path_cumulative_probs += math.exp(
-                node.vllm_output.cumulative_logprob
-            )
-            node = node.parent
+        # Traverse back and sum the cumulative log probs.
+        if hasattr(node.vllm_output, "cumulative_logprob"):
+            while node.parent:
+                whole_path_cumulative_probs += math.exp(
+                    node.vllm_output.cumulative_logprob
+                )
+                node = node.parent
+        # If cumulative_logprob is not available, calculate logprobs by hand.
+        else:
+            while node.parent:
+                whole_path_cumulative_probs += math.exp(
+                    calculate_logprobs([node])[0]
+                )
+                node = node.parent
 
         return [whole_path_cumulative_probs / (L**self.length_norm)]
 
