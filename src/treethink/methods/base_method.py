@@ -1,11 +1,12 @@
-import asyncio
+import inspect
 import re
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Callable, Literal, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 from loguru import logger
 
+from ..utils.enums import BestAnswerReason, FinalDecisionMode, coerce_enum
 from .node import Node
 
 
@@ -17,7 +18,7 @@ class BaseMethod(ABC):
         root_node: Optional[Union[Node, str]],
         policy: Callable,
         evaluator: Callable,
-        final_decision_mode: str = "native",
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.NATIVE,
         *args,
         **kwargs,
     ):
@@ -28,15 +29,15 @@ class BaseMethod(ABC):
         # Final decision mode and its function, "native" for base method
         # Change _compute_best_answer to change best_answer computation in the
         # child class.
-        self.final_decision_mode = final_decision_mode
+        self.final_decision_mode = coerce_enum(
+            final_decision_mode, FinalDecisionMode
+        )
         self._compute_best_answer = self._compute_native_best_answer
 
         # self._best_answer is defined in order for externally setting
         # best_answer property and its condition. Available ,
         self._best_answer: str = None
-        self.best_answer_reason: Literal[
-            "calculated", "set", "checked_and_true"
-        ] = None
+        self.best_answer_reason: BestAnswerReason = None
 
         # Expansion statistics
         self.stats_expansion_count = 0
@@ -150,7 +151,7 @@ class BaseMethod(ABC):
         if self.root_node.termination_str:
             leaves = self.find_leaves(self.root_node)
             stat["termination_count"] = len(
-                [1 for l in leaves if l.is_termination_node]
+                [1 for leaf in leaves if leaf.is_termination_node]
             )
 
         return stat
@@ -196,7 +197,7 @@ class BaseMethod(ABC):
     def best_answer(self) -> str:
         if self._best_answer is None:
             self._best_answer = self._compute_best_answer()
-            self.best_answer_reason = "calculated"
+            self.best_answer_reason = BestAnswerReason.CALCULATED
 
         return self._best_answer
 
@@ -223,7 +224,7 @@ class BaseMethod(ABC):
             )
 
         self._best_answer = value
-        self.best_answer_reason = "set"
+        self.best_answer_reason = BestAnswerReason.SET
 
     def find_leaves(self, node):
         """Helper function to find the leaves in a tree."""
@@ -330,7 +331,7 @@ class BaseMethod(ABC):
 
         # Use policy to generate children
         # Check if policy is async or sync
-        if asyncio.iscoroutinefunction(self.policy):
+        if inspect.iscoroutinefunction(self.policy):
             await self.policy(node, self)
         else:
             self.policy(node, self)

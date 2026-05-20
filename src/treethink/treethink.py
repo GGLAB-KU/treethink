@@ -8,6 +8,7 @@ from loguru import logger
 from .graph import save_tree_to_txt
 from .methods import METHOD_TYPE, Node
 from .utils import TreeThinkArgs
+from .utils.enums import BestAnswerReason
 
 
 class TreeThinkOutputs(vllm.RequestOutput):
@@ -146,7 +147,8 @@ class TreeThink:
         _solution_found = False
         if (
             self.repl_runtime.terminated_paths.enabled
-            and self.method.best_answer_reason != "checked_and_true"
+            and self.method.best_answer_reason
+            != BestAnswerReason.CHECKED_AND_TRUE
         ):
             logger.trace("Checking terminated paths with REPL...")
             solution = self.repl_runtime.check_terminated_paths(self.method)
@@ -160,7 +162,7 @@ class TreeThink:
             solution = self.method.best_answer
 
         # Could be from terminination encountered or repl_terminated_paths
-        if self.method.best_answer_reason == "checked_and_true":
+        if self.method.best_answer_reason == BestAnswerReason.CHECKED_AND_TRUE:
             generation_result.checked_and_true = True
 
         # Save the graph if specified
@@ -247,7 +249,8 @@ class TreeThink:
         _solution_found = False
         if (
             self.repl_runtime.terminated_paths.enabled
-            and self.method.best_answer_reason != "checked_and_true"
+            and self.method.best_answer_reason
+            != BestAnswerReason.CHECKED_AND_TRUE
         ):
             solution = await self.repl_runtime.async_check_terminated_paths(
                 self.method
@@ -260,7 +263,7 @@ class TreeThink:
         if not _solution_found:
             solution = self.method.best_answer
 
-        if self.method.best_answer_reason == "checked_and_true":
+        if self.method.best_answer_reason == BestAnswerReason.CHECKED_AND_TRUE:
             generation_result.checked_and_true = True
 
         # Save graph (Sync I/O - run in executor)

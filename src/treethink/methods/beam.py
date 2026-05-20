@@ -1,10 +1,11 @@
 import asyncio
 import random
 import time
-from typing import Callable, List, Literal, Optional
+from typing import Callable, List, Optional
 
 from loguru import logger
 
+from ..utils.enums import BestAnswerReason, FinalDecisionMode, TieBreaker
 from .base_method import BaseMethod
 from .node import Node
 
@@ -21,8 +22,8 @@ class BeamSearch(BaseMethod):
         evaluator: Callable,
         beam_width: int = 5,
         max_depth: Optional[int] = None,
-        tie_breaker: Literal["random", "deep", "stable"] = "random",
-        final_decision_mode: Literal["native"] = "native",
+        tie_breaker: TieBreaker = TieBreaker.RANDOM,
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.NATIVE,
         *args,
         **kwargs,
     ):
@@ -43,12 +44,12 @@ class BeamSearch(BaseMethod):
         self._last_depth: int = 0
         self._tie_breaker = tie_breaker
 
-        if self.final_decision_mode == "native":
+        if self.final_decision_mode == FinalDecisionMode.NATIVE:
             # already set in BaseMethod
             pass
         else:
             logger.warning(
-                f"Given {self.final_decision_mode} is not supported, "
+                f"Given {self.final_decision_mode.value} is not supported, "
                 + "falling back to `native` implementation."
             )
 
@@ -68,7 +69,7 @@ class BeamSearch(BaseMethod):
         random.seed(42)
 
         # Sort descending by score; break ties either stably by index or randomly
-        if self._tie_breaker == "random":
+        if self._tie_breaker == TieBreaker.RANDOM:
             # add small random jitter to break ties reproducibly per call
             jittered = [
                 (s + random.random() * 1e-9, i, n, level)
@@ -76,7 +77,7 @@ class BeamSearch(BaseMethod):
             ]
             jittered.sort(key=lambda x: x[0], reverse=True)
             selected = [n for (_, _, n, _) in jittered[:k]]
-        elif self._tie_breaker == "deep":
+        elif self._tie_breaker == TieBreaker.DEEP:
             scored.sort(key=lambda x: (x[0], x[3]), reverse=True)
             selected = [n for (_, _, n, _) in scored[:k]]
         else:
@@ -135,7 +136,9 @@ class BeamSearch(BaseMethod):
                     answer = termination_encountered_fn(current_node)
                     if answer:
                         self.best_answer = answer
-                        self.best_answer_reason = "checked_and_true"
+                        self.best_answer_reason = (
+                            BestAnswerReason.CHECKED_AND_TRUE
+                        )
                         break
 
                 if current_node.is_expandable:
@@ -303,7 +306,9 @@ class AsyncBeamSearch(BeamSearch):
 
                         if answer:
                             self.best_answer = answer
-                            self.best_answer_reason = "checked_and_true"
+                            self.best_answer_reason = (
+                                BestAnswerReason.CHECKED_AND_TRUE
+                            )
                             return
 
             # Expand all nodes in current beam concurrently

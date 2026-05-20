@@ -10,6 +10,7 @@ from treethink.graph import (  # noqa
     save_tree_to_txt,
 )
 from treethink.methods import MCTS, Node  # noqa
+from treethink.utils.enums import FinalDecisionMode
 
 
 class TestMCTS(unittest.TestCase):
@@ -56,7 +57,7 @@ class TestMCTS(unittest.TestCase):
             root_node=None,
             policy=policy_func,
             evaluator=evaluator_func,
-            final_decision_mode="maximize_visits",
+            final_decision_mode=FinalDecisionMode.MAXIMIZE_VISITS,
         )
         mcts.set_root_node(root)
         mcts.simulate(expansion_count=5)
@@ -80,7 +81,7 @@ class TestMCTS(unittest.TestCase):
             root_node=None,
             policy=policy_func,
             evaluator=evaluator_func,
-            final_decision_mode="maximize_value",
+            final_decision_mode=FinalDecisionMode.MAXIMIZE_VALUE,
         )
         mcts.set_root_node(root)
         mcts.simulate(expansion_count=5)
@@ -145,7 +146,7 @@ class TestMCTS(unittest.TestCase):
             root_node=None,
             policy=policy,
             evaluator=evaluator,
-            final_decision_mode="maximize_value",
+            final_decision_mode=FinalDecisionMode.MAXIMIZE_VALUE,
         )
         mcts.set_root_node(root)
 

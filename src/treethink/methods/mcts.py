@@ -1,10 +1,11 @@
 import asyncio
 import time
-from typing import Callable, List, Literal, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 from loguru import logger
 
+from ..utils.enums import BestAnswerReason, FinalDecisionMode
 from .base_method import BaseMethod
 from .node import Node
 
@@ -28,9 +29,7 @@ class MCTS(BaseMethod):
         policy: Callable,
         evaluator: Callable,
         exploration_weight: float = 0.5,
-        final_decision_mode: Literal[
-            "maximize_visits", "maximize_value", "native"
-        ] = "maximize_visits",
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.MAXIMIZE_VISITS,
         *args,
         **kwargs,
     ):
@@ -44,16 +43,16 @@ class MCTS(BaseMethod):
         self.exploration_weight = exploration_weight
 
         # Set best_answer function based on the given final_decision_mode
-        if self.final_decision_mode == "maximize_value":
+        if self.final_decision_mode == FinalDecisionMode.MAXIMIZE_VALUE:
             self._compute_best_answer = self._best_answer_maximize_value
-        elif self.final_decision_mode == "maximize_visits":
+        elif self.final_decision_mode == FinalDecisionMode.MAXIMIZE_VISITS:
             self._compute_best_answer = self._best_answer_maximize_visits
-        elif self.final_decision_mode == "native":
+        elif self.final_decision_mode == FinalDecisionMode.NATIVE:
             # already set in BaseMethod
             pass
         else:
             logger.warning(
-                f"Given {self.final_decision_mode} is not supported, "
+                f"Given {self.final_decision_mode.value} is not supported, "
                 + "falling back to `native` implementation."
             )
 
@@ -132,7 +131,7 @@ class MCTS(BaseMethod):
                 termination_checked_nodes.append(id(current_node))
                 if answer:
                     self.best_answer = answer
-                    self.best_answer_reason = "checked_and_true"
+                    self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
                 # If the proof is wrong, set nodes's win_value to -inf to avoid
@@ -252,9 +251,7 @@ class AsyncMCTS(MCTS):
         policy: Callable,
         evaluator: Callable,
         exploration_weight: float = 0.5,
-        final_decision_mode: Literal[
-            "maximize_visits", "maximize_value", "native"
-        ] = "maximize_visits",
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.MAXIMIZE_VISITS,
         *args,
         **kwargs,
     ):
@@ -345,7 +342,7 @@ class AsyncMCTS(MCTS):
 
                 if answer:
                     self.best_answer = answer
-                    self.best_answer_reason = "checked_and_true"
+                    self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
                 # If the proof is wrong, set node's win_value to -inf to avoid

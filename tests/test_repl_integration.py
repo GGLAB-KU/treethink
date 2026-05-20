@@ -19,6 +19,7 @@ from treethink.graph import (  # noqa
     save_tree_to_txt,
 )
 from treethink.methods import BFTS, MCTS, Node  # noqa
+from treethink.utils.enums import FinalDecisionMode
 
 
 class TestREPLIntegration(unittest.TestCase):
@@ -46,7 +47,7 @@ class TestREPLIntegration(unittest.TestCase):
             repl_encountered_termination=False,  # to be modified in test functions
             beam_width=2,
             exploration_weight=1.414213,
-            final_decision_mode="clear_frontier",
+            final_decision_mode=FinalDecisionMode.CLEAR_FRONTIER,
         )
 
     def test_repl_terminated_paths(self):

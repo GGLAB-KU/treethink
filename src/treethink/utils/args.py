@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field, fields
-from typing import List, Literal, Optional
+from typing import List, Optional
+
+from .enums import FinalDecisionMode, TieBreaker
 
 
 class BaseArgs:
@@ -79,9 +81,9 @@ class TreeThinkArgs(BaseArgs):
         beam_width (int): The beam width for beam search. Defaults to None.
         exploration_weight (float): The exploration weight for MCTS.
             Defaults to None.
-        final_decision_mode (Literal["maximize_visits", "maximize_value",
-            "clear_frontier", "native"]): See methods for information regarding
-            to selection, as this parameter is not applicable for all methods.
+        final_decision_mode (FinalDecisionMode): See methods for information regarding
+            the final-answer selection mode. This parameter is not applicable
+            for all methods.
     """
 
     method_name: str = "MCTS"
@@ -112,11 +114,9 @@ class TreeThinkArgs(BaseArgs):
     # Method Special
     beam_width: int = None
     exploration_weight: float = None
-    final_decision_mode: Literal[
-        "maximize_visits", "maximize_value", "clear_frontier", "native"
-    ] = "native"
+    final_decision_mode: FinalDecisionMode = FinalDecisionMode.NATIVE
     max_concurrent_expansions: int = 8
-    tie_breaker: Literal["random", "deep", "stable"] = "random"
+    tie_breaker: TieBreaker = TieBreaker.RANDOM
 
     def build_repl_runtime(self):
         from treethink.repl_runtime import ReplRuntime
