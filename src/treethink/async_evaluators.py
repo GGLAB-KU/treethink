@@ -32,6 +32,7 @@ from treethink.utils import (
     LeanREPLArgs,
     ModelArgs,
     SamplingArgs,
+    calculate_logprobs,
     extract_result,
 )
 
@@ -339,7 +340,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
 
 class AsyncNormLenEvaluator(AsyncBaseEvaluator):
     """
-    Async wrapper for NormalizedLengths (CPU bound, so just wraps).
+    Async wrapper for NormalizedLengths.
     """
 
     def __init__(self, length_norm: float = 0.5, *args, **kwargs):
@@ -368,12 +369,18 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
         if not curr.parent:
             return [0.0]
 
-        while curr.parent:
-            if hasattr(curr, "vllm_output") and curr.vllm_output:
+        # Traverse back and sum the cumulative log probs.
+        if hasattr(node.vllm_output, "cumulative_logprob"):
+            while node.parent:
                 whole_path_cumulative_logprobs += (
-                    curr.vllm_output.cumulative_logprob
+                    node.vllm_output.cumulative_logprob
                 )
-            curr = curr.parent
+                node = node.parent
+        # If cumulative_logprob is not available, calculate logprobs by hand.
+        else:
+            while node.parent:
+                whole_path_cumulative_logprobs += calculate_logprobs([node])[0]
+                node = node.parent
 
         scores = [whole_path_cumulative_logprobs / (L**self.length_norm)]
         logger.debug(

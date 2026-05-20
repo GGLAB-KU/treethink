@@ -16,10 +16,10 @@ from tqdm.asyncio import tqdm_asyncio
 # Import async components
 from treethink import (
     EvaluatorArgs,
-    InferenceTimeArgs,
     PolicyArgs,
     TreeThink,
-    get_inference_time_method,
+    TreeThinkArgs,
+    get_method,
 )  # Wrapper class
 from treethink.async_evaluators import get_async_evaluator_from_config
 from treethink.async_policies import get_async_policy_from_config
@@ -41,7 +41,7 @@ class AsyncSampler:
         self,
         policy_args: PolicyArgs,
         evaluator_args: EvaluatorArgs,
-        inference_time_args: InferenceTimeArgs,
+        treethink_args: TreeThinkArgs,
         prompter: Optional[Callable] = None,
         max_concurrent_datapoints: int = 16,
         gpu_memory_utilization: float = 0.8,
@@ -51,7 +51,7 @@ class AsyncSampler:
     ):
         self.policy_args = policy_args
         self.evaluator_args = evaluator_args
-        self.inference_time_args = inference_time_args
+        self.treethink_args = treethink_args
         self.max_concurrent_datapoints = max_concurrent_datapoints
         self.prompter = prompter or self._default_prompter
         self.task_name = task_name
@@ -132,9 +132,9 @@ class AsyncSampler:
 
         try:
             # Skip check
-            if skip_if_exists and self.inference_time_args.graph_path:
+            if skip_if_exists and self.treethink_args.graph_path:
                 if self._check_if_processed(
-                    problem_id, self.inference_time_args.graph_path
+                    problem_id, self.treethink_args.graph_path
                 ):
                     logger.info(f"Skipping {problem_id}")
                     datapoint["skipped"] = True
@@ -148,14 +148,14 @@ class AsyncSampler:
 
             logger.debug(f"Starting async_simulate for {problem_id}")
 
-            method = get_inference_time_method(
-                inference_time_config=self.inference_time_args,
+            method = get_method(
+                treethink_config=self.treethink_args,
                 root_node=None,
                 policy=self.shared_policy,
                 evaluator=self.shared_evaluator,
             )
 
-            wrapper = TreeThink(method, self.inference_time_args)
+            wrapper = TreeThink(method, self.treethink_args)
 
             # Use the wrapper's async generation which handles simulation,
             # REPL checks, and saving the tree safely.

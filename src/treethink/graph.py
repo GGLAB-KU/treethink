@@ -424,15 +424,15 @@ def _build_args_from_metadata(metadata):
     if not metadata:
         return None, None, None
 
-    from treethink import EvaluatorArgs, InferenceTimeArgs, PolicyArgs
+    from treethink import EvaluatorArgs, PolicyArgs, TreeThinkArgs
 
-    inference_time_args = None
+    treethink_args = None
     policy_args = None
     evaluator_args = None
 
-    if metadata.get("inference_time_args"):
-        inference_time_args = _dataclass_from_dict(
-            InferenceTimeArgs, metadata["inference_time_args"]
+    if metadata.get("treethink_args"):
+        treethink_args = _dataclass_from_dict(
+            TreeThinkArgs, metadata["treethink_args"]
         )
     if metadata.get("policy_args"):
         policy_args = _dataclass_from_dict(PolicyArgs, metadata["policy_args"])
@@ -441,7 +441,7 @@ def _build_args_from_metadata(metadata):
             EvaluatorArgs, metadata["evaluator_args"]
         )
 
-    return inference_time_args, policy_args, evaluator_args
+    return treethink_args, policy_args, evaluator_args
 
 
 def build_tree_from_graphviz(
@@ -453,16 +453,12 @@ def build_tree_from_graphviz(
         raise ValueError("No nodes found in graphviz content.")
 
     metadata = _load_metadata(metadata)
-    inference_time_args, _, _ = _build_args_from_metadata(metadata)
+    treethink_args, _, _ = _build_args_from_metadata(metadata)
 
-    max_children = (
-        inference_time_args.max_children if inference_time_args else None
-    )
-    termination_str = (
-        inference_time_args.termination_str if inference_time_args else None
-    )
+    max_children = treethink_args.max_children if treethink_args else None
+    termination_str = treethink_args.termination_str if treethink_args else None
     exploration_weight = (
-        inference_time_args.exploration_weight if inference_time_args else None
+        treethink_args.exploration_weight if treethink_args else None
     )
 
     parent_map = _infer_parent_map(nodes, edges)
@@ -511,12 +507,12 @@ def load_graphviz_state(
         content = f.read()
 
     root_node = build_tree_from_graphviz(content, metadata_dict)
-    inference_time_args, policy_args, evaluator_args = (
-        _build_args_from_metadata(metadata_dict)
+    treethink_args, policy_args, evaluator_args = _build_args_from_metadata(
+        metadata_dict
     )
 
     method = None
-    if inference_time_args:
+    if treethink_args:
         if policy is None and policy_args is not None:
             from treethink import get_policy_from_config
 
@@ -527,10 +523,10 @@ def load_graphviz_state(
             evaluator = get_evaluator_from_config(evaluator_args)
 
         if policy is not None and evaluator is not None:
-            from treethink import get_inference_time_method
+            from treethink import get_method
 
-            method = get_inference_time_method(
-                inference_time_config=inference_time_args,
+            method = get_method(
+                treethink_config=treethink_args,
                 root_node=root_node,
                 policy=policy,
                 evaluator=evaluator,
@@ -539,7 +535,7 @@ def load_graphviz_state(
     return {
         "root_node": root_node,
         "method": method,
-        "inference_time_args": inference_time_args,
+        "treethink_args": treethink_args,
         "policy_args": policy_args,
         "evaluator_args": evaluator_args,
     }

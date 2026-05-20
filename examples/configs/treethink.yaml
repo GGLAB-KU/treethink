@@ -1,9 +1,9 @@
-inference_time:
+treethink:
   method_name: "MCTS"
-  max_children: 8
-  expansion_count: 512
-  timeout: 600
-  graph_path: "sampled/internlm2_infbaseL/"
+  max_children: 4
+  expansion_count: 64
+  timeout: 120
+  graph_path: "sampled/internlm2_infbaseS/"
   remove_duplicate_children: true
   termination_str: "```"
   repl_terminated_paths: true
@@ -31,7 +31,7 @@ policy:
     top_p: 0.95
     seed: 
     stop: ["\n"]  
-    n: 8
+    n: 4
     logprobs: 1
   visible_devices: "0"
 

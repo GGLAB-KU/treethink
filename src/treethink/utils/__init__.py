@@ -1,12 +1,15 @@
 from treethink.utils.args import (
     BaseArgs,
     EvaluatorArgs,
-    InferenceTimeArgs,
     LeanREPLArgs,
     ModelArgs,
     PolicyArgs,
     SamplingArgs,
     ServerArgs,
+    TreeThinkArgs,
+)
+from treethink.utils.funcs import (
+    calculate_logprobs,
 )
 from treethink.utils.str_manip import (
     extract_result,
@@ -15,11 +18,12 @@ from treethink.utils.str_manip import (
 __all__ = [
     "BaseArgs",
     "PolicyArgs",
-    "InferenceTimeArgs",
+    "TreeThinkArgs",
     "LeanREPLArgs",
     "ModelArgs",
     "EvaluatorArgs",
     "SamplingArgs",
     "ServerArgs",
     "extract_result",
+    "calculate_logprobs",
 ]

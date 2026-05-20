@@ -504,30 +504,21 @@ class AsyncVLLMServerPolicy(BasePolicy):
         else:
             self.model_name = model or "default"
 
-        if isinstance(sampling, SamplingArgs):
-            self.sampling_dict = {
-                "max_tokens": sampling.max_tokens,
-                "temperature": sampling.temperature,
-                "top_p": sampling.top_p,
-                "n": sampling.n or 1,
-            }
-            if sampling.stop:
-                self.sampling_dict["stop"] = sampling.stop
-        elif isinstance(sampling, vllm.SamplingParams):
-            self.sampling_dict = {
-                "max_tokens": sampling.max_tokens,
-                "temperature": sampling.temperature,
-                "top_p": sampling.top_p,
-                "n": sampling.n or 1,
-            }
-            if sampling.stop:
-                self.sampling_dict["stop"] = list(sampling.stop)
+        if isinstance(sampling, SamplingArgs) or isinstance(
+            sampling, vllm.SamplingParams
+        ):
+            self.sampling_dict = sampling.__dict__
         else:
             self.sampling_dict = {
-                "max_tokens": 8192,
+                "max_tokens": 2048,
                 "temperature": 1.0,
                 "n": 1,
+                "logprobs": 1,
+                "top_k": 50,  # hack, just to remove...
             }
+
+        # Remove top_k if it exists, as OpenAI API does not support it
+        self.sampling_dict.pop("top_k", None)
 
         self.system_prompt = system_prompt
         logger.info("AsyncVLLMServerPolicy initialized.")

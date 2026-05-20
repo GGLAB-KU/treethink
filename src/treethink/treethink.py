@@ -1,16 +1,16 @@
-from typing import List, Union
 import asyncio
 from functools import partial
+from typing import List, Union
 
 import vllm
 
 # from treethink.grading import Lean4Client
-from kimina_client import KiminaClient, AsyncKiminaClient
+from kimina_client import AsyncKiminaClient, KiminaClient
 from loguru import logger
 
 from .graph import save_tree_to_txt
 from .methods import METHOD_TYPE, Node
-from .utils import InferenceTimeArgs
+from .utils import TreeThinkArgs
 
 
 class TreeThinkOutputs(vllm.RequestOutput):
@@ -18,7 +18,7 @@ class TreeThinkOutputs(vllm.RequestOutput):
 
     Other than holding the generation output, this result may hold `method` for
     further playing with the method's inner variables. See
-    `inftime_args.py:InferenceTimeArgs:store_method_class`.
+    `treethink_args.py:TreeThinkArgs:store_method_class`.
     """
 
     def __init__(
@@ -95,32 +95,32 @@ class TreeThinkOutputs(vllm.RequestOutput):
 
 
 class TreeThink:
-    def __init__(self, method: METHOD_TYPE, inftime_args: InferenceTimeArgs):
+    def __init__(self, method: METHOD_TYPE, treethink_args: TreeThinkArgs):
         logger.debug(
-            f"Initializing TreeThink with method: {method} and inftime_args: {inftime_args}"
+            f"Initializing TreeThink with method: {method} and treethink_args: {treethink_args}"
         )
         self.method = method
-        self.inftime_args = inftime_args
+        self.treethink_args = treethink_args
 
         # Frequent checks
         self._must_repl_paths = (
-            self.inftime_args.termination_str
-            and self.inftime_args.repl_args
-            and self.inftime_args.repl_terminated_paths
+            self.treethink_args.termination_str
+            and self.treethink_args.repl_args
+            and self.treethink_args.repl_terminated_paths
         )
         self._must_repl_encountered = (
-            self.inftime_args.termination_str
-            and self.inftime_args.repl_args
-            and self.inftime_args.repl_encountered_termination
+            self.treethink_args.termination_str
+            and self.treethink_args.repl_args
+            and self.treethink_args.repl_encountered_termination
         )
 
         # If REPL client is needed, start it with given REPL args
         if self._must_repl_encountered or self._must_repl_paths:
             self.client = KiminaClient(
-                self.inftime_args.repl_args.lean_server_url
+                self.treethink_args.repl_args.lean_server_url
             )
             self.async_client = AsyncKiminaClient(
-                self.inftime_args.repl_args.lean_server_url
+                self.treethink_args.repl_args.lean_server_url
             )
             logger.debug("REPL clients initialized.")
         else:
@@ -155,15 +155,15 @@ class TreeThink:
             _termination_fn = partial(
                 self.method.repl_encountered_termination,
                 client=self.client,
-                timeout=self.inftime_args.repl_args.timeout,
-                num_proc=self.inftime_args.repl_args.num_proc,
+                timeout=self.treethink_args.repl_args.timeout,
+                num_proc=self.treethink_args.repl_args.num_proc,
             )
 
         # Simulate the search method
         self.method.simulate(
-            expansion_count=self.inftime_args.expansion_count,
-            timeout=self.inftime_args.timeout,
-            remove_duplicate_children=self.inftime_args.remove_duplicate_children,
+            expansion_count=self.treethink_args.expansion_count,
+            timeout=self.treethink_args.timeout,
+            remove_duplicate_children=self.treethink_args.remove_duplicate_children,
             termination_encountered_fn=_termination_fn,
         )
 
@@ -179,10 +179,10 @@ class TreeThink:
             logger.trace("Checking terminated paths with REPL...")
             solution = self.method.repl_terminated_paths(
                 client=self.client,
-                timeout=self.inftime_args.repl_args.timeout,
-                num_proc=self.inftime_args.repl_args.num_proc,
-                batch_size=self.inftime_args.repl_args.batch_size,
-                max_repl=self.inftime_args.max_repl,
+                timeout=self.treethink_args.repl_args.timeout,
+                num_proc=self.treethink_args.repl_args.num_proc,
+                batch_size=self.treethink_args.repl_args.batch_size,
+                max_repl=self.treethink_args.max_repl,
             )
 
             if solution:
@@ -198,18 +198,18 @@ class TreeThink:
             generation_result.checked_and_true = True
 
         # Save the graph if specified
-        if self.inftime_args.graph_path:
+        if self.treethink_args.graph_path:
             save_tree_to_txt(
                 self.method.root_node,
-                self.inftime_args.graph_path,
+                self.treethink_args.graph_path,
                 solution,
                 problem_id=problem_id,
             )
 
-        if self.inftime_args.store_method_class:
+        if self.treethink_args.store_method_class:
             generation_result.method = self.method
 
-        if self.inftime_args.store_graph_stats:
+        if self.treethink_args.store_graph_stats:
             generation_result.graph_stats = self.method.get_stat_dict()
 
         generation_result.solution_to_outputs(solution)
@@ -247,16 +247,16 @@ class TreeThink:
                 _termination_fn = partial(
                     self.method.async_repl_encountered_termination,
                     client=self.async_client,
-                    timeout=self.inftime_args.repl_args.timeout,
-                    num_proc=self.inftime_args.repl_args.num_proc,
+                    timeout=self.treethink_args.repl_args.timeout,
+                    num_proc=self.treethink_args.repl_args.num_proc,
                 )
             else:
                 # Fallback to sync version
                 _termination_fn = partial(
                     self.method.repl_encountered_termination,
                     client=self.client,
-                    timeout=self.inftime_args.repl_args.timeout,
-                    num_proc=self.inftime_args.repl_args.num_proc,
+                    timeout=self.treethink_args.repl_args.timeout,
+                    num_proc=self.treethink_args.repl_args.num_proc,
                 )
 
         # Async Simulate
@@ -264,17 +264,17 @@ class TreeThink:
         if hasattr(self.method, "async_simulate"):
             logger.debug("Using async_simulate method")
             await self.method.async_simulate(
-                expansion_count=self.inftime_args.expansion_count,
-                timeout=self.inftime_args.timeout,
-                remove_duplicate_children=self.inftime_args.remove_duplicate_children,
+                expansion_count=self.treethink_args.expansion_count,
+                timeout=self.treethink_args.timeout,
+                remove_duplicate_children=self.treethink_args.remove_duplicate_children,
                 termination_encountered_fn=_termination_fn,
             )
         elif asyncio.iscoroutinefunction(self.method.simulate):
             # Fallback to async simulate if available
             await self.method.simulate(
-                expansion_count=self.inftime_args.expansion_count,
-                timeout=self.inftime_args.timeout,
-                remove_duplicate_children=self.inftime_args.remove_duplicate_children,
+                expansion_count=self.treethink_args.expansion_count,
+                timeout=self.treethink_args.timeout,
+                remove_duplicate_children=self.treethink_args.remove_duplicate_children,
                 termination_encountered_fn=_termination_fn,
             )
         else:
@@ -283,9 +283,9 @@ class TreeThink:
             await loop.run_in_executor(
                 None,
                 lambda: self.method.simulate(
-                    expansion_count=self.inftime_args.expansion_count,
-                    timeout=self.inftime_args.timeout,
-                    remove_duplicate_children=self.inftime_args.remove_duplicate_children,
+                    expansion_count=self.treethink_args.expansion_count,
+                    timeout=self.treethink_args.timeout,
+                    remove_duplicate_children=self.treethink_args.remove_duplicate_children,
                     termination_encountered_fn=_termination_fn,
                 ),
             )
@@ -305,10 +305,10 @@ class TreeThink:
                 if hasattr(self.method, "async_repl_terminated_paths"):
                     solution = await self.method.async_repl_terminated_paths(
                         client=self.async_client,
-                        timeout=self.inftime_args.repl_args.timeout,
-                        num_proc=self.inftime_args.repl_args.num_proc,
-                        batch_size=self.inftime_args.repl_args.batch_size,
-                        max_repl=self.inftime_args.max_repl,
+                        timeout=self.treethink_args.repl_args.timeout,
+                        num_proc=self.treethink_args.repl_args.num_proc,
+                        batch_size=self.treethink_args.repl_args.batch_size,
+                        max_repl=self.treethink_args.max_repl,
                     )
                 else:
                     # Fallback: Run sync method with async_client in executor
@@ -317,10 +317,10 @@ class TreeThink:
                         None,
                         lambda: self.method.repl_terminated_paths(
                             client=self.async_client,
-                            timeout=self.inftime_args.repl_args.timeout,
-                            num_proc=self.inftime_args.repl_args.num_proc,
-                            batch_size=self.inftime_args.repl_args.batch_size,
-                            max_repl=self.inftime_args.max_repl,
+                            timeout=self.treethink_args.repl_args.timeout,
+                            num_proc=self.treethink_args.repl_args.num_proc,
+                            batch_size=self.treethink_args.repl_args.batch_size,
+                            max_repl=self.treethink_args.max_repl,
                         ),
                     )
             else:
@@ -330,10 +330,10 @@ class TreeThink:
                     None,
                     lambda: self.method.repl_terminated_paths(
                         client=self.client,
-                        timeout=self.inftime_args.repl_args.timeout,
-                        num_proc=self.inftime_args.repl_args.num_proc,
-                        batch_size=self.inftime_args.repl_args.batch_size,
-                        max_repl=self.inftime_args.max_repl,
+                        timeout=self.treethink_args.repl_args.timeout,
+                        num_proc=self.treethink_args.repl_args.num_proc,
+                        batch_size=self.treethink_args.repl_args.batch_size,
+                        max_repl=self.treethink_args.max_repl,
                     ),
                 )
 
@@ -348,22 +348,22 @@ class TreeThink:
             generation_result.checked_and_true = True
 
         # Save graph (Sync I/O - run in executor)
-        if self.inftime_args.graph_path:
+        if self.treethink_args.graph_path:
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 lambda: save_tree_to_txt(
                     self.method.root_node,
-                    self.inftime_args.graph_path,
+                    self.treethink_args.graph_path,
                     solution,
                     problem_id=problem_id,
                 ),
             )
 
-        if self.inftime_args.store_method_class:
+        if self.treethink_args.store_method_class:
             generation_result.method = self.method
 
-        if self.inftime_args.store_graph_stats:
+        if self.treethink_args.store_graph_stats:
             generation_result.graph_stats = self.method.get_stat_dict()
 
         generation_result.solution_to_outputs(solution)
@@ -372,7 +372,7 @@ class TreeThink:
         return generation_result
 
     def __str__(self) -> str:
-        return f"TreeThink(model={self.inftime_args.model_name if hasattr(self.inftime_args, 'model_name') else 'unknown'}, method={self.method})"
+        return f"TreeThink(model={self.treethink_args.model_name if hasattr(self.treethink_args, 'model_name') else 'unknown'}, method={self.method})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -380,9 +380,9 @@ class TreeThink:
     def _set_root_node(self, text: str):
         _root_node = Node(
             text=text,
-            max_children=self.inftime_args.max_children,
-            exploration_weight=self.inftime_args.exploration_weight,
-            termination_str=self.inftime_args.termination_str,
+            max_children=self.treethink_args.max_children,
+            exploration_weight=self.treethink_args.exploration_weight,
+            termination_str=self.treethink_args.termination_str,
             win_value=0.0,
         )
         self.method.set_root_node(_root_node)

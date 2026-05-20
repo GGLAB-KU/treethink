@@ -8,13 +8,13 @@ from vllm.lora.request import LoRARequest
 
 from treethink import (
     EvaluatorArgs,
-    InferenceTimeArgs,
     ModelArgs,
     PolicyArgs,
     SamplingArgs,
     TreeThink,
+    TreeThinkArgs,
     get_evaluator_from_config,
-    get_inference_time_method,
+    get_method,
     get_policy_from_config,
 )
 
@@ -142,9 +142,9 @@ class SamplerBase:
                         datapoint["output"] = [resp]
 
                     if (
-                        hasattr(self, "inference_time_args")
-                        and self.inference_time_args
-                        and self.inference_time_args.store_graph_stats
+                        hasattr(self, "treethink_args")
+                        and self.treethink_args
+                        and self.treethink_args.store_graph_stats
                     ):
                         if hasattr(resp, "graph_stats"):
                             datapoint["graph_stats"] = resp.graph_stats
@@ -216,7 +216,7 @@ class TreeThinkSampler(SamplerBase):
         self,
         policy_args: PolicyArgs,
         evaluator_args: EvaluatorArgs,
-        inference_time_args: InferenceTimeArgs,
+        treethink_args: TreeThinkArgs,
         sample_params: Optional[
             Union[vllm.SamplingParams, SamplingArgs]
         ] = None,
@@ -232,15 +232,15 @@ class TreeThinkSampler(SamplerBase):
         )
         self.policy_args = policy_args
         self.evaluator_args = evaluator_args
-        self.inference_time_args = inference_time_args
+        self.treethink_args = treethink_args
         self.enable_lora = policy_args.model.enable_lora
         self.lora_path = lora_path
 
-        self._init_inference_time_method()
+        self._init_treethink_method()
 
-    def _init_inference_time_method(self):
+    def _init_treethink_method(self):
         logger.info(
-            f"Instantiating selected method: {self.inference_time_args.method_name}"
+            f"Instantiating selected method: {self.treethink_args.method_name}"
         )
         self.policy = get_policy_from_config(
             self.policy_args,
@@ -252,13 +252,13 @@ class TreeThinkSampler(SamplerBase):
             prompter=self.prompter,
             lora_path=self.lora_path,
         )
-        self.method = get_inference_time_method(
-            inference_time_config=self.inference_time_args,
+        self.method = get_method(
+            treethink_config=self.treethink_args,
             root_node=None,
             policy=self.policy,
             evaluator=self.evaluator,
         )
-        self.model = TreeThink(self.method, self.inference_time_args)
+        self.model = TreeThink(self.method, self.treethink_args)
 
     def _set_lora_path(self, lora_path: Optional[str]):
         if lora_path is None:

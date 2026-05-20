@@ -1,7 +1,18 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import List, Literal
 
-from .base_args import BaseArgs
+
+class BaseArgs:
+    def __iter__(self):
+        """Enable unpacking with * operator by yielding field values"""
+        for field in fields(self):
+            yield getattr(self, field.name)
+
+    def keys(self):
+        return [field.name for field in fields(self)]
+
+    def __getitem__(self, key):
+        return getattr(self, key)
 
 
 @dataclass
@@ -22,7 +33,7 @@ class LeanREPLArgs(BaseArgs):
 
 
 @dataclass
-class InferenceTimeArgs(BaseArgs):
+class TreeThinkArgs(BaseArgs):
     """
     Args:
         method_name (str): The name of the inference time method to use.
@@ -100,7 +111,7 @@ class SamplingArgs(BaseArgs):
         stop (List[str]): The list of stop strings. Set ["\\n"] for next tactic
             generation. Defaults to None.
         n (int): The number of samples to generate. This should be the same as
-            max_children in InferenceTimeArgs. Defaults to 1.
+            max_children in TreeThinkArgs. Defaults to 1.
         logprobs (int): The number of log probabilities to return. When using
             cumulative_logprob_evaluator, set this to 1. Defaults to None.
     """

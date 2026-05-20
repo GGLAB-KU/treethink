@@ -20,8 +20,8 @@ from dataset_prep import (
 from loguru import logger
 from sampler import TreeThinkSampler, VLLMSampler
 from utils.parser import (
-    parse_inftime_conf,
-    parse_normal_inference_conf,
+    parse_normal_inference_args,
+    parse_treethink_args,
     serialize_args,
 )
 
@@ -41,17 +41,17 @@ def parse_inference_arguments(gen_config_path: str):
     inference_type = None
     with open(gen_config_path, "r") as f:
         gen_config = yaml.safe_load(f)
-        if "inference_time" in gen_config.keys():
-            inference_type = "inftime"
+        if "treethink" in gen_config.keys():
+            inference_type = "treethink"
         else:
             inference_type = "normal"
 
     _args = None
 
-    if inference_type == "inftime":
-        _args = parse_inftime_conf(gen_config_path)
+    if inference_type == "treethink":
+        _args = parse_treethink_args(gen_config_path)
     else:
-        _args = parse_normal_inference_conf(gen_config_path)
+        _args = parse_normal_inference_args(gen_config_path)
 
     return _args, inference_type
 
@@ -75,11 +75,11 @@ def simple_messages_to_string(messages):
 
 
 def _infer_graph_dir(
-    inference_time_args, output_path: Path, iteration_index: int, num_iterations
+    treethink_args, output_path: Path, iteration_index: int, num_iterations
 ):
     base_graph_dir = output_path
-    if inference_time_args and inference_time_args.graph_path:
-        graph_path = Path(inference_time_args.graph_path)
+    if treethink_args and treethink_args.graph_path:
+        graph_path = Path(treethink_args.graph_path)
         if graph_path.suffix:
             base_graph_dir = graph_path.parent
         else:
@@ -108,17 +108,15 @@ def _build_graph_stats_payload(
     if not graph_stats_list:
         return None
 
-    inference_time_args = getattr(model, "inference_time_args", None)
+    treethink_args = getattr(model, "treethink_args", None)
     policy_args = getattr(model, "policy_args", None)
     evaluator_args = getattr(model, "evaluator_args", None)
     method_name = (
-        inference_time_args.method_name
-        if inference_time_args is not None
-        else None
+        treethink_args.method_name if treethink_args is not None else None
     )
 
     graph_dir = _infer_graph_dir(
-        inference_time_args, output_path, iteration_index, num_iterations
+        treethink_args, output_path, iteration_index, num_iterations
     )
 
     return {
@@ -127,11 +125,11 @@ def _build_graph_stats_payload(
         "timestamp": timestamp,
         "output_dir": str(output_path),
         "graph_dir": str(graph_dir),
-        "graph_path": getattr(inference_time_args, "graph_path", None)
-        if inference_time_args
+        "graph_path": getattr(treethink_args, "graph_path", None)
+        if treethink_args
         else None,
         "method_name": method_name,
-        "inference_time_args": serialize_args(inference_time_args),
+        "treethink_args": serialize_args(treethink_args),
         "policy_args": serialize_args(policy_args),
         "evaluator_args": serialize_args(evaluator_args),
         "graph_stats_summary": analyze_graph_stats(graph_stats_list),
@@ -147,8 +145,8 @@ def setup_model(
 ):
     """Initialize the model with given parameters."""
     _args, _inference_type = parse_inference_arguments(gen_config_path)
-    if _inference_type == "inftime":
-        inference_time_args, policy_args, evaluator_args = _args
+    if _inference_type == "treethink":
+        treethink_args, policy_args, evaluator_args = _args
 
         if use_async:
             # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
@@ -156,7 +154,7 @@ def setup_model(
             model = AsyncSampler(
                 policy_args=policy_args,
                 evaluator_args=evaluator_args,
-                inference_time_args=inference_time_args,
+                treethink_args=treethink_args,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
                 max_concurrent_datapoints=max_concurrent,
@@ -167,7 +165,7 @@ def setup_model(
             model = TreeThinkSampler(
                 policy_args=policy_args,
                 evaluator_args=evaluator_args,
-                inference_time_args=inference_time_args,
+                treethink_args=treethink_args,
                 sample_params=None,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
@@ -261,7 +259,7 @@ async def run_async_iterations(
             else:
                 logger.warning(
                     "Failed to find `graph_stats` key in outputs, "
-                    "did you set `store_graph_stats=True` in InferenceTimeArgs?"
+                    "did you set `store_graph_stats=True` in TreeThinkArgs?"
                 )
 
         if graph_stats_payload:
@@ -365,7 +363,7 @@ def run_inference_loop(
                 else:
                     logger.warning(
                         "Failed to find `graph_stats` key in outputs, "
-                        "did you set `store_graph_stats=True` in InferenceTimeArgs?"
+                        "did you set `store_graph_stats=True` in TreeThinkArgs?"
                     )
 
             if graph_stats_payload:
@@ -440,7 +438,7 @@ def parse_arguments():
         "--no-save-graph-stats",
         action="store_true",
         help="Do NOT calculate avg&mean of graph related statistics for each solution."
-        "In order to see these, set `store_graph_stats=True` in InferenceTimeArgs.",
+        "In order to see these, set `store_graph_stats=True` in TreeThinkArgs.",
     )
     parser.add_argument(
         "--continue-from-prev",
