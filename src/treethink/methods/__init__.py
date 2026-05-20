@@ -39,17 +39,17 @@ METHODS = list(IMPLEMENTED_METHODS.keys())
 METHOD_TYPE = TypeVar("METHOD_TYPE", bound=BaseMethod)
 
 
-def get_method(config, root_node, policy, evaluator):
+def get_method(treethink_config, root_node, policy, evaluator):
     try:
-        return IMPLEMENTED_METHODS[config.method_name](
+        return IMPLEMENTED_METHODS[treethink_config.method_name](
             root_node=root_node,
             policy=policy,
             evaluator=evaluator,
-            **config,
+            **treethink_config,
         )
     except KeyError:
         logger.error(
-            f"Could not found method: {config.method_name}. "
+            f"Could not found method: {treethink_config.method_name}. "
             + f"Available methods are: {IMPLEMENTED_METHODS.keys()}"
         )
 
