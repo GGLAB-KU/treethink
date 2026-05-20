@@ -22,6 +22,7 @@ from treethink import (
     get_inference_time_method,
 )  # Wrapper class
 from treethink.async_evaluators import get_async_evaluator_from_config
+from treethink.async_policies import get_async_policy_from_config
 
 # Check for AsyncEngine
 try:
@@ -64,7 +65,7 @@ class AsyncSampler:
 
         # Initialize Shared Components
         # Use get_policy_from_config - it supports async policies
-        self.shared_policy = get_policy_from_config(
+        self.shared_policy = get_async_policy_from_config(
             policy_args, prompter=self.prompter
         )
 
