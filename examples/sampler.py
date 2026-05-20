@@ -133,11 +133,15 @@ class SamplerBase:
                 for j, resp in enumerate(batch_responses):
                     datapoint = batch_data[j].copy()
 
+                    # For vllm outputs
                     if hasattr(resp, "outputs"):
                         datapoint["output"] = [
                             resp.outputs[idx].text
                             for idx in range(len(resp.outputs))
                         ]
+                    elif hasattr(resp, "solution"):
+                        # TreeThinkOutputs or direct string outputs
+                        datapoint["output"] = [resp.solution]
                     else:
                         datapoint["output"] = [resp]
 
