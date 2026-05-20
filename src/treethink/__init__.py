@@ -59,6 +59,10 @@ from treethink.policies import (
     get_policy,
     get_policy_from_config,
 )
+from treethink.repl_backends import (
+    KiminaReplBackend,
+    ReplBackendBase,
+)
 from treethink.treethink import (
     TreeThink,
     TreeThinkOutputs,
@@ -69,6 +73,7 @@ from treethink.utils import (
     LeanREPLArgs,
     ModelArgs,
     PolicyArgs,
+    ReplStrategyArgs,
     SamplingArgs,
     TreeThinkArgs,
     extract_result,
@@ -99,6 +104,9 @@ __all__ = [
     "TreeThinkOutputs",
     "TreeThinkArgs",
     "TreeThink",
+    "ReplBackendBase",
+    "KiminaReplBackend",
+    "ReplStrategyArgs",
     "JudgeEvaluator",
     "Lean4Client",
     "LeanREPLArgs",

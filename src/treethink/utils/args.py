@@ -1,15 +1,15 @@
-from dataclasses import dataclass, fields
-from typing import List, Literal
+from dataclasses import dataclass, field, fields
+from typing import List, Literal, Optional
 
 
 class BaseArgs:
     def __iter__(self):
         """Enable unpacking with * operator by yielding field values"""
-        for field in fields(self):
-            yield getattr(self, field.name)
+        for dataclass_field in fields(self):
+            yield getattr(self, dataclass_field.name)
 
     def keys(self):
-        return [field.name for field in fields(self)]
+        return [dataclass_field.name for dataclass_field in fields(self)]
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -30,6 +30,17 @@ class LeanREPLArgs(BaseArgs):
     batch_size: int = 8
     num_proc: int = 4
     timeout: int = 400
+
+
+@dataclass
+class ReplStrategyArgs(BaseArgs):
+    enabled: bool = False
+    backend_name: str = "kimina"
+    backend_args: dict = field(default_factory=dict)
+    repl_args: Optional[LeanREPLArgs] = None
+    max_repl: int = 16
+    sync_fn_name: str = "repl_encountered_termination"
+    async_fn_name: str = "async_repl_encountered_termination"
 
 
 @dataclass
@@ -61,9 +72,10 @@ class TreeThinkArgs(BaseArgs):
         max_repl (int): The maximum number of REPL calls, if
             repl_terminated_paths=True. Defaults to 16.
         repl_terminated_paths (bool): Whether to use REPL on terminated paths
-            after the generation ends. Defaults to False.
+            after the generation ends. This is done in a batched way, therefore,
+            the time penalty is not significant. Defaults to False.
         repl_encountered_termination (bool): Whether to use REPL when a
-            termination node is encountered in expansion. Defaults to False.
+            termination node is encountered in expansion. Defaults to False. TODO(burak): make this batched
         beam_width (int): The beam width for beam search. Defaults to None.
         exploration_weight (float): The exploration weight for MCTS.
             Defaults to None.
@@ -87,6 +99,15 @@ class TreeThinkArgs(BaseArgs):
     max_repl: int = 16
     repl_terminated_paths: bool = False
     repl_encountered_termination: bool = False
+    repl_terminated_paths_args: ReplStrategyArgs = field(
+        default_factory=lambda: ReplStrategyArgs(
+            sync_fn_name="repl_terminated_paths",
+            async_fn_name="async_repl_terminated_paths",
+        )
+    )
+    repl_encountered_termination_args: ReplStrategyArgs = field(
+        default_factory=lambda: ReplStrategyArgs()
+    )
 
     # Method Special
     beam_width: int = None
@@ -96,6 +117,13 @@ class TreeThinkArgs(BaseArgs):
     ] = "native"
     max_concurrent_expansions: int = 8
     tie_breaker: Literal["random", "deep", "stable"] = "random"
+
+    def build_repl_runtime(self):
+        from treethink.repl_runtime import ReplRuntime
+
+        return ReplRuntime.from_treethink_args(
+            self, termination_str=self.termination_str
+        )
 
 
 @dataclass

@@ -1,11 +1,8 @@
 import asyncio
-from functools import partial
+import inspect
 from typing import List, Union
 
 import vllm
-
-# from treethink.grading import Lean4Client
-from kimina_client import AsyncKiminaClient, KiminaClient
 from loguru import logger
 
 from .graph import save_tree_to_txt
@@ -102,31 +99,11 @@ class TreeThink:
         self.method = method
         self.treethink_args = treethink_args
 
-        # Frequent checks
-        self._must_repl_paths = (
-            self.treethink_args.termination_str
-            and self.treethink_args.repl_args
-            and self.treethink_args.repl_terminated_paths
-        )
-        self._must_repl_encountered = (
-            self.treethink_args.termination_str
-            and self.treethink_args.repl_args
-            and self.treethink_args.repl_encountered_termination
-        )
-
-        # If REPL client is needed, start it with given REPL args
-        if self._must_repl_encountered or self._must_repl_paths:
-            self.client = KiminaClient(
-                self.treethink_args.repl_args.lean_server_url
-            )
-            self.async_client = AsyncKiminaClient(
-                self.treethink_args.repl_args.lean_server_url
-            )
-            logger.debug("REPL clients initialized.")
+        self.repl_runtime = self.treethink_args.build_repl_runtime()
+        if self.repl_runtime.needs_repl:
+            logger.debug("REPL runtime initialized.")
         else:
-            self.client = None
-            self.async_client = None
-            logger.debug("REPL clients not initialized.")
+            logger.debug("REPL runtime not initialized.")
 
         logger.info("TreeThink initialized.")
 
@@ -150,14 +127,9 @@ class TreeThink:
         # Set the root node based on settings
         self._set_root_node(prompts)
 
-        _termination_fn = None
-        if self._must_repl_encountered:
-            _termination_fn = partial(
-                self.method.repl_encountered_termination,
-                client=self.client,
-                timeout=self.treethink_args.repl_args.timeout,
-                num_proc=self.treethink_args.repl_args.num_proc,
-            )
+        _termination_fn = self.repl_runtime.build_termination_callback(
+            self.method
+        )
 
         # Simulate the search method
         self.method.simulate(
@@ -173,17 +145,11 @@ class TreeThink:
         # Check all terminated leaves via REPL
         _solution_found = False
         if (
-            self._must_repl_paths
+            self.repl_runtime.terminated_paths.enabled
             and self.method.best_answer_reason != "checked_and_true"
         ):
             logger.trace("Checking terminated paths with REPL...")
-            solution = self.method.repl_terminated_paths(
-                client=self.client,
-                timeout=self.treethink_args.repl_args.timeout,
-                num_proc=self.treethink_args.repl_args.num_proc,
-                batch_size=self.treethink_args.repl_args.batch_size,
-                max_repl=self.treethink_args.max_repl,
-            )
+            solution = self.repl_runtime.check_terminated_paths(self.method)
 
             if solution:
                 _solution_found = True
@@ -238,26 +204,10 @@ class TreeThink:
         self._set_root_node(prompts)
 
         # Termination function for early stopping when solution is found
-        _termination_fn = None
-        if self._must_repl_encountered:
-            # Use async version if available
-            if self.async_client and hasattr(
-                self.method, "async_repl_encountered_termination"
-            ):
-                _termination_fn = partial(
-                    self.method.async_repl_encountered_termination,
-                    client=self.async_client,
-                    timeout=self.treethink_args.repl_args.timeout,
-                    num_proc=self.treethink_args.repl_args.num_proc,
-                )
-            else:
-                # Fallback to sync version
-                _termination_fn = partial(
-                    self.method.repl_encountered_termination,
-                    client=self.client,
-                    timeout=self.treethink_args.repl_args.timeout,
-                    num_proc=self.treethink_args.repl_args.num_proc,
-                )
+        _termination_fn = self.repl_runtime.build_termination_callback(
+            self.method,
+            async_mode=True,
+        )
 
         # Async Simulate
         # Check for async_simulate method first (preferred for MCTS)
@@ -269,7 +219,7 @@ class TreeThink:
                 remove_duplicate_children=self.treethink_args.remove_duplicate_children,
                 termination_encountered_fn=_termination_fn,
             )
-        elif asyncio.iscoroutinefunction(self.method.simulate):
+        elif inspect.iscoroutinefunction(self.method.simulate):
             # Fallback to async simulate if available
             await self.method.simulate(
                 expansion_count=self.treethink_args.expansion_count,
@@ -296,46 +246,12 @@ class TreeThink:
         # Check terminated paths with REPL
         _solution_found = False
         if (
-            self._must_repl_paths
+            self.repl_runtime.terminated_paths.enabled
             and self.method.best_answer_reason != "checked_and_true"
         ):
-            # Use async client if available, otherwise run sync client in executor
-            if self.async_client:
-                # Check if async_repl_terminated_paths exists, else fallback to sync in executor
-                if hasattr(self.method, "async_repl_terminated_paths"):
-                    solution = await self.method.async_repl_terminated_paths(
-                        client=self.async_client,
-                        timeout=self.treethink_args.repl_args.timeout,
-                        num_proc=self.treethink_args.repl_args.num_proc,
-                        batch_size=self.treethink_args.repl_args.batch_size,
-                        max_repl=self.treethink_args.max_repl,
-                    )
-                else:
-                    # Fallback: Run sync method with async_client in executor
-                    loop = asyncio.get_running_loop()
-                    solution = await loop.run_in_executor(
-                        None,
-                        lambda: self.method.repl_terminated_paths(
-                            client=self.async_client,
-                            timeout=self.treethink_args.repl_args.timeout,
-                            num_proc=self.treethink_args.repl_args.num_proc,
-                            batch_size=self.treethink_args.repl_args.batch_size,
-                            max_repl=self.treethink_args.max_repl,
-                        ),
-                    )
-            else:
-                # No async client, run sync in executor
-                loop = asyncio.get_running_loop()
-                solution = await loop.run_in_executor(
-                    None,
-                    lambda: self.method.repl_terminated_paths(
-                        client=self.client,
-                        timeout=self.treethink_args.repl_args.timeout,
-                        num_proc=self.treethink_args.repl_args.num_proc,
-                        batch_size=self.treethink_args.repl_args.batch_size,
-                        max_repl=self.treethink_args.max_repl,
-                    ),
-                )
+            solution = await self.repl_runtime.async_check_terminated_paths(
+                self.method
+            )
 
             if solution:
                 _solution_found = True
