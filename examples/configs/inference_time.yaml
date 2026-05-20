@@ -1,4 +1,4 @@
-inference_time:
+treethink:
   method_name: "MCTS"
   max_children: 4
   expansion_count: 64

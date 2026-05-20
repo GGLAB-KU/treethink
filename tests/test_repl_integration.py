@@ -10,9 +10,9 @@ from tests.common import (
     SetStrChildPolicy,
 )
 from treethink import (  # noqa
-    InferenceTimeArgs,
     LeanREPLArgs,
     TreeThink,
+    TreeThinkArgs,
 )
 from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
@@ -30,7 +30,7 @@ class TestREPLIntegration(unittest.TestCase):
         self.temp_file_path = self.temp_file.name
         self._global_child_counter = 0
 
-        self.inftime_args = InferenceTimeArgs(
+        self.treethink_args = TreeThinkArgs(
             method_name="BFTS",
             max_children=5,
             expansion_count=10,
@@ -53,8 +53,10 @@ class TestREPLIntegration(unittest.TestCase):
         """Test of REPL checking finished proof trajectories."""
 
         # Testing repl_terminated_paths
-        self.inftime_args.repl_terminated_paths = True
-        self.inftime_args.graph_path = "tests/outputs/repl_terminated_paths.txt"
+        self.treethink_args.repl_terminated_paths = True
+        self.treethink_args.graph_path = (
+            "tests/outputs/repl_terminated_paths.txt"
+        )
 
         # Sample proof from DeepSeekProverV2 on minif2f
         proof_begin = "Complete the following lean code:\n```\nimport Mathlib\nimport Aesop\n\n\nopen BigOperators\nopen Real\nopen Nat\nopen Topology\ntheorem mathd_algebra_478\n  (b h v : \u211d)\n  (h\u2080 : 0 < b \u2227 0 < h \u2227 0 < v)\n  (h\u2081 : v = 1 / 3 * (b * h))\n  (h\u2082 : b = 30)\n  (h\u2083 : h = 13 / 2) :\n  v = 65 := by\n"
@@ -62,23 +64,21 @@ class TestREPLIntegration(unittest.TestCase):
 
         method = MCTS(
             root_node=Node(
-                "root", termination_str=self.inftime_args.termination_str
+                "root", termination_str=self.treethink_args.termination_str
             ),
             policy=SetStrChildPolicy(text=proof_cont, num_child=5),
             evaluator=FirstPosOthersNegNodeEvaluator(),
         )
-        inference_time = TreeThink(
-            method=method, inftime_args=self.inftime_args
-        )
+        treethink = TreeThink(method=method, treethink_args=self.treethink_args)
 
-        output = inference_time.generate(proof_begin)
-        logger.debug(f"inference_time output: {output}")
+        output = treethink.generate(proof_begin)
+        logger.debug(f"treethink output: {output}")
         self.assertTrue(output.checked_and_true)
 
     def test_repl_encountered_termination(self):
         """Test of REPL checking encountered termination trajectories."""
-        self.inftime_args.repl_encountered_termination = True
-        self.inftime_args.graph_path = (
+        self.treethink_args.repl_encountered_termination = True
+        self.treethink_args.graph_path = (
             "tests/outputs/repl_encountered_termination.txt"
         )
 
@@ -91,11 +91,9 @@ class TestREPLIntegration(unittest.TestCase):
             policy=PreferTerminationChildPolicy(),
             evaluator=FirstPosOthersNegNodeEvaluator(),
         )
-        inference_time = TreeThink(
-            method=method, inftime_args=self.inftime_args
-        )
-        output = inference_time.generate(proof_begin)
-        logger.debug(f"inference_time output: {output}")
+        treethink = TreeThink(method=method, treethink_args=self.treethink_args)
+        output = treethink.generate(proof_begin)
+        logger.debug(f"treethink output: {output}")
         self.assertFalse(output.checked_and_true)
 
 

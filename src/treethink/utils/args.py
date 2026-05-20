@@ -111,7 +111,7 @@ class SamplingArgs(BaseArgs):
         stop (List[str]): The list of stop strings. Set ["\\n"] for next tactic
             generation. Defaults to None.
         n (int): The number of samples to generate. This should be the same as
-            max_children in InferenceTimeArgs. Defaults to 1.
+            max_children in TreeThinkArgs. Defaults to 1.
         logprobs (int): The number of log probabilities to return. When using
             cumulative_logprob_evaluator, set this to 1. Defaults to None.
     """

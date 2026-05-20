@@ -166,17 +166,17 @@ def _get_optional_inner_type(type_hint):
 # Inference Time
 from treethink import (  # noqa: E402
     EvaluatorArgs,
-    InferenceTimeArgs,
     PolicyArgs,
+    TreeThinkArgs,
 )
 
-__inftime = {
-    "inference_time": InferenceTimeArgs,
+__treethink = {
+    "treethink": TreeThinkArgs,
     "policy": PolicyArgs,
     "evaluator": EvaluatorArgs,
 }
 
-parse_inftime_conf = partial(_parse_yaml_file, section_class=__inftime)
+parse_treethink_args = partial(_parse_yaml_file, section_class=__treethink)
 
 # Normal Inference
 from treethink import ModelArgs, SamplingArgs  # noqa: E402
@@ -185,6 +185,6 @@ __normal_inference = {
     "model": ModelArgs,
     "sampling": SamplingArgs,
 }
-parse_normal_inference_conf = partial(
+parse_normal_inference_args = partial(
     _parse_yaml_file, section_class=__normal_inference
 )

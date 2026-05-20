@@ -39,7 +39,7 @@ class TestLoadingTreeState(unittest.TestCase):
         save_tree_to_txt(root, tree_path)
 
         metadata = {
-            "inference_time_args": {
+            "treethink_args": {
                 "method_name": "MCTS",
                 "max_children": 2,
                 "exploration_weight": 0.5,

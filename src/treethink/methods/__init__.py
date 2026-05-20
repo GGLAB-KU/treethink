@@ -35,23 +35,21 @@ if ASYNC_AVAILABLE:
         }
     )
 
-INFERENCE_TIME_METHODS = list(IMPLEMENTED_METHODS.keys())
+METHODS = list(IMPLEMENTED_METHODS.keys())
 METHOD_TYPE = TypeVar("METHOD_TYPE", bound=BaseMethod)
 
 
-def get_inference_time_method(
-    inference_time_config, root_node, policy, evaluator
-):
+def get_method(config, root_node, policy, evaluator):
     try:
-        return IMPLEMENTED_METHODS[inference_time_config.method_name](
+        return IMPLEMENTED_METHODS[config.method_name](
             root_node=root_node,
             policy=policy,
             evaluator=evaluator,
-            **inference_time_config,
+            **config,
         )
     except KeyError:
         logger.error(
-            f"Could not found method: {inference_time_config.method_name}. "
+            f"Could not found method: {config.method_name}. "
             + f"Available methods are: {IMPLEMENTED_METHODS.keys()}"
         )
 
