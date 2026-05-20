@@ -3,6 +3,33 @@ from unittest.mock import patch
 
 from treethink import LeanREPLArgs, ReplStrategyArgs, TreeThinkArgs
 from treethink import repl_runtime as repl_runtime_module
+from treethink.repl_backends import REPL_BACKENDS, ReplBackendBase
+
+
+def dummy_sync_function(*, method, client, timeout, num_proc, batch_size):
+    return "dummy-sync"
+
+
+async def dummy_async_function(
+    *, method, client, timeout, num_proc, batch_size
+):
+    return "dummy-async"
+
+
+class DummyBackend(ReplBackendBase):
+    name = "dummy"
+
+    def resolve_sync_function(self, function_name: str):
+        return dummy_sync_function
+
+    def resolve_async_function(self, function_name: str):
+        return dummy_async_function
+
+    def create_sync_client(self, repl_args, backend_args):
+        return {"kind": "sync-client", "url": repl_args.lean_server_url}
+
+    def create_async_client(self, repl_args, backend_args):
+        return {"kind": "async-client", "url": repl_args.lean_server_url}
 
 
 class TestReplRuntime(unittest.TestCase):
@@ -84,6 +111,26 @@ class TestReplRuntime(unittest.TestCase):
 
         self.assertEqual(callback.func.__name__, "repl_encountered_termination")
         mock_client.assert_called_once_with("http://localhost:8001")
+
+    def test_runtime_uses_registered_backend(self):
+        args = TreeThinkArgs(
+            termination_str="```",
+            repl_args=LeanREPLArgs(lean_server_url="http://dummy"),
+            repl_encountered_termination_args=ReplStrategyArgs(
+                enabled=True,
+                backend_name="dummy",
+                repl_args=LeanREPLArgs(lean_server_url="http://dummy"),
+                sync_fn_name="anything",
+                async_fn_name="anything_async",
+            ),
+        )
+
+        with patch.dict(REPL_BACKENDS, {"dummy": DummyBackend()}):
+            runtime = args.build_repl_runtime()
+            callback = runtime.build_termination_callback(method=object())
+
+        self.assertEqual(callback.func, dummy_sync_function)
+        self.assertEqual(callback.keywords["client"]["kind"], "sync-client")
 
 
 if __name__ == "__main__":

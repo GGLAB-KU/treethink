@@ -35,6 +35,8 @@ class LeanREPLArgs(BaseArgs):
 @dataclass
 class ReplStrategyArgs(BaseArgs):
     enabled: bool = False
+    backend_name: str = "kimina"
+    backend_args: dict = field(default_factory=dict)
     repl_args: Optional[LeanREPLArgs] = None
     max_repl: int = 16
     sync_fn_name: str = "repl_encountered_termination"
