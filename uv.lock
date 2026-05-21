@@ -1909,6 +1909,18 @@ image = [
 ]
 
 [[package]]
+name = "mkinit"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ubelt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/77/f7/a1bf60ea227c983f8b705ba41fa8db7c2949ca04239f227d5fd62a404cdf/mkinit-1.2.0.tar.gz", hash = "sha256:4b776ca991ccedbb202b079bd3e573d753121baa2a4f330324247325c9a1d346", size = 76556, upload-time = "2025-12-02T16:22:03.556Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/c1/5cac576344167d1a21dc569d39e4aa230626a5a457d4f0ea514f27caa124/mkinit-1.2.0-py3-none-any.whl", hash = "sha256:172755988cdcdc5212d0b76b586ec4765c2bff9ae41266a93f5f4b962c3d2def", size = 70919, upload-time = "2025-12-02T16:22:00.967Z" },
+]
+
+[[package]]
 name = "ml-dtypes"
 version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -4708,6 +4720,7 @@ source = { editable = "." }
 dependencies = [
     { name = "datasets" },
     { name = "kimina-client" },
+    { name = "mkinit" },
     { name = "toml" },
 ]
 
@@ -4726,6 +4739,7 @@ main = [
 requires-dist = [
     { name = "datasets", specifier = ">=4.8.5" },
     { name = "kimina-client", git = "https://github.com/project-numina/kimina-lean-server.git" },
+    { name = "mkinit", specifier = ">=1.2.0" },
     { name = "toml", specifier = ">=0.10.2" },
 ]
 
@@ -4796,6 +4810,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ba/19/1b9b0e29f30c6d35cb345486df41110984ea67ae69dddbc0e8a100999493/tzdata-2026.2.tar.gz", hash = "sha256:9173fde7d80d9018e02a662e168e5a2d04f87c41ea174b139fbef642eda62d10", size = 198254, upload-time = "2026-04-24T15:22:08.651Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/e4/dccd7f47c4b64213ac01ef921a1337ee6e30e8c6466046018326977efd95/tzdata-2026.2-py2.py3-none-any.whl", hash = "sha256:bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7", size = 349321, upload-time = "2026-04-24T15:22:05.876Z" },
+]
+
+[[package]]
+name = "ubelt"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/39/a2ca653ee2500ae963e38b6b3a38d02f7c4ea72a3e5af410c6d66f058ed6/ubelt-1.4.2.tar.gz", hash = "sha256:40322cf3bb59c05b7567222b10bd0d553c6abc463cd480c23ea3dbcf2ef332fb", size = 305863, upload-time = "2026-04-13T02:38:15.703Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/b9/b6ee2a03975b398b428b1ed8ce2f1a598e2b9cc01ad2c6d49cfce3bb5a9b/ubelt-1.4.2-py3-none-any.whl", hash = "sha256:6cdbcbba75cd7c3e1ef9556a13b7c0e29a55f67cb454f022a981e42808f2b06e", size = 231820, upload-time = "2026-04-13T02:38:13.094Z" },
 ]
 
 [[package]]
