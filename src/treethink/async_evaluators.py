@@ -42,6 +42,23 @@ class AsyncBaseEvaluator(ABC):
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
 
+    def _format_str_value(self, value):
+        if callable(value):
+            return getattr(value, "__name__", value.__class__.__name__)
+        return repr(value)
+
+    def _str_fields(self):
+        return [("name", self.name)]
+
+    def __str__(self) -> str:
+        fields = ", ".join(
+            f"{name}={self._format_str_value(value)}"
+            for name, value in self._str_fields()
+        )
+        return f"{self.__class__.__name__}({fields})"
+
+    __repr__ = __str__
+
     @abstractmethod
     async def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -111,6 +128,12 @@ class AsyncREPLEvaluator(AsyncBaseEvaluator):
                 "Returning default scores of 0.0 for all nodes due to error."
             )
             return [0.0] * len(nodes)
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("repl_args", self.repl_args),
+            ("async_client", self.async_client.__class__.__name__),
+        ]
 
 
 class AsyncJudgeEvaluator(AsyncBaseEvaluator):
@@ -338,6 +361,14 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
 
         return final_scores
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model", self.model.__class__.__name__),
+            ("sampling_params", self.sampling_params),
+            ("repl_args", self.repl_args),
+            ("system_prompt", self.system_prompt),
+        ]
+
 
 class AsyncNormLenEvaluator(AsyncBaseEvaluator):
     """
@@ -388,6 +419,9 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
             f"Node level: {L}, whole path cumulative logprobs: {whole_path_cumulative_logprobs}, score: {scores}"
         )
         return scores
+
+    def _str_fields(self):
+        return super()._str_fields() + [("length_norm", self.length_norm)]
 
 
 class AsyncEvaluatorType(Enum):

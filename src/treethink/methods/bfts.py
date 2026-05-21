@@ -243,6 +243,12 @@ class BFTS(BaseMethod):
 
         return super()._compute_native_best_answer()
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("frontier_size", len(self.frontier)),
+            ("frontier_priorities", self.get_frontier_priorities()),
+        ]
+
 
 class AsyncBFTS(BFTS):
     """
@@ -439,3 +445,11 @@ class AsyncBFTS(BFTS):
                     termination_encountered_fn=termination_encountered_fn,
                 )
             )
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            (
+                "max_concurrent_expansions",
+                self.max_concurrent_expansions,
+            ),
+        ]

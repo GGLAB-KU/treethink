@@ -22,6 +22,23 @@ class BasePolicy(ABC):
     ):
         self.name = name
 
+    def _format_str_value(self, value):
+        if callable(value):
+            return getattr(value, "__name__", value.__class__.__name__)
+        return repr(value)
+
+    def _str_fields(self):
+        return [("name", self.name)]
+
+    def __str__(self) -> str:
+        fields = ", ".join(
+            f"{name}={self._format_str_value(value)}"
+            for name, value in self._str_fields()
+        )
+        return f"{self.__class__.__name__}({fields})"
+
+    __repr__ = __str__
+
     @abstractmethod
     def __call__(self, node, method):
         pass
@@ -102,6 +119,18 @@ class VLLMPolicy(BasePolicy):
         if self.enable_lora and self.lora_path:
             return LoRARequest("lora_adapter", 1, self.lora_path)
         return None
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            (
+                "model",
+                getattr(self.model, "__class__", type(self.model)).__name__,
+            ),
+            ("enable_lora", self.enable_lora),
+            ("lora_path", self.lora_path),
+            ("sampling_params", self.sampling_params),
+            ("system_prompt", self.system_prompt),
+        ]
 
     def __call__(self, node: Node, method):
         proof_so_far = method.traverse_to_root(node, include_root=False)
@@ -230,6 +259,22 @@ class DynamicPolicy(BasePolicy):
         if self.enable_lora and self.lora_path:
             return LoRARequest("lora_adapter", 1, self.lora_path)
         return None
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            (
+                "model",
+                getattr(self.model, "__class__", type(self.model)).__name__,
+            ),
+            ("enable_lora", self.enable_lora),
+            ("lora_path", self.lora_path),
+            ("sampling_params", self.sampling_params),
+            ("system_prompt", self.system_prompt),
+            (
+                "param_modifier",
+                getattr(self.param_modifier, "__name__", None),
+            ),
+        ]
 
     def _default_param_modifier(self, node: Node) -> vllm.SamplingParams:
         new_params = self.sampling_params.clone()
@@ -391,6 +436,14 @@ class VLLMServerPolicy(BasePolicy):
             logger.debug(f"Added {len(children)} children to node {node}.")
         except Exception as e:
             logger.error(f"VLLMServerPolicy generation failed: {e}")
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model_name", self.model_name),
+            ("server_args", self.server_args),
+            ("sampling_params", self.sampling_params),
+            ("system_prompt", self.system_prompt),
+        ]
 
 
 class PolicyType(Enum):

@@ -13,6 +13,39 @@ from .node import Node
 class BaseMethod(ABC):
     """Class implementing the necessary utilities for every method to have."""
 
+    def _format_str_value(self, value):
+        if callable(value):
+            return getattr(value, "__name__", value.__class__.__name__)
+        return repr(value)
+
+    def _str_fields(self):
+        return [
+            ("root_node", getattr(self, "root_node", None)),
+            ("policy", getattr(self, "policy", None)),
+            ("evaluator", getattr(self, "evaluator", None)),
+            (
+                "final_decision_mode",
+                getattr(self, "final_decision_mode", None),
+            ),
+            (
+                "stats_expansion_count",
+                getattr(self, "stats_expansion_count", None),
+            ),
+            (
+                "stats_failed_expansion_count",
+                getattr(self, "stats_failed_expansion_count", None),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        fields = ", ".join(
+            f"{name}={self._format_str_value(value)}"
+            for name, value in self._str_fields()
+        )
+        return f"{self.__class__.__name__}({fields})"
+
+    __repr__ = __str__
+
     def __init__(
         self,
         root_node: Optional[Union[Node, str]],

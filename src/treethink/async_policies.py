@@ -180,6 +180,14 @@ class AsyncVLLMPolicy(BasePolicy):
         except Exception as e:
             logger.error(f"Single generation failed for {request_id}: {e}")
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("engine", self.engine.__class__.__name__),
+            ("max_model_len", self._max_model_len),
+            ("sampling_params", self.sampling_params),
+            ("system_prompt", self.system_prompt),
+        ]
+
 
 class AsyncBatchVLLMPolicy(BasePolicy):
     """
@@ -475,6 +483,15 @@ class AsyncBatchVLLMPolicy(BasePolicy):
             logger.error(f"Generation failed for {request_id}: {e}")
             raise
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("engine", self.engine.__class__.__name__),
+            ("max_model_len", self._max_model_len),
+            ("max_batch_size", self.max_batch_size),
+            ("sampling_params", self.sampling_params),
+            ("system_prompt", self.system_prompt),
+        ]
+
 
 class AsyncVLLMServerPolicy(BasePolicy):
     """Async vLLM Server based inference for node expansion."""
@@ -558,6 +575,14 @@ class AsyncVLLMServerPolicy(BasePolicy):
             logger.debug(f"Added {len(children)} children to node {node}.")
         except Exception as e:
             logger.error(f"AsyncVLLMServerPolicy generation failed: {e}")
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model_name", self.model_name),
+            ("server_args", self.server_args),
+            ("sampling_dict", self.sampling_dict),
+            ("system_prompt", self.system_prompt),
+        ]
 
 
 class AsyncPolicyType(Enum):

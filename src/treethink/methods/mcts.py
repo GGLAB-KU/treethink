@@ -225,6 +225,11 @@ class MCTS(BaseMethod):
             node.win_value += val
             node.visits += 1
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("exploration_weight", self.exploration_weight),
+        ]
+
 
 class AsyncMCTS(MCTS):
     """
@@ -428,3 +433,11 @@ class AsyncMCTS(MCTS):
                     termination_encountered_fn=termination_encountered_fn,
                 )
             )
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            (
+                "max_concurrent_expansions",
+                getattr(self, "max_concurrent_expansions", None),
+            ),
+        ]

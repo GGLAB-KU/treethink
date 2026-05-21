@@ -195,12 +195,19 @@ class BeamSearch(BaseMethod):
         return top2[1] if len(top2) > 1 else top2[0]
 
     def __repr__(self) -> str:
-        return (
-            f"BeamSearch(beam_width={self.beam_width}, "
-            f"max_depth={self.max_depth}, "
-            f"frontier_size={self._frontier_size}, "
-            f"depth_so_far={self._last_depth})"
-        )
+        return self.__str__()
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("beam_width", self.beam_width),
+            ("max_depth", self.max_depth),
+            ("tie_breaker", self._tie_breaker),
+            ("frontier_size", self._frontier_size),
+            ("depth_so_far", self._last_depth),
+        ]
+
+    def __str__(self) -> str:
+        return super().__str__()
 
 
 class AsyncBeamSearch(BeamSearch):
@@ -430,3 +437,11 @@ class AsyncBeamSearch(BeamSearch):
                     termination_encountered_fn=termination_encountered_fn,
                 )
             )
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            (
+                "max_concurrent_expansions",
+                self.max_concurrent_expansions,
+            ),
+        ]

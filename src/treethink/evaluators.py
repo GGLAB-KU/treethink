@@ -43,6 +43,23 @@ class BaseEvaluator(ABC):
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
 
+    def _format_str_value(self, value):
+        if callable(value):
+            return getattr(value, "__name__", value.__class__.__name__)
+        return repr(value)
+
+    def _str_fields(self):
+        return [("name", self.name)]
+
+    def __str__(self) -> str:
+        fields = ", ".join(
+            f"{name}={self._format_str_value(value)}"
+            for name, value in self._str_fields()
+        )
+        return f"{self.__class__.__name__}({fields})"
+
+    __repr__ = __str__
+
     @abstractmethod
     def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -73,6 +90,9 @@ class LogprobEvaluator(BaseEvaluator):
                 logger.warning(f"No vllm_output found in node(s): {node}")
             return [0.0] * len(node)
 
+    def _str_fields(self):
+        return super()._str_fields()
+
 
 class ProbEvaluator(BaseEvaluator):
     def __init__(self, *args, **kwargs):
@@ -100,6 +120,9 @@ class ProbEvaluator(BaseEvaluator):
             if node[0].parent:
                 logger.warning(f"No vllm_output found in node(s): {node}")
             return [0.0] * len(node)
+
+    def _str_fields(self):
+        return super()._str_fields()
 
 
 class REPLEvaluator(BaseEvaluator):
@@ -173,6 +196,12 @@ class REPLEvaluator(BaseEvaluator):
                 return False
 
         return True
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("repl_args", self.repl_args),
+            ("lean_client", self.lean_client.__class__.__name__),
+        ]
 
 
 class JudgeEvaluator(BaseEvaluator):
@@ -468,6 +497,16 @@ class JudgeEvaluator(BaseEvaluator):
         elif end == -1:
             return proof[start:]
         return proof[start:end]
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model", self.model.__class__.__name__),
+            ("enable_lora", self.enable_lora),
+            ("lora_path", self.lora_path),
+            ("sampling_params", self.sampling_params),
+            ("repl_args", self.repl_args),
+            ("system_prompt", self.system_prompt),
+        ]
 
 
 class TournamentEvaluator(BaseEvaluator):
@@ -820,6 +859,15 @@ class TournamentEvaluator(BaseEvaluator):
             return proof[start:]
         return proof[start:end]
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model", self.model.__class__.__name__),
+            ("sampling_params", self.sampling_params),
+            ("repl_args", self.repl_args),
+            ("shuffle_bracket", self.shuffle_bracket),
+            ("system_prompt", self.system_prompt),
+        ]
+
 
 class NormLenEvaluator(BaseEvaluator):
     """Normalized Lengths node evaluation strategy from BFS-Prover paper:
@@ -873,6 +921,9 @@ class NormLenEvaluator(BaseEvaluator):
                 node = node.parent
 
         return [whole_path_cumulative_logprobs / (L**self.length_norm)]
+
+    def _str_fields(self):
+        return super()._str_fields() + [("length_norm", self.length_norm)]
 
 
 class NormLenProbEvaluator(BaseEvaluator):
@@ -935,6 +986,9 @@ class NormLenProbEvaluator(BaseEvaluator):
                 node = node.parent
 
         return [whole_path_cumulative_probs / (L**self.length_norm)]
+
+    def _str_fields(self):
+        return super()._str_fields() + [("length_norm", self.length_norm)]
 
 
 class EvaluatorType(Enum):
