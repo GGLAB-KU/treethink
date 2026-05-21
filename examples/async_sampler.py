@@ -163,7 +163,7 @@ class AsyncSampler:
 
             # Extract output from TreeThinkOutputs
             if result.outputs:
-                datapoint["output"] = [result.outputs[0].text]
+                datapoint["output"] = [result.solution]
             else:
                 datapoint["output"] = [""]
 
