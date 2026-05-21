@@ -1,7 +1,7 @@
 from treethink import async_evaluators
 from treethink import async_policies
 from treethink import evaluators
-from treethink import grading
+from treethink.clients import lean
 from treethink import graph
 from treethink import methods
 from treethink import policies
@@ -32,31 +32,13 @@ from treethink.async_policies import (
     get_async_policy,
     get_async_policy_from_config,
 )
-from treethink.evaluators import (
-    BaseEvaluator,
-    EVALUATORS,
-    EvaluatorType,
-    IMPLEMENTED_EVALUATORS,
-    JudgeEvaluator,
-    LLM_AS_JUDGE_SYSTEM_PROMPT,
-    LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
-    LogprobEvaluator,
-    NormLenEvaluator,
-    NormLenProbEvaluator,
-    ProbEvaluator,
-    REPLEvaluator,
-    TournamentEvaluator,
-    get_evaluator,
-    get_evaluator_from_config,
-)
-from treethink.grading import (
-    Lean4Client,
+from treethink.clients.lean import (
     WRAPPER_TACTICS,
+    Lean4Client,
     adjust_intervals,
     analyze,
     analyze_sample,
     batch_verify_proof,
-    client,
     ends_with_by,
     extract_data,
     extract_nodes_and_edges,
@@ -76,13 +58,33 @@ from treethink.grading import (
     parse_messages,
     process_batch,
     process_batches,
-    proof_utils,
     remove_lean_comments,
     retrieve_tactics,
     separate_trailing_comment,
     separate_trailing_whitespace,
     split_proof_header,
     transfer_trailing_whitespaces_and_comments,
+)
+from treethink.clients.lean.client import client
+from treethink.evaluators import (
+    BaseEvaluator,
+    EVALUATORS,
+    EvaluatorType,
+    IMPLEMENTED_EVALUATORS,
+    JudgeEvaluator,
+    LLM_AS_JUDGE_SYSTEM_PROMPT,
+    LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
+    LogprobEvaluator,
+    NormLenEvaluator,
+    NormLenProbEvaluator,
+    ProbEvaluator,
+    REPLEvaluator,
+    TournamentEvaluator,
+    get_evaluator,
+    get_evaluator_from_config,
+)
+from treethink.clients.lean import (
+    proof_utils,
 )
 from treethink.graph import (
     analyze_graph_stats,
@@ -275,7 +277,7 @@ __all__ = [
     "get_policy_from_config",
     "get_repl_backend",
     "get_total_child_num",
-    "grading",
+    "lean",
     "graph",
     "has_error_response",
     "infotree",

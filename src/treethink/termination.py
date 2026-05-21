@@ -3,7 +3,7 @@ from typing import List, Optional
 from kimina_client import AsyncKiminaClient, KiminaClient
 from loguru import logger
 
-from .grading import has_error_response
+from .clients.lean import has_error_response
 from .methods import Node
 
 

@@ -1,15 +1,9 @@
-from treethink.grading.client import client
-from treethink.grading.client import infotree
-
-from treethink.grading.client.client import (
-    Lean4Client,
-    batch_verify_proof,
-    process_batch,
-    process_batches,
-)
-from treethink.grading.client.infotree import (
+from treethink.clients.lean.client import (
     WRAPPER_TACTICS,
+    Lean4Client,
     adjust_intervals,
+    batch_verify_proof,
+    client,
     ends_with_by,
     extract_data,
     extract_nodes_and_edges,
@@ -19,34 +13,65 @@ from treethink.grading.client.infotree import (
     is_calc,
     is_wrapper,
     merge_intervals,
+    process_batch,
+    process_batches,
     remove_lean_comments,
     retrieve_tactics,
     separate_trailing_comment,
     separate_trailing_whitespace,
     transfer_trailing_whitespaces_and_comments,
 )
+from treethink.clients.lean import client
+from treethink.clients.lean import proof_utils
+
+from treethink.clients.lean.client import (
+    infotree,
+)
+from treethink.clients.lean.proof_utils import (
+    analyze,
+    analyze_sample,
+    get_error_msg,
+    get_messages_for_lines,
+    has_error_response,
+    parse_client_response,
+    parse_error_message,
+    parse_lean_response,
+    parse_messages,
+    split_proof_header,
+)
 
 __all__ = [
     "Lean4Client",
     "WRAPPER_TACTICS",
     "adjust_intervals",
+    "analyze",
+    "analyze_sample",
     "batch_verify_proof",
     "client",
     "ends_with_by",
     "extract_data",
     "extract_nodes_and_edges",
+    "get_error_msg",
     "get_intervals",
+    "get_messages_for_lines",
+    "has_error_response",
     "infotree",
     "is_balanced",
     "is_by",
     "is_calc",
     "is_wrapper",
     "merge_intervals",
+    "parse_client_response",
+    "parse_error_message",
+    "parse_lean_response",
+    "parse_messages",
     "process_batch",
     "process_batches",
+    "proof_utils",
     "remove_lean_comments",
     "retrieve_tactics",
     "separate_trailing_comment",
     "separate_trailing_whitespace",
+    "split_proof_header",
     "transfer_trailing_whitespaces_and_comments",
 ]

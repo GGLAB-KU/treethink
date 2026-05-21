@@ -11,7 +11,7 @@ from kimina_client.models import Infotree
 from loguru import logger
 from vllm.lora.request import LoRARequest
 
-from treethink.grading import (
+from treethink.clients.lean import (
     extract_data,
     split_proof_header,
 )
