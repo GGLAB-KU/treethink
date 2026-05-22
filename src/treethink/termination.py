@@ -3,8 +3,15 @@ from typing import List, Optional
 from kimina_client import AsyncKiminaClient, KiminaClient
 from loguru import logger
 
+from .clients.coq.rocq import rocq_response_is_success
 from .clients.lean import has_error_response
 from .methods import Node
+
+
+def _is_success_response(client, response) -> bool:
+    if getattr(client, "backend_name", "kimina") == "rocq":
+        return bool(response) and rocq_response_is_success(response)
+    return not has_error_response(response, accept_sorry=False)
 
 
 def repl_encountered_termination(
@@ -66,7 +73,7 @@ def repl_encountered_termination(
         logger.warning("Sync REPL result has no response.")
         return None
 
-    if not has_error_response(result.response, accept_sorry=False):
+    if _is_success_response(client, result.response):
         logger.info("Sync REPL found a solution!")
         return proof_path
 
@@ -129,7 +136,7 @@ def repl_terminated_paths(
     # Find first successful proof
     logger.trace(f"Sync REPL response: {response}")
     for idx, result in enumerate(response.results):
-        if not has_error_response(result.response, accept_sorry=False):
+        if _is_success_response(client, result.response):
             logger.success(f"Sync REPL found a solution at index {idx}!")
             return proof_paths[idx]
 
@@ -180,7 +187,7 @@ async def async_repl_encountered_termination(
     # Check if successful (no errors)
     logger.trace(f"Async REPL response: {response}")
     result = response.results[0]
-    if not has_error_response(result.response, accept_sorry=False):
+    if _is_success_response(client, result.response):
         logger.success("Async REPL found a solution!")
         return proof_path
 
@@ -252,7 +259,7 @@ async def async_repl_terminated_paths(
     logger.trace(f"First Async REPL result: {response.results[0]}")
     # Find first successful proof
     for idx, result in enumerate(response.results):
-        if not has_error_response(result.response, accept_sorry=False):
+        if _is_success_response(client, result.response):
             logger.info(f"Async REPL found a solution at index {idx}!")
             return proof_paths[idx]
 

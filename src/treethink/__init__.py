@@ -1,16 +1,16 @@
-from treethink import async_evaluators
-from treethink import async_policies
-from treethink import evaluators
-from treethink.clients import lean
-from treethink import graph
-from treethink import methods
-from treethink import policies
-from treethink import repl_backends
-from treethink import repl_runtime
-from treethink import termination
-from treethink import treethink
-from treethink import utils
-
+from treethink import (
+    async_evaluators,
+    async_policies,
+    evaluators,
+    graph,
+    methods,
+    policies,
+    repl_backends,
+    repl_runtime,
+    termination,
+    treethink,
+    utils,
+)
 from treethink.async_evaluators import (
     ASYNC_EVALUATORS,
     ASYNC_IMPLEMENTED_EVALUATORS,
@@ -24,14 +24,15 @@ from treethink.async_evaluators import (
 from treethink.async_policies import (
     ASYNC_POLICIES,
     ASYNC_POLICY_TYPE,
+    IMPLEMENTED_ASYNC_POLICIES,
     AsyncBatchVLLMPolicy,
     AsyncPolicyType,
     AsyncVLLMPolicy,
     AsyncVLLMServerPolicy,
-    IMPLEMENTED_ASYNC_POLICIES,
     get_async_policy,
     get_async_policy_from_config,
 )
+from treethink.clients import lean
 from treethink.clients.lean import (
     WRAPPER_TACTICS,
     Lean4Client,
@@ -58,6 +59,7 @@ from treethink.clients.lean import (
     parse_messages,
     process_batch,
     process_batches,
+    proof_utils,
     remove_lean_comments,
     retrieve_tactics,
     separate_trailing_comment,
@@ -67,24 +69,22 @@ from treethink.clients.lean import (
 )
 from treethink.clients.lean.client import client
 from treethink.evaluators import (
-    BaseEvaluator,
     EVALUATORS,
-    EvaluatorType,
     IMPLEMENTED_EVALUATORS,
-    JudgeEvaluator,
     LLM_AS_JUDGE_SYSTEM_PROMPT,
     LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
+    BaseEvaluator,
+    EvaluatorType,
+    JudgeEvaluator,
     LogprobEvaluator,
     NormLenEvaluator,
     NormLenProbEvaluator,
     ProbEvaluator,
     REPLEvaluator,
+    RocqEvaluator,
     TournamentEvaluator,
     get_evaluator,
     get_evaluator_from_config,
-)
-from treethink.clients.lean import (
-    proof_utils,
 )
 from treethink.graph import (
     analyze_graph_stats,
@@ -97,13 +97,13 @@ from treethink.graph import (
     vis_proof_tree,
 )
 from treethink.methods import (
-    AsyncBFTS,
-    AsyncBeamSearch,
-    AsyncMCTS,
     BFTS,
+    MCTS,
+    AsyncBeamSearch,
+    AsyncBFTS,
+    AsyncMCTS,
     BaseMethod,
     BeamSearch,
-    MCTS,
     Node,
     base_method,
     beam,
@@ -113,11 +113,11 @@ from treethink.methods import (
     node,
 )
 from treethink.policies import (
-    BasePolicy,
-    DynamicPolicy,
     IMPLEMENTED_POLICIES,
     POLICIES,
     POLICY_TYPE,
+    BasePolicy,
+    DynamicPolicy,
     PolicyType,
     VLLMPolicy,
     VLLMServerPolicy,
@@ -126,10 +126,11 @@ from treethink.policies import (
 )
 from treethink.repl_backends import (
     ASYNC_REPL_FUNCTIONS,
-    KiminaReplBackend,
     REPL_BACKENDS,
-    ReplBackendBase,
     SYNC_REPL_FUNCTIONS,
+    KiminaReplBackend,
+    ReplBackendBase,
+    RocqReplBackend,
     get_repl_backend,
 )
 from treethink.repl_runtime import (
@@ -156,6 +157,7 @@ from treethink.utils import (
     ModelArgs,
     PolicyArgs,
     ReplStrategyArgs,
+    RocqREPLArgs,
     SamplingArgs,
     ServerArgs,
     TieBreaker,
@@ -219,14 +221,17 @@ __all__ = [
     "POLICIES",
     "POLICY_TYPE",
     "PolicyArgs",
+    "RocqREPLArgs",
     "PolicyType",
     "ProbEvaluator",
     "REPLEvaluator",
+    "RocqEvaluator",
     "REPL_BACKENDS",
     "ReplBackendBase",
     "ReplHookRuntime",
     "ReplRuntime",
     "ReplStrategyArgs",
+    "RocqReplBackend",
     "SYNC_REPL_FUNCTIONS",
     "SamplingArgs",
     "ServerArgs",

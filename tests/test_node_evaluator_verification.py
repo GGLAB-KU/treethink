@@ -7,6 +7,7 @@ This script tests:
 """
 
 import sys
+from unittest.mock import patch
 
 from kimina_client import KiminaClient
 from kimina_client.models import Infotree
@@ -15,6 +16,7 @@ from treethink import (
     LeanREPLArgs,
     Node,
     REPLEvaluator,
+    RocqEvaluator,
 )
 
 # Mock proofs for testing
@@ -51,6 +53,22 @@ class MockMethod:
     def traverse_to_root(self, node: Node, include_root: bool = True) -> str:
         """Return the node's answer (proof) directly."""
         return node.answer
+
+
+class FakeRocqClient:
+    def __init__(self, host, port, **kwargs):
+        self.host = host
+        self.port = port
+        self.kwargs = kwargs
+        self.snippets = []
+
+    def verify_snippet(self, snippet, timeout=None):
+        self.snippets.append((snippet, timeout))
+        success = "INVALID" not in snippet
+        return {"proof_finished": success, "error": None if success else "boom"}
+
+    def close(self):
+        return None
 
 
 def create_mock_node(proof: str, level: int = 1) -> Node:
@@ -98,6 +116,17 @@ def test_repl_evaluator():
         print(f"  Score: {score}")
         print("  Expected: 0.0 (invalid)")
         print(f"  Status: {'✅ PASS' if score == 0.0 else '❌ FAIL'}")
+
+
+def test_rocq_evaluator_uses_shared_client():
+    with patch("treethink.evaluators.RocqBatchClient", FakeRocqClient):
+        evaluator = RocqEvaluator(statement="True")
+
+        scores = evaluator(["intro. exact I.", "INVALID tactic."])
+
+        assert scores == [1.0, 0.0]
+        assert evaluator._client.snippets[0][1] == 5.0
+        evaluator.close()
 
 
 def test_kimina_client_direct():

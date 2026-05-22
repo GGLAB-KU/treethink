@@ -1,8 +1,4 @@
-from treethink.utils import args
-from treethink.utils import enums
-from treethink.utils import funcs
-from treethink.utils import str_manip
-
+from treethink.utils import args, enums, funcs, str_manip
 from treethink.utils.args import (
     BaseArgs,
     EvaluatorArgs,
@@ -10,6 +6,7 @@ from treethink.utils.args import (
     ModelArgs,
     PolicyArgs,
     ReplStrategyArgs,
+    RocqREPLArgs,
     SamplingArgs,
     ServerArgs,
     TreeThinkArgs,
@@ -38,6 +35,7 @@ __all__ = [
     "LeanREPLArgs",
     "ModelArgs",
     "PolicyArgs",
+    "RocqREPLArgs",
     "ReplStrategyArgs",
     "SamplingArgs",
     "ServerArgs",

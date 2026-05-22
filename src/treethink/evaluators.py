@@ -11,6 +11,7 @@ from kimina_client.models import Infotree
 from loguru import logger
 from vllm.lora.request import LoRARequest
 
+from treethink.clients.coq.rocq import RocqBatchClient
 from treethink.clients.lean import (
     extract_data,
     split_proof_header,
@@ -991,6 +992,75 @@ class NormLenProbEvaluator(BaseEvaluator):
         return super()._str_fields() + [("length_norm", self.length_norm)]
 
 
+class RocqEvaluator(BaseEvaluator):
+    """
+    Evaluate Rocq code snippets by running them through a rocq-ml-server session.
+
+    The evaluator wraps a snippet in a temporary file containing a simple
+    theorem statement, then executes each Rocq command in order. If all
+    commands succeed and the proof closes, the snippet is considered correct.
+    """
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 5000,
+        workspace_dir: Optional[str] = ".",
+        timeout: Optional[float] = 5.0,
+        statement: str = "True",
+        theorem_name: str = "__eval",
+        prelude: Optional[str] = None,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.workspace_dir = workspace_dir
+        self.timeout = timeout
+        self.statement = statement
+        self.theorem_name = theorem_name
+        self.prelude = prelude
+        self._client = RocqBatchClient(
+            host=self.host,
+            port=self.port,
+            workspace_dir=self.workspace_dir,
+            theorem_name=self.theorem_name,
+            statement=self.statement,
+            prelude=self.prelude,
+        )
+
+        super().__init__(name="rocq_evaluator")
+
+    def __call__(
+        self, code: Union[str, List[str]]
+    ) -> Union[float, List[float]]:
+        snippets = [code] if isinstance(code, str) else code
+        results: List[float] = []
+
+        for snippet in snippets:
+            response = self._client.verify_snippet(snippet)
+            results.append(1.0 if response.get("proof_finished") else 0.0)
+
+        return results[0] if isinstance(code, str) else results
+
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self) -> "RocqEvaluator":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    def _build_file_text(self) -> str:
+        parts: List[str] = []
+        if self.prelude:
+            parts.append(self.prelude.rstrip())
+        parts.append(f"Theorem {self.theorem_name} : {self.statement}.")
+        return "\n".join(parts) + "\n"
+
+
 class EvaluatorType(Enum):
     CUMULATIVE_LOGPROB = LogprobEvaluator
     REPL = REPLEvaluator
@@ -998,6 +1068,7 @@ class EvaluatorType(Enum):
     TOURNAMENT = TournamentEvaluator
     NORMALIZED_LENGTHS = NormLenEvaluator
     NORMALIZED_LENGTHS_PROBS = NormLenProbEvaluator
+    ROCQ = RocqEvaluator
 
     @classmethod
     def from_str(cls, name: str) -> "EvaluatorType":

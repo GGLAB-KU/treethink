@@ -35,11 +35,31 @@ class LeanREPLArgs(BaseArgs):
 
 
 @dataclass
+class RocqREPLArgs(BaseArgs):
+    """
+    Args:
+        host (str): The host name or IP address of the Rocq server.
+        port (int): The port of the Rocq server.
+        workspace_dir (str): The workspace root used for temporary proof files.
+        batch_size (int): The batch size for processing. Defaults to 8.
+        num_proc (int): The number of processes to use. Defaults to 4.
+        timeout (int): The timeout in seconds. Defaults to 400.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 5000
+    workspace_dir: str = "."
+    batch_size: int = 8
+    num_proc: int = 4
+    timeout: int = 400
+
+
+@dataclass
 class ReplStrategyArgs(BaseArgs):
     enabled: bool = False
     backend_name: str = "kimina"
     backend_args: dict = field(default_factory=dict)
-    repl_args: Optional[LeanREPLArgs] = None
+    repl_args: Optional[BaseArgs] = None
     max_repl: int = 16
     sync_fn_name: str = "repl_encountered_termination"
     async_fn_name: str = "async_repl_encountered_termination"
@@ -97,7 +117,7 @@ class TreeThinkArgs(BaseArgs):
     remove_duplicate_children: bool = False
 
     # REPL Proof Paths
-    repl_args: LeanREPLArgs = None
+    repl_args: BaseArgs = None
     max_repl: int = 16
     repl_terminated_paths: bool = False
     repl_encountered_termination: bool = False

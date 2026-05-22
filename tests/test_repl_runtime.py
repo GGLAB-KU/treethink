@@ -1,7 +1,12 @@
 import unittest
 from unittest.mock import patch
 
-from treethink import LeanREPLArgs, ReplStrategyArgs, TreeThinkArgs
+from treethink import (
+    LeanREPLArgs,
+    ReplStrategyArgs,
+    RocqREPLArgs,
+    TreeThinkArgs,
+)
 from treethink import repl_runtime as repl_runtime_module
 from treethink.repl_backends import REPL_BACKENDS, ReplBackendBase
 
@@ -30,6 +35,22 @@ class DummyBackend(ReplBackendBase):
 
     def create_async_client(self, repl_args, backend_args):
         return {"kind": "async-client", "url": repl_args.lean_server_url}
+
+
+class DummyRocqClient:
+    def __init__(self, host, port, **kwargs):
+        self.host = host
+        self.port = port
+        self.kwargs = kwargs
+
+
+class DummyRocqBackendClient:
+    backend_name = "rocq"
+
+    def __init__(self, host, port, **kwargs):
+        self.host = host
+        self.port = port
+        self.kwargs = kwargs
 
 
 class TestReplRuntime(unittest.TestCase):
@@ -131,6 +152,28 @@ class TestReplRuntime(unittest.TestCase):
 
         self.assertEqual(callback.func, dummy_sync_function)
         self.assertEqual(callback.keywords["client"]["kind"], "sync-client")
+
+    def test_runtime_wires_rocq_backend_clients(self):
+        args = TreeThinkArgs(
+            termination_str="```",
+            repl_args=RocqREPLArgs(host="127.0.0.1", port=5000),
+            repl_encountered_termination_args=ReplStrategyArgs(
+                enabled=True,
+                backend_name="rocq",
+                repl_args=RocqREPLArgs(host="127.0.0.1", port=5000),
+                backend_args={"sync_client_cls": DummyRocqClient},
+                sync_fn_name="repl_encountered_termination",
+                async_fn_name="async_repl_encountered_termination",
+            ),
+        )
+
+        runtime = args.build_repl_runtime()
+        callback = runtime.build_termination_callback(method=object())
+
+        self.assertEqual(callback.func.__name__, "repl_encountered_termination")
+        self.assertIsInstance(callback.keywords["client"], DummyRocqClient)
+        self.assertEqual(callback.keywords["client"].host, "127.0.0.1")
+        self.assertEqual(callback.keywords["client"].port, 5000)
 
 
 if __name__ == "__main__":

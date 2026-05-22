@@ -5,7 +5,7 @@ from typing import Optional
 from loguru import logger
 
 from .repl_backends import ReplBackendBase, get_repl_backend
-from .utils.args import LeanREPLArgs, ReplStrategyArgs
+from .utils.args import BaseArgs, ReplStrategyArgs
 
 
 @dataclass
@@ -140,7 +140,7 @@ class ReplRuntime:
     def _normalize_config(
         config: Optional[ReplStrategyArgs],
         legacy_enabled: bool,
-        fallback_repl_args: Optional[LeanREPLArgs],
+        fallback_repl_args: Optional[BaseArgs],
         fallback_max_repl: int,
         default_sync_fn_name: str,
         default_async_fn_name: str,
