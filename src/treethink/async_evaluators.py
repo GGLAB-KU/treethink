@@ -26,7 +26,7 @@ except ImportError:
 from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
 )
-from treethink.grading import extract_data, split_proof_header
+from treethink.clients.lean import extract_data, split_proof_header
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
     EvaluatorArgs,

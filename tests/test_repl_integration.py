@@ -43,8 +43,6 @@ class TestREPLIntegration(unittest.TestCase):
             remove_duplicate_children=True,
             repl_args=LeanREPLArgs(),
             max_repl=8,
-            repl_terminated_paths=False,  # to be modified in test functions
-            repl_encountered_termination=False,  # to be modified in test functions
             beam_width=2,
             exploration_weight=1.414213,
             final_decision_mode=FinalDecisionMode.CLEAR_FRONTIER,
@@ -54,7 +52,7 @@ class TestREPLIntegration(unittest.TestCase):
         """Test of REPL checking finished proof trajectories."""
 
         # Testing repl_terminated_paths
-        self.treethink_args.repl_terminated_paths = True
+        self.treethink_args.repl_terminated_paths_args.enabled = True
         self.treethink_args.graph_path = (
             "tests/outputs/repl_terminated_paths.txt"
         )
@@ -78,7 +76,7 @@ class TestREPLIntegration(unittest.TestCase):
 
     def test_repl_encountered_termination(self):
         """Test of REPL checking encountered termination trajectories."""
-        self.treethink_args.repl_encountered_termination = True
+        self.treethink_args.repl_encountered_termination_args.enabled = True
         self.treethink_args.graph_path = (
             "tests/outputs/repl_encountered_termination.txt"
         )

@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Mapping
 
 from kimina_client import AsyncKiminaClient, KiminaClient
 
+from .clients.coq.rocq import RocqBatchClient
 from .termination import (
     async_repl_encountered_termination,
     async_repl_terminated_paths,
@@ -59,9 +60,9 @@ class ReplBackendBase(ABC):
         kwargs = {
             "method": method,
             "client": client,
-            "timeout": repl_args.timeout,
-            "num_proc": repl_args.num_proc,
-            "batch_size": repl_args.batch_size,
+            "timeout": repl_args.get("timeout"),
+            "num_proc": repl_args.get("num_proc"),
+            "batch_size": repl_args.get("batch_size"),
         }
         if mode == "terminated_paths":
             kwargs["max_repl"] = strategy_args.max_repl
@@ -100,8 +101,55 @@ class KiminaReplBackend(ReplBackendBase):
         return client_cls(repl_args.lean_server_url)
 
 
+class RocqReplBackend(ReplBackendBase):
+    name = "rocq"
+
+    def resolve_sync_function(self, function_name: str) -> Callable:
+        try:
+            return SYNC_REPL_FUNCTIONS[function_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown Rocq sync REPL function '{function_name}'."
+            ) from exc
+
+    def resolve_async_function(self, function_name: str) -> Callable:
+        try:
+            return ASYNC_REPL_FUNCTIONS[function_name]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unknown Rocq async REPL function '{function_name}'."
+            ) from exc
+
+    def create_sync_client(
+        self, repl_args: Any, backend_args: Mapping[str, Any]
+    ):
+        client_cls = backend_args.get("sync_client_cls", RocqBatchClient)
+        client_kwargs = dict(backend_args.get("client_kwargs", {}))
+        client_kwargs.setdefault(
+            "workspace_dir", repl_args.get("workspace_dir")
+        )
+        client_kwargs.setdefault(
+            "theorem_name", backend_args.get("theorem_name", "__eval")
+        )
+        client_kwargs.setdefault(
+            "statement", backend_args.get("statement", "True")
+        )
+        client_kwargs.setdefault("prelude", backend_args.get("prelude"))
+        return client_cls(
+            repl_args.get("host"), repl_args.get("port"), **client_kwargs
+        )
+
+    def create_async_client(
+        self, repl_args: Any, backend_args: Mapping[str, Any]
+    ):
+        raise NotImplementedError(
+            "Rocq REPL backend currently supports sync verification only."
+        )
+
+
 REPL_BACKENDS: Dict[str, ReplBackendBase] = {
     KiminaReplBackend.name: KiminaReplBackend(),
+    RocqReplBackend.name: RocqReplBackend(),
 }
 
 

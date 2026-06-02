@@ -1,13 +1,13 @@
-from treethink.grading.client import client
-from treethink.grading.client import infotree
+from treethink.clients.lean.client import client
+from treethink.clients.lean.client import infotree
 
-from treethink.grading.client.client import (
+from treethink.clients.lean.client.client import (
     Lean4Client,
     batch_verify_proof,
     process_batch,
     process_batches,
 )
-from treethink.grading.client.infotree import (
+from treethink.clients.lean.client.infotree import (
     WRAPPER_TACTICS,
     adjust_intervals,
     ends_with_by,
