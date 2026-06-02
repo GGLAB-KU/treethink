@@ -2,11 +2,29 @@ from typing import TypeVar
 
 from loguru import logger
 
-from .base_method import BaseMethod
-from .beam import BeamSearch
-from .bfts import BFTS
-from .mcts import MCTS
-from .node import Node, get_total_child_num
+# <AUTOGEN_INIT>
+from treethink.methods import base_method, beam, bfts, mcts, node
+from treethink.methods.base_method import (
+    BaseMethod,
+)
+from treethink.methods.beam import (
+    AsyncBeamSearch,
+    BeamSearch,
+)
+from treethink.methods.bfts import (
+    BFTS,
+    AsyncBFTS,
+)
+from treethink.methods.mcts import (
+    MCTS,
+    AsyncMCTS,
+)
+from treethink.methods.node import (
+    Node,
+    get_total_child_num,
+)
+
+# </AUTOGEN_INIT>
 
 # Import async methods
 try:
@@ -66,14 +84,5 @@ __all__ = [
     "get_total_child_num",
     "mcts",
     "node",
+    "get_method",
 ]
-
-# Add async methods to __all__ if available
-if ASYNC_AVAILABLE:
-    __all__.extend(
-        [
-            "AsyncBeamSearch",
-            "AsyncBFTS",
-            "AsyncMCTS",
-        ]
-    )

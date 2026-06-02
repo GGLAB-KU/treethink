@@ -1,16 +1,16 @@
-from treethink import (
-    async_evaluators,
-    async_policies,
-    evaluators,
-    graph,
-    methods,
-    policies,
-    repl_backends,
-    repl_runtime,
-    termination,
-    treethink,
-    utils,
-)
+from treethink import async_evaluators
+from treethink import async_policies
+from treethink import clients
+from treethink import evaluators
+from treethink import graph
+from treethink import methods
+from treethink import policies
+from treethink import repl_backends
+from treethink import repl_runtime
+from treethink import termination
+from treethink import treethink
+from treethink import utils
+
 from treethink.async_evaluators import (
     ASYNC_EVALUATORS,
     ASYNC_IMPLEMENTED_EVALUATORS,
@@ -24,22 +24,25 @@ from treethink.async_evaluators import (
 from treethink.async_policies import (
     ASYNC_POLICIES,
     ASYNC_POLICY_TYPE,
-    IMPLEMENTED_ASYNC_POLICIES,
     AsyncBatchVLLMPolicy,
     AsyncPolicyType,
     AsyncVLLMPolicy,
     AsyncVLLMServerPolicy,
+    IMPLEMENTED_ASYNC_POLICIES,
     get_async_policy,
     get_async_policy_from_config,
 )
-from treethink.clients import lean
-from treethink.clients.lean import (
-    WRAPPER_TACTICS,
+from treethink.clients import (
     Lean4Client,
+    RocqBatchClient,
+    RocqSnippetResult,
+    WRAPPER_TACTICS,
     adjust_intervals,
     analyze,
     analyze_sample,
     batch_verify_proof,
+    client,
+    coq,
     ends_with_by,
     extract_data,
     extract_nodes_and_edges,
@@ -52,6 +55,8 @@ from treethink.clients.lean import (
     is_by,
     is_calc,
     is_wrapper,
+    isabelle,
+    lean,
     merge_intervals,
     parse_client_response,
     parse_error_message,
@@ -62,20 +67,21 @@ from treethink.clients.lean import (
     proof_utils,
     remove_lean_comments,
     retrieve_tactics,
+    rocq,
+    rocq_response_is_success,
     separate_trailing_comment,
     separate_trailing_whitespace,
     split_proof_header,
     transfer_trailing_whitespaces_and_comments,
 )
-from treethink.clients.lean.client import client
 from treethink.evaluators import (
+    BaseEvaluator,
     EVALUATORS,
+    EvaluatorType,
     IMPLEMENTED_EVALUATORS,
+    JudgeEvaluator,
     LLM_AS_JUDGE_SYSTEM_PROMPT,
     LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
-    BaseEvaluator,
-    EvaluatorType,
-    JudgeEvaluator,
     LogprobEvaluator,
     NormLenEvaluator,
     NormLenProbEvaluator,
@@ -98,26 +104,24 @@ from treethink.graph import (
 )
 from treethink.methods import (
     BFTS,
-    MCTS,
-    AsyncBeamSearch,
-    AsyncBFTS,
-    AsyncMCTS,
     BaseMethod,
     BeamSearch,
+    MCTS,
     Node,
     base_method,
     beam,
     bfts,
+    get_method,
     get_total_child_num,
     mcts,
     node,
 )
 from treethink.policies import (
+    BasePolicy,
+    DynamicPolicy,
     IMPLEMENTED_POLICIES,
     POLICIES,
     POLICY_TYPE,
-    BasePolicy,
-    DynamicPolicy,
     PolicyType,
     VLLMPolicy,
     VLLMServerPolicy,
@@ -126,11 +130,11 @@ from treethink.policies import (
 )
 from treethink.repl_backends import (
     ASYNC_REPL_FUNCTIONS,
-    REPL_BACKENDS,
-    SYNC_REPL_FUNCTIONS,
     KiminaReplBackend,
+    REPL_BACKENDS,
     ReplBackendBase,
     RocqReplBackend,
+    SYNC_REPL_FUNCTIONS,
     get_repl_backend,
 )
 from treethink.repl_runtime import (
@@ -178,13 +182,10 @@ __all__ = [
     "ASYNC_POLICIES",
     "ASYNC_POLICY_TYPE",
     "ASYNC_REPL_FUNCTIONS",
-    "AsyncBFTS",
     "AsyncBaseEvaluator",
     "AsyncBatchVLLMPolicy",
-    "AsyncBeamSearch",
     "AsyncEvaluatorType",
     "AsyncJudgeEvaluator",
-    "AsyncMCTS",
     "AsyncNormLenEvaluator",
     "AsyncPolicyType",
     "AsyncREPLEvaluator",
@@ -221,17 +222,19 @@ __all__ = [
     "POLICIES",
     "POLICY_TYPE",
     "PolicyArgs",
-    "RocqREPLArgs",
     "PolicyType",
     "ProbEvaluator",
     "REPLEvaluator",
-    "RocqEvaluator",
     "REPL_BACKENDS",
     "ReplBackendBase",
     "ReplHookRuntime",
     "ReplRuntime",
     "ReplStrategyArgs",
+    "RocqBatchClient",
+    "RocqEvaluator",
+    "RocqREPLArgs",
     "RocqReplBackend",
+    "RocqSnippetResult",
     "SYNC_REPL_FUNCTIONS",
     "SamplingArgs",
     "ServerArgs",
@@ -260,8 +263,10 @@ __all__ = [
     "calculate_logprobs",
     "check_tags",
     "client",
+    "clients",
     "coerce_enum",
     "convert_folder_of_txt_to_proofs",
+    "coq",
     "ends_with_by",
     "enums",
     "evaluators",
@@ -278,11 +283,11 @@ __all__ = [
     "get_evaluator_from_config",
     "get_intervals",
     "get_messages_for_lines",
+    "get_method",
     "get_policy",
     "get_policy_from_config",
     "get_repl_backend",
     "get_total_child_num",
-    "lean",
     "graph",
     "has_error_response",
     "infotree",
@@ -290,6 +295,8 @@ __all__ = [
     "is_by",
     "is_calc",
     "is_wrapper",
+    "isabelle",
+    "lean",
     "load_graphviz_state",
     "mcts",
     "merge_intervals",
@@ -309,6 +316,8 @@ __all__ = [
     "repl_runtime",
     "repl_terminated_paths",
     "retrieve_tactics",
+    "rocq",
+    "rocq_response_is_success",
     "run_graphviz_on_file",
     "save_tree_to_txt",
     "separate_trailing_comment",

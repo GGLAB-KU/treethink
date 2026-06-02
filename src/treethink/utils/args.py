@@ -80,8 +80,8 @@ class TreeThinkArgs(BaseArgs):
         graph_path (str): The path to save the generated graph.
             Defaults to None.
         termination_str (str): The string that indicates the termination of a
-            proof path. Used when repl_terminating_paths=True. Set None to
-            disable. Defaults to None.
+            proof path. Used when repl_terminated_paths_args.enabled=True.
+            Set None to disable. Defaults to None.
         store_method_class (bool): Whether to store the method class under the
             generation. Can be quite memory-intensive as method class contains
             the whole proof tree. Defaults to False.
@@ -90,14 +90,14 @@ class TreeThinkArgs(BaseArgs):
         remove_duplicate_children (bool): Whether to remove duplicate children
             in the generation process. Defaults to False.
         repl_args (LeanREPLArgs): The arguments for the Lean REPL server, if
-            repl_terminated_paths=True. Defaults to None.
+            repl_terminated_paths_args.enabled=True. Defaults to None.
         max_repl (int): The maximum number of REPL calls, if
-            repl_terminated_paths=True. Defaults to 16.
-        repl_terminated_paths (bool): Whether to use REPL on terminated paths
-            after the generation ends. This is done in a batched way, therefore,
-            the time penalty is not significant. Defaults to False.
-        repl_encountered_termination (bool): Whether to use REPL when a
-            termination node is encountered in expansion. Defaults to False. TODO(burak): make this batched
+            repl_terminated_paths_args.enabled=True. Defaults to 16.
+        repl_terminated_paths_args (ReplStrategyArgs): Strategy settings for
+            checking terminated paths after the generation ends.
+        repl_encountered_termination_args (ReplStrategyArgs): Strategy settings
+            for checking a termination node when it is encountered in
+            expansion.
         beam_width (int): The beam width for beam search. Defaults to None.
         exploration_weight (float): The exploration weight for MCTS.
             Defaults to None.
@@ -119,8 +119,6 @@ class TreeThinkArgs(BaseArgs):
     # REPL Proof Paths
     repl_args: BaseArgs = None
     max_repl: int = 16
-    repl_terminated_paths: bool = False
-    repl_encountered_termination: bool = False
     repl_terminated_paths_args: ReplStrategyArgs = field(
         default_factory=lambda: ReplStrategyArgs(
             sync_fn_name="repl_terminated_paths",

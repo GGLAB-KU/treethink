@@ -57,7 +57,10 @@ class TestReplRuntime(unittest.TestCase):
     def test_runtime_stays_disabled_without_termination_marker(self):
         args = TreeThinkArgs(
             repl_args=LeanREPLArgs(lean_server_url="http://localhost:8000"),
-            repl_encountered_termination=True,
+            repl_encountered_termination_args=ReplStrategyArgs(
+                enabled=True,
+                repl_args=LeanREPLArgs(lean_server_url="http://localhost:8000"),
+            ),
         )
 
         runtime = args.build_repl_runtime()
@@ -65,25 +68,25 @@ class TestReplRuntime(unittest.TestCase):
         self.assertFalse(runtime.encountered_termination.enabled)
         self.assertFalse(runtime.terminated_paths.enabled)
 
-    def test_build_runtime_from_legacy_flags(self):
+    def test_build_runtime_from_strategy_enabled_flag(self):
         args = TreeThinkArgs(
             termination_str="```",
             repl_args=LeanREPLArgs(lean_server_url="http://localhost:8000"),
-            repl_terminated_paths=False,
-            repl_encountered_termination=True,
+            repl_terminated_paths_args=ReplStrategyArgs(
+                enabled=True,
+                repl_args=LeanREPLArgs(lean_server_url="http://localhost:8000"),
+            ),
         )
 
         runtime = args.build_repl_runtime()
 
-        self.assertTrue(runtime.encountered_termination.enabled)
         self.assertFalse(runtime.terminated_paths.enabled)
+        self.assertFalse(runtime.encountered_termination.enabled)
 
     def test_runtime_uses_separate_strategy_configs(self):
         args = TreeThinkArgs(
             termination_str="```",
             repl_args=None,
-            repl_terminated_paths=False,
-            repl_encountered_termination=False,
             repl_encountered_termination_args=ReplStrategyArgs(
                 enabled=True,
                 repl_args=LeanREPLArgs(lean_server_url="http://encountered"),
@@ -116,7 +119,6 @@ class TestReplRuntime(unittest.TestCase):
         args = TreeThinkArgs(
             termination_str="```",
             repl_args=LeanREPLArgs(lean_server_url="http://localhost:8000"),
-            repl_terminated_paths=False,
             repl_encountered_termination_args=ReplStrategyArgs(
                 enabled=True,
                 repl_args=LeanREPLArgs(lean_server_url="http://localhost:8001"),

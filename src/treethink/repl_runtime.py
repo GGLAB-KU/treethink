@@ -60,11 +60,10 @@ class ReplHookRuntime:
         return self.client
 
     def _build_kwargs(self, method, async_mode: bool) -> dict:
-        repl_args = self.config.repl_args
         return self.backend.build_call_kwargs(
             mode=self.mode,
             method=method,
-            repl_args=repl_args,
+            repl_args=self.config.repl_args,
             strategy_args=self.config,
             backend_args=self.config.backend_args,
             client=self._ensure_client(async_mode),
@@ -100,8 +99,6 @@ class ReplRuntime:
 
         encountered_config = cls._normalize_config(
             config=treethink_args.repl_encountered_termination_args,
-            legacy_enabled=treethink_args.repl_encountered_termination
-            and repl_enabled,
             fallback_repl_args=shared_repl_args,
             fallback_max_repl=treethink_args.max_repl,
             default_sync_fn_name="repl_encountered_termination",
@@ -110,8 +107,6 @@ class ReplRuntime:
         )
         terminated_paths_config = cls._normalize_config(
             config=treethink_args.repl_terminated_paths_args,
-            legacy_enabled=treethink_args.repl_terminated_paths
-            and repl_enabled,
             fallback_repl_args=shared_repl_args,
             fallback_max_repl=treethink_args.max_repl,
             default_sync_fn_name="repl_terminated_paths",
@@ -139,7 +134,6 @@ class ReplRuntime:
     @staticmethod
     def _normalize_config(
         config: Optional[ReplStrategyArgs],
-        legacy_enabled: bool,
         fallback_repl_args: Optional[BaseArgs],
         fallback_max_repl: int,
         default_sync_fn_name: str,
@@ -148,7 +142,7 @@ class ReplRuntime:
     ) -> ReplStrategyArgs:
         if config is None:
             config = ReplStrategyArgs(
-                enabled=legacy_enabled and repl_enabled,
+                enabled=repl_enabled,
                 backend_name="kimina",
                 backend_args={},
                 repl_args=fallback_repl_args,
@@ -158,7 +152,7 @@ class ReplRuntime:
             )
         else:
             config = ReplStrategyArgs(
-                enabled=(config.enabled or legacy_enabled) and repl_enabled,
+                enabled=config.enabled and repl_enabled,
                 backend_name=config.backend_name or "kimina",
                 backend_args=config.backend_args or {},
                 repl_args=config.repl_args or fallback_repl_args,

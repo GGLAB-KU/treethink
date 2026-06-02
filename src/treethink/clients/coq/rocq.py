@@ -137,7 +137,9 @@ class RocqBatchClient:
             if isinstance(item, tuple) and len(item) >= 2:
                 messages.append(str(item[1]))
             elif isinstance(item, dict):
-                messages.append(str(item.get("message", item.get("data", item))))
+                messages.append(
+                    str(item.get("message", item.get("data", item)))
+                )
             else:
                 messages.append(str(item))
         return "\n".join(messages) if messages else None
@@ -149,7 +151,9 @@ class RocqBatchClient:
         timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         pet = self._ensure_client()
-        tmp_path = pet.tmp_file(content=self._build_file_text(), root=self.workspace_dir)
+        tmp_path = pet.tmp_file(
+            content=self._build_file_text(), root=self.workspace_dir
+        )
 
         try:
             state = pet.start(file=str(tmp_path), thm=self.theorem_name)
@@ -162,7 +166,9 @@ class RocqBatchClient:
             return {
                 "backend": self.backend_name,
                 "proof_finished": success,
-                "error": None if success else self._extract_error_message(state),
+                "error": None
+                if success
+                else self._extract_error_message(state),
                 "messages": list(getattr(state, "feedback", []) or []),
             }
         except PetanqueError as exc:
@@ -192,7 +198,9 @@ class RocqBatchClient:
         max_workers: int = 4,
     ):
         results = [
-            RocqSnippetResult(response=self.verify_snippet(snip, timeout=timeout))
+            RocqSnippetResult(
+                response=self.verify_snippet(snip, timeout=timeout)
+            )
             for snip in snips
         ]
         return SimpleNamespace(results=results)

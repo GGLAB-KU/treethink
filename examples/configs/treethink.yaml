@@ -6,7 +6,8 @@ treethink:
   graph_path: "sampled/internlm2_infbaseS/"
   remove_duplicate_children: true
   termination_str: "```"
-  repl_terminated_paths: true
+  repl_terminated_paths_args:
+    enabled: true
   max_repl: 64
   repl_args:
     lean_server_url: "http://0.0.0.0:12336"

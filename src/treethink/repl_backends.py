@@ -60,9 +60,9 @@ class ReplBackendBase(ABC):
         kwargs = {
             "method": method,
             "client": client,
-            "timeout": repl_args.timeout,
-            "num_proc": repl_args.num_proc,
-            "batch_size": repl_args.batch_size,
+            "timeout": repl_args.get("timeout"),
+            "num_proc": repl_args.get("num_proc"),
+            "batch_size": repl_args.get("batch_size"),
         }
         if mode == "terminated_paths":
             kwargs["max_repl"] = strategy_args.max_repl
@@ -125,7 +125,9 @@ class RocqReplBackend(ReplBackendBase):
     ):
         client_cls = backend_args.get("sync_client_cls", RocqBatchClient)
         client_kwargs = dict(backend_args.get("client_kwargs", {}))
-        client_kwargs.setdefault("workspace_dir", repl_args.workspace_dir)
+        client_kwargs.setdefault(
+            "workspace_dir", repl_args.get("workspace_dir")
+        )
         client_kwargs.setdefault(
             "theorem_name", backend_args.get("theorem_name", "__eval")
         )
@@ -133,7 +135,9 @@ class RocqReplBackend(ReplBackendBase):
             "statement", backend_args.get("statement", "True")
         )
         client_kwargs.setdefault("prelude", backend_args.get("prelude"))
-        return client_cls(repl_args.host, repl_args.port, **client_kwargs)
+        return client_cls(
+            repl_args.get("host"), repl_args.get("port"), **client_kwargs
+        )
 
     def create_async_client(
         self, repl_args: Any, backend_args: Mapping[str, Any]
