@@ -9,6 +9,7 @@ dependencies = [
     "kimina-client",
     "mkinit>=1.2.0",
     "pytanque",
+    "pytest>=9.0.3",
     "rocq-ml-toolbox",
     "toml>=0.10.2",
 ]
