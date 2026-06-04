@@ -21,6 +21,14 @@ class TieBreaker(Enum):
     STABLE = "stable"
 
 
+class FormalLanguage(Enum):
+    """Supported formal proof assistants for termination / REPL clients."""
+
+    LEAN4 = "lean4"
+    RCOQ = "rcoq"
+    ISABELLE = "isabelle"
+
+
 EnumType = TypeVar("EnumType", bound=Enum)
 
 

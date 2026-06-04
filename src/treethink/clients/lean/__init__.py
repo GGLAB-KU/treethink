@@ -1,9 +1,11 @@
-from treethink.clients.lean import client
-from treethink.clients.lean import proof_utils
-
+from treethink.clients.lean import client, proof_utils
+from treethink.clients.lean.adapter import (
+    AsyncLeanClientAdapter,
+    LeanClientAdapter,
+)
 from treethink.clients.lean.client import (
-    Lean4Client,
     WRAPPER_TACTICS,
+    Lean4Client,
     adjust_intervals,
     batch_verify_proof,
     client,
@@ -39,7 +41,9 @@ from treethink.clients.lean.proof_utils import (
 )
 
 __all__ = [
+    "AsyncLeanClientAdapter",
     "Lean4Client",
+    "LeanClientAdapter",
     "WRAPPER_TACTICS",
     "adjust_intervals",
     "analyze",

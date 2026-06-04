@@ -13,8 +13,6 @@ from enum import Enum
 from typing import Callable, List, Optional, Union
 
 import vllm
-from kimina_client import AsyncKiminaClient
-from kimina_client.models import Infotree
 from loguru import logger
 
 try:
@@ -23,14 +21,15 @@ except ImportError:
     AsyncEngineArgs = None
     AsyncLLMEngine = None
 
+from treethink.clients.lean import extract_data, split_proof_header
+from treethink.clients.lean.adapter import AsyncLeanClientAdapter
 from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
 )
-from treethink.clients.lean import extract_data, split_proof_header
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
+    ClientArgs,
     EvaluatorArgs,
-    LeanREPLArgs,
     ModelArgs,
     SamplingArgs,
     calculate_logprobs,
@@ -66,28 +65,24 @@ class AsyncBaseEvaluator(ABC):
         pass
 
 
-class AsyncREPLEvaluator(AsyncBaseEvaluator):
+class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
+    """Async version of Lean REPL Node Evaluator.
+
+    Uses :class:`AsyncLeanClientAdapter` for parallel proof verification.
     """
-    Async version of REPL Node Evaluator.
 
-    Uses AsyncKiminaClient for parallel proof verification.
-    """
-
-    def __init__(self, repl_args: LeanREPLArgs, *args, **kwargs):
-        super().__init__(name="async_repl_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
-        self.async_client = AsyncKiminaClient(api_url=repl_args.lean_server_url)
-
-    def _is_lean_success(self, entry: dict) -> bool:
-        """Check if a Lean verification entry represents a successful verification."""
-        if not isinstance(entry, dict):
-            return False
-        if entry.get("error") is not None:
-            return False
-        for msg in entry.get("messages", []):
-            if msg.get("severity", "").lower() == "error":
-                return False
-        return True
+    def __init__(
+        self, client_args: Optional[ClientArgs] = None, *args, **kwargs
+    ):
+        super().__init__(name="async_lean_repl_evaluator", *args, **kwargs)
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
+        self.async_client = AsyncLeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
 
     async def __call__(
         self, nodes: Union[Node, List[Node]], method: BaseMethod
@@ -102,62 +97,65 @@ class AsyncREPLEvaluator(AsyncBaseEvaluator):
             snips = [node.answer for node in nodes]
 
             response = await self.async_client.check(
-                snips=snips, timeout=self.repl_args.timeout, show_progress=False
+                snips=snips,
+                timeout=self.client_args.timeout,
+                show_progress=False,
+                batch_size=self.client_args.batch_size,
+                max_workers=self.client_args.num_proc,
             )
 
             scores = []
             if response and getattr(response, "results", None):
                 for result in response.results:
-                    # Async client might return different structure than sync?
-                    # Assuming similar structure: result has error, response fields
                     if result.error:
                         scores.append(0.0)
                         continue
-
-                    is_successful = self._is_lean_success(result.response)
-                    scores.append(1.0 if is_successful else 0.0)
+                    scores.append(
+                        1.0
+                        if self.async_client.is_success_response(
+                            result.response
+                        )
+                        else 0.0
+                    )
             else:
-                # Fallback if no results
                 scores = [0.0] * len(nodes)
 
             return scores
 
         except Exception as e:
-            logger.error(f"Async REPL evaluation failed: {e}")
-            logger.debug(
-                "Returning default scores of 0.0 for all nodes due to error."
-            )
+            logger.error(f"Async Lean REPL evaluation failed: {e}")
             return [0.0] * len(nodes)
 
     def _str_fields(self):
         return super()._str_fields() + [
-            ("repl_args", self.repl_args),
-            ("async_client", self.async_client.__class__.__name__),
+            ("client_args", self.client_args),
         ]
 
 
 class AsyncJudgeEvaluator(AsyncBaseEvaluator):
-    """
-    Async version of LLM-as-Judge Node Evaluator.
-    """
+    """Async version of LLM-as-Judge Node Evaluator."""
 
     def __init__(
         self,
         llm_as_judge_model: Union["AsyncLLMEngine", ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
-        repl_args: LeanREPLArgs,
+        client_args: Optional[ClientArgs] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
         *args,
         **kwargs,
     ):
         super().__init__(name="async_judge_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
         self.system_prompt = llm_as_judge_system_prompt
 
         # Async Lean Client
-        self.async_lean_client = AsyncKiminaClient(
-            api_url=self.repl_args.lean_server_url
+        self.async_lean_client = AsyncLeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
         )
 
         # Initialize Model (AsyncLLMEngine)
@@ -274,8 +272,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         try:
             response = await self.async_lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
+                timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
@@ -365,7 +362,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         return super()._str_fields() + [
             ("model", self.model.__class__.__name__),
             ("sampling_params", self.sampling_params),
-            ("repl_args", self.repl_args),
+            ("client_args", self.client_args),
             ("system_prompt", self.system_prompt),
         ]
 
@@ -425,7 +422,7 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
 
 
 class AsyncEvaluatorType(Enum):
-    ASYNC_REPL = AsyncREPLEvaluator
+    ASYNC_REPL = AsyncLeanREPLEvaluator
     ASYNC_JUDGE = AsyncJudgeEvaluator
     ASYNC_NORMALIZED_LENGTHS = AsyncNormLenEvaluator
 

@@ -6,8 +6,6 @@ from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
 
 import vllm
-from kimina_client import KiminaClient
-from kimina_client.models import Infotree
 from loguru import logger
 from vllm.lora.request import LoRARequest
 
@@ -16,10 +14,11 @@ from treethink.clients.lean import (
     extract_data,
     split_proof_header,
 )
+from treethink.clients.lean.adapter import LeanClientAdapter
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
+    ClientArgs,
     EvaluatorArgs,
-    LeanREPLArgs,
     ModelArgs,
     SamplingArgs,
     calculate_logprobs,
@@ -126,82 +125,68 @@ class ProbEvaluator(BaseEvaluator):
         return super()._str_fields()
 
 
-class REPLEvaluator(BaseEvaluator):
-    def __init__(self, repl_args: LeanREPLArgs, *args, **kwargs):
-        super().__init__(name="repl_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
-        # Sync KiminaClient
-        self.lean_client = KiminaClient()
+class LeanREPLEvaluator(BaseEvaluator):
+    """Evaluate proof snippets via a Lean 4 REPL (Kimina server).
+
+    Uses :class:`LeanClientAdapter` to wrap the external ``KiminaClient``.
+    """
+
+    def __init__(
+        self, client_args: Optional[ClientArgs] = None, *args, **kwargs
+    ):
+        super().__init__(name="lean_repl_evaluator", *args, **kwargs)
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
+        self.lean_client = LeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
 
     def __call__(self, node: Union[Node, List[Node]], method: BaseMethod):
-        """
-        Evaluate the quality of a node using Lean server verification (KiminaClient).
-        Returns 1.0 for verification success, 0.0 otherwise.
-        """
+        """Evaluate node(s) — returns 1.0 for verified, 0.0 otherwise."""
         if isinstance(node, Node):
             nodes = [node]
         else:
             nodes = node
 
-        # Build snips
-        snips = []
-        for n in nodes:
-            snips.append(n.answer)
+        snips = [n.answer for n in nodes]
 
         try:
             response = self.lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
+                timeout=self.client_args.timeout,
                 show_progress=False,
+                batch_size=self.client_args.batch_size,
+                max_workers=self.client_args.num_proc,
             )
         except Exception as e:
-            logger.error(f"KiminaClient failed: {e}")
+            logger.error(f"Lean REPL evaluator failed: {e}")
             return [0.0] * len(nodes)
 
         results = []
-        for idx, n in enumerate(nodes):
+        for idx, _n in enumerate(nodes):
             try:
                 if response and getattr(response, "results", None):
-                    result = response.results[idx]
-                    entry = result.response
+                    entry = response.results[idx].response
                 else:
                     logger.warning("No results in Lean server response")
                     results.append(0.0)
                     continue
 
-                is_successful = self._is_lean_success(entry)
-
-                if is_successful:
-                    results.append(1.0)
-                else:
-                    results.append(0.0)
+                results.append(
+                    1.0 if self.lean_client.is_success_response(entry) else 0.0
+                )
             except Exception as e:
                 logger.error(f"Lean verification error: {e}")
                 results.append(0.0)
+
         return results if isinstance(node, list) else results[0]
-
-    def _is_lean_success(self, entry: dict) -> bool:
-        """
-        Check if a Lean verification entry represents a successful verification.
-        """
-        if not isinstance(entry, dict):
-            return False
-        # Check if there's an error at the top level
-        if entry.get("error") is not None:
-            return False
-
-        # Check if there are any error messages in the response
-        for msg in entry.get("messages", []):
-            if msg.get("severity", "").lower() == "error":
-                return False
-
-        return True
 
     def _str_fields(self):
         return super()._str_fields() + [
-            ("repl_args", self.repl_args),
-            ("lean_client", self.lean_client.__class__.__name__),
+            ("client_args", self.client_args),
         ]
 
 
@@ -210,7 +195,7 @@ class JudgeEvaluator(BaseEvaluator):
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
-        repl_args: LeanREPLArgs,
+        client_args: Optional[ClientArgs] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
         lora_path: Optional[str] = None,
@@ -218,7 +203,9 @@ class JudgeEvaluator(BaseEvaluator):
         **kwargs,
     ):
         super().__init__(name="llm_as_judge_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
 
         if isinstance(llm_as_judge_model, ModelArgs):
             self.model = self.init_model(
@@ -245,8 +232,12 @@ class JudgeEvaluator(BaseEvaluator):
 
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Sync KiminaClient
-        self.lean_client = KiminaClient()
+        # Sync Lean Client
+        self.lean_client = LeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -373,8 +364,7 @@ class JudgeEvaluator(BaseEvaluator):
         try:
             response = self.lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
+                timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
@@ -505,7 +495,7 @@ class JudgeEvaluator(BaseEvaluator):
             ("enable_lora", self.enable_lora),
             ("lora_path", self.lora_path),
             ("sampling_params", self.sampling_params),
-            ("repl_args", self.repl_args),
+            ("client_args", self.client_args),
             ("system_prompt", self.system_prompt),
         ]
 
@@ -515,7 +505,7 @@ class TournamentEvaluator(BaseEvaluator):
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
-        repl_args: LeanREPLArgs,
+        client_args: Optional[ClientArgs] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
         prompter: Optional[Callable] = None,
         shuffle_bracket: bool = True,
@@ -523,7 +513,9 @@ class TournamentEvaluator(BaseEvaluator):
         **kwargs,
     ):
         super().__init__(name="pairwise_tournament_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
         self.shuffle_bracket = shuffle_bracket
 
         if isinstance(llm_as_judge_model, ModelArgs):
@@ -542,8 +534,12 @@ class TournamentEvaluator(BaseEvaluator):
 
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Sync KiminaClient
-        self.lean_client = KiminaClient()
+        # Sync Lean Client
+        self.lean_client = LeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -744,8 +740,7 @@ class TournamentEvaluator(BaseEvaluator):
         try:
             response = self.lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
+                timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
@@ -864,7 +859,7 @@ class TournamentEvaluator(BaseEvaluator):
         return super()._str_fields() + [
             ("model", self.model.__class__.__name__),
             ("sampling_params", self.sampling_params),
-            ("repl_args", self.repl_args),
+            ("client_args", self.client_args),
             ("shuffle_bracket", self.shuffle_bracket),
             ("system_prompt", self.system_prompt),
         ]
@@ -1063,7 +1058,7 @@ class RocqEvaluator(BaseEvaluator):
 
 class EvaluatorType(Enum):
     CUMULATIVE_LOGPROB = LogprobEvaluator
-    REPL = REPLEvaluator
+    REPL = LeanREPLEvaluator
     LLM_AS_JUDGE = JudgeEvaluator
     TOURNAMENT = TournamentEvaluator
     NORMALIZED_LENGTHS = NormLenEvaluator

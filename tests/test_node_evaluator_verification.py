@@ -2,7 +2,7 @@
 Test script for Node Evaluators with Kimina Server integration.
 
 This script tests:
-1. REPLEvaluator - Basic proof verification
+1. LeanREPLEvaluator - Basic Lean proof verification
 2. JudgeEvaluator - Advanced evaluation with infotree
 """
 
@@ -13,9 +13,9 @@ from kimina_client import KiminaClient
 from kimina_client.models import Infotree
 
 from treethink import (
-    LeanREPLArgs,
+    ClientArgs,
+    LeanREPLEvaluator,
     Node,
-    REPLEvaluator,
     RocqEvaluator,
 )
 
@@ -78,16 +78,16 @@ def create_mock_node(proof: str, level: int = 1) -> Node:
 
 
 def test_repl_evaluator():
-    """Test REPLEvaluator with valid and invalid proofs."""
+    """Test LeanREPLEvaluator with valid and invalid proofs."""
     print("\n" + "=" * 80)
-    print("Testing REPLEvaluator")
+    print("Testing LeanREPLEvaluator")
     print("=" * 80)
 
     # Initialize evaluator
-    repl_args = LeanREPLArgs(
+    client_args = ClientArgs(
         lean_server_url="http://localhost:8000", timeout=30
     )
-    evaluator = REPLEvaluator(repl_args=repl_args)
+    evaluator = LeanREPLEvaluator(client_args=client_args)
     method = MockMethod()
 
     print("\n📝 Testing VALID proofs...")
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         # Test 2: Batch verification
         test_batch_verification()
 
-        # Test 3: REPLEvaluator
+        # Test 3: LeanREPLEvaluator
         test_repl_evaluator()
 
         print("\n" + "=" * 80)
