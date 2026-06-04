@@ -4,8 +4,4 @@ from treethink.clients.coq.rocq import (
     RocqSnippetResult,
 )
 
-__all__ = [
-    "RocqBatchClient",
-    "RocqSnippetResult",
-    "rocq",
-]
+__all__ = ["RocqBatchClient", "RocqSnippetResult", "rocq"]
