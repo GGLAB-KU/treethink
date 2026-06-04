@@ -1,3 +1,5 @@
+"""YAML config parsing utilities for TreeThink and normal inference configurations."""
+
 from dataclasses import fields, is_dataclass
 from enum import Enum
 from functools import partial
@@ -15,12 +17,20 @@ from typing import (
 import yaml
 from loguru import logger
 
+from treethink.utils.args import (
+    EvaluatorArgs,
+    ModelArgs,
+    PolicyArgs,
+    SamplingArgs,
+    TreeThinkArgs,
+)
 from treethink.utils.enums import coerce_enum
 
 T = TypeVar("T")
 
 
 def drop_none(value):
+    """Recursively remove None values from dicts and lists."""
     if isinstance(value, dict):
         return {k: drop_none(v) for k, v in value.items() if v is not None}
     if isinstance(value, list):
@@ -29,6 +39,7 @@ def drop_none(value):
 
 
 def serialize_args(obj):
+    """Serialize a dataclass instance (or nested structure) into plain dicts."""
     if obj is None:
         return None
     if is_dataclass(obj):
@@ -61,12 +72,12 @@ def _parse_yaml_file(
     """Parse the yaml file and compare it with the default arguments.
 
     Args:
-        config_path (str): path to the config file.
-        section_class (Dict[str, Any]): a dictionary holding the section names in
-        the yaml file as keys, and corresponding classes as values.
+        config_path: path to the config file.
+        section_class: a dictionary holding the section names in
+            the yaml file as keys, and corresponding classes as values.
 
     Returns:
-        Tuple[Any]:
+        Tuple of parsed dataclass instances.
     """
     logger.debug(f"YAML config path: {config_path}")
     with open(config_path, "r") as f:
@@ -117,22 +128,6 @@ def _parse_config_to_dataclass(config_dict: dict, dataclass_type: Type[T]) -> T:
         parsed_args[field_name] = _coerce_config_value(
             expected_type, field_value
         )
-
-    # Handle fields that weren't provided in config but have defaults
-    dataclass_fields = {f.name: f for f in fields(dataclass_type)}
-    for field_name, field_obj in dataclass_fields.items():
-        if field_name not in parsed_args:
-            # Only add if field has a default value or default_factory
-            if field_obj.default is not field_obj.default_factory:
-                # Field has a default value, let dataclass handle it
-                pass
-            elif (
-                field_obj.default_factory
-                is not field_obj.default_factory.__class__()
-            ):
-                # Field has a default_factory, let dataclass handle it
-                pass
-            # If no default and field is optional, we can skip it
 
     result = dataclass_type(**parsed_args)
     logger.debug(f"Resulting dataclass: {result}")
@@ -185,13 +180,7 @@ def _coerce_config_value(expected_type, field_value):
     return field_value
 
 
-# Inference Time
-from treethink import (  # noqa: E402
-    EvaluatorArgs,
-    PolicyArgs,
-    TreeThinkArgs,
-)
-
+# -- Inference Time config parsing --
 __treethink = {
     "treethink": TreeThinkArgs,
     "policy": PolicyArgs,
@@ -200,13 +189,21 @@ __treethink = {
 
 parse_treethink_args = partial(_parse_yaml_file, section_class=__treethink)
 
-# Normal Inference
-from treethink import ModelArgs, SamplingArgs  # noqa: E402
-
+# -- Normal Inference config parsing --
 __normal_inference = {
     "model": ModelArgs,
     "sampling": SamplingArgs,
 }
+
 parse_normal_inference_args = partial(
     _parse_yaml_file, section_class=__normal_inference
 )
+
+
+__all__ = [
+    "T",
+    "drop_none",
+    "serialize_args",
+    "parse_treethink_args",
+    "parse_normal_inference_args",
+]

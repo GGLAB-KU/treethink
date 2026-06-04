@@ -1,3 +1,10 @@
+"""Dataset preparation utilities for TreeThink.
+
+Provides :class:`PreparationConfig` and :class:`ConfigRegistry` for managing
+dataset preprocessing configurations, and :func:`prepare_datapoints` for
+loading and transforming datasets into the format expected by the sampler.
+"""
+
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -6,27 +13,30 @@ from typing import Any, Dict, List, Optional, Union
 import toml
 import yaml
 from loguru import logger
-from utils import load_dataset
+
+from treethink.utils.load import load_dataset
 
 
 @dataclass
 class PreparationConfig:
     """Configuration for a specific preprocessing setup.
+
     Args:
-        name (str): name of the configuration.
-        path_or_name (str): path or huggingface name of the dataset.
-            Also supported: jsonl, json. (See math_reasoning.utils load_dataset)
-        dataset_split (str): dataset split for huggingface datasets
-        prompt_format (str): prompt template to pass into batched_inference.
-            Note: if renamed_data_keys is specified, then prompt_format should
-            include keywords from renamed_data_keys, not data_keys.
-        data_keys (List[str]): data column names in the dataset
-        renamed_data_keys (Optional[List[str]]): it is possible to rename the
-            columns in the dataset. In the final output, keys from
-            renamed_data_keys will be found. renamed_data_keys is basically
-            a map for data_keys.
-        model_name (Optional[str]): model name for the configuration to hold.
-        custom_params (Dict[str, Any]): additional params.
+        name: Name of the configuration.
+        path_or_name: Path or HuggingFace name of the dataset.
+            Also supported: jsonl, json.
+        dataset_split: Dataset split for HuggingFace datasets.
+        prompt_format: Prompt template to pass into batched_inference.
+            Note: if *renamed_data_keys* is specified, then *prompt_format*
+            should include keywords from *renamed_data_keys*, not *data_keys*.
+        system_prompt: System prompt prepended to every request.
+        data_keys: Data column names in the dataset.
+        format_type: Format type hint (e.g. ``"jsonl"``, ``"huggingface"``).
+            If ``None``, inferred from file extension.
+        download_dir: Directory to cache downloaded datasets.
+        renamed_data_keys: Optional mapping of *data_keys* to new column names
+            in the output. Must be the same length as *data_keys*.
+        custom_params: Additional parameters passed to the dataset loader.
     """
 
     name: str
@@ -36,9 +46,8 @@ class PreparationConfig:
     system_prompt: str
     data_keys: List[str]
     format_type: str = None
-    renamed_data_keys: Optional[List[str]] = None
-    model_name: Optional[str] = None
     download_dir: Optional[str] = None
+    renamed_data_keys: Optional[List[str]] = None
     custom_params: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -131,7 +140,6 @@ class ConfigRegistry:
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        # Create a dictionary with all configs
         all_configs = {
             "configs": {
                 config_name: config.to_dict()
@@ -215,14 +223,16 @@ class ConfigRegistry:
     def register_config_from_file(
         self, filepath: Union[str, Path], config_name: Optional[str] = None
     ) -> PreparationConfig:
-        """Load configuration from file. If config_name is provided, load from multi-config file."""
+        """Load configuration from file.
+
+        If *config_name* is provided, loads from a multi-config file.
+        Otherwise, loads a single config file.
+        """
         if config_name:
-            # Load specific config from multi-config file
             config = self.get_config_from_file(filepath, config_name)
             self.register_config(config)
             return config
         else:
-            # Load single config file
             filepath = Path(filepath)
 
             if filepath.suffix.lower() == ".toml":
@@ -247,7 +257,6 @@ class ConfigRegistry:
 
         loaded_configs = []
 
-        # Load individual config files
         for pattern in ["*.toml", "*.yaml", "*.yml", "*.json"]:
             for filepath in directory.glob(pattern):
                 try:
@@ -263,9 +272,13 @@ class ConfigRegistry:
 
 
 def prepare_datapoints(config: PreparationConfig):
+    """Load and transform a dataset according to *config*.
+
+    Returns a list of dicts where each dict's keys are *data_keys*
+    (or *renamed_data_keys* if provided).
+    """
     logger.info(f"Processing dataset with config: {config.name}")
     logger.info(f"Dataset split: {config.dataset_split}")
-    logger.info(f"Model: {config.model_name}")
     logger.info(f"Prompt template: {config.prompt_format}")
 
     ds = load_dataset(
@@ -275,13 +288,12 @@ def prepare_datapoints(config: PreparationConfig):
         **config.custom_params,
     )
 
-    # if ds is already in the shape we want, just return it
+    # If ds is already in the shape we want, just return it
     if isinstance(ds, list) and isinstance(ds[0], dict):
         return ds
 
     datapoints = []
 
-    # we expect huggingface dataset or csv-like here.
     for data in ds:
         single_datapoint = {}
 
@@ -294,35 +306,3 @@ def prepare_datapoints(config: PreparationConfig):
         datapoints.append(single_datapoint)
 
     return datapoints
-
-
-if __name__ == "__main__":
-    registry = ConfigRegistry()
-    config = registry.get_config_from_file(
-        "path/to/configuration/file.toml", "numina_solve_dspV1.5"
-    )
-    datapoints = prepare_datapoints(config)
-
-    # Example of what the TOML file would look like
-    example_toml = """# Preprocessing Pipeline Configuration
-# This file contains multiple preprocessing configurations
-
-[configs.lean_code_completion]
-name = "lean_code_completion"
-dataset_split = "train"
-prompt_format = "Complete the following lean code:\\n{code}\\n\\nCompletion:"
-model_name = "DeepSeekProverV2"
-
-[configs.lean_code_completion.custom_params]
-max_tokens = 2048
-min_tokens = 10
-
-[configs.math_proof_generation]
-name = "math_proof_generation"
-dataset_split = "validation"
-prompt_format = "Prove the following theorem:\\n{theorem}\\n\\nProof:"
-model_name = "GPT-4"
-
-[configs.math_proof_generation.custom_params]
-max_tokens = 4096
-min_tokens = 50"""

@@ -111,38 +111,83 @@ class TerminationOnPathsConfig(BaseArgs):
 
 @dataclass
 class TreeThinkArgs(BaseArgs):
-    """
+    """Top-level configuration for tree-search inference.
+
+    Controls the search method, expansion budget, REPL-based termination
+    checking, and output behaviour.
+
     Args:
-        method_name (str): The name of the inference time method to use.
-            Defaults to "MCTS".
-        max_children (int): The maximum number of children for each node.
-            Defaults to 4.
-        expansion_count (int): The number of times to expand the tree.
-            Defaults to 128.
-        timeout (int): The timeout in seconds for the inference process.
-        graph_path (str): The path to save the generated graph.
-        termination_str (str): The string that indicates the termination of a
-            proof path. Used when termination_on_paths.enabled=True.
-            Set None to disable.
-        store_method_class (bool): Whether to store the method class.
-        store_graph_stats (bool): Whether to store graph statistics.
-        remove_duplicate_children (bool): Whether to remove duplicate
-            children during generation.
-
-        # REPL / termination
-        language (FormalLanguage): The formal language in use.
-            Default ``FormalLanguage.LEAN4``.
-        client_args (ClientArgs): Arguments passed to the language-specific
-            REPL client.
-        termination_on_encounter (TerminationOnEncounterConfig): Settings
-            for checking a termination node as soon as it is found.
-        termination_on_paths (TerminationOnPathsConfig): Settings for
-            batch-checking terminated leaves after search completes.
-
-        # Method special
-        beam_width (int): The beam width for beam search.
-        exploration_weight (float): The exploration weight for MCTS.
-        final_decision_mode (FinalDecisionMode): Final-answer selection mode.
+        method_name:
+            One of the registered method names — ``"MCTS"``, ``"BFTS"``,
+            ``"BeamSearch"`` (or their ``Async*`` counterparts when using
+            ``--async``).  Defaults to ``"MCTS"``.
+        max_children:
+            Maximum branching factor (children per node).  Should match
+            ``sampling.n`` in the policy config.  Defaults to 4.
+        expansion_count:
+            Total number of tree expansions (node expansions) to perform
+            during search.  Higher values explore more branches but take
+            longer.  Defaults to 128.
+        timeout:
+            Hard timeout in seconds for the entire search.  ``None`` means
+            no timeout.  Defaults to ``None``.
+        graph_path:
+            Directory (or file path) where tree-graph ``.txt`` files are
+            saved.  If a directory, files are named
+            ``tree_{problem_id}_{timestamp}.txt``.  Set to ``None`` to
+            disable graph saving.
+        termination_str:
+            String that marks a node as a *termination candidate* — when a
+            generated child node's text exactly equals this string, the
+            search treats is as a potential proof end.  Typical values are
+            ``"```"`` (closing code fence) or ``"\\boxed{}"``.  Set to
+            ``None`` to disable REPL-based termination checking.
+        store_method_class:
+            If ``True``, the method object (with full tree state) is stored
+            in the output.  Memory-heavy; only enable for debugging.
+            Defaults to ``False``.
+        store_graph_stats:
+            If ``True``, collect tree statistics (width, depth, visits,
+            values, termination count, ...) after search and include them
+            in the output.  Defaults to ``True``.
+        remove_duplicate_children:
+            If ``True``, deduplicate child nodes by their text content
+            after each expansion.  Defaults to ``False``.
+        language:
+            The formal proof language to use for REPL verification.
+            One of :class:`~treethink.utils.enums.FormalLanguage`.
+            Defaults to ``FormalLanguage.LEAN4``.
+        client_args:
+            Arguments for the language-specific REPL client
+            (server URL, batch size, timeouts, etc.).  See
+            :class:`ClientArgs`.
+        termination_on_encounter:
+            Settings for immediate verification when a termination node is
+            first encountered.  See :class:`TerminationOnEncounterConfig`.
+        termination_on_paths:
+            Settings for batch-verifying all terminated leaves after search
+            completes.  See :class:`TerminationOnPathsConfig`.
+        beam_width:
+            Beam width for the ``BeamSearch`` method.  ``None`` means
+            ``max_children`` is used.  Defaults to ``None``.
+        exploration_weight:
+            Exploration constant for the MCTS UCB formula.  Typical value
+            is ``sqrt(2) ≈ 1.414``.  ``None`` means the method default
+            is used.  Defaults to ``None``.
+        final_decision_mode:
+            How the final answer is selected from the tree.
+            See :class:`~treethink.utils.enums.FinalDecisionMode`.
+            Options: ``"native"``, ``"maximize_visits"``,
+            ``"maximize_value"``, ``"clear_frontier"``.
+            Defaults to ``FinalDecisionMode.NATIVE``.
+        max_concurrent_expansions:
+            Maximum number of concurrent expansions (used in async methods).
+            Defaults to 8.
+        tie_breaker:
+            Strategy for breaking ties when multiple children have the same
+            score.  See :class:`~treethink.utils.enums.TieBreaker`.
+            Options: ``"random"``, ``"deep"``, ``"stable"``.
+            Defaults to ``TieBreaker.RANDOM``.
     """
 
     method_name: str = "MCTS"
@@ -182,20 +227,39 @@ class TreeThinkArgs(BaseArgs):
 
 @dataclass
 class SamplingArgs(BaseArgs):
-    """
+    """vLLM sampling parameters for node expansion.
+
+    These are passed directly to :class:`vllm.SamplingParams` and control
+    how the LLM generates child nodes.
+
     Args:
-        max_tokens (int): The maximum number of tokens to generate.
+        max_tokens:
+            Maximum number of tokens to generate per child.
             Defaults to 8192.
-        temperature (float): The temperature for sampling. Defaults to 1.0.
-        top_k (int): The top-k sampling parameter. Defaults to -1.
-        top_p (float): The top-p sampling parameter. Defaults to 0.9.
-        seed (int): The random seed. Defaults to 1337.
-        stop (List[str]): The list of stop strings. Set ["\\n"] for next tactic
-            generation. Defaults to None.
-        n (int): The number of samples to generate. This should be the same as
-            max_children in TreeThinkArgs. Defaults to 1.
-        logprobs (int): The number of log probabilities to return. When using
-            cumulative_logprob_evaluator, set this to 1. Defaults to None.
+        temperature:
+            Sampling temperature.  Lower values (e.g. 0.1) make output more
+            deterministic; higher values (e.g. 1.0) increase diversity.
+            Defaults to 1.0.
+        top_k:
+            Top-k sampling: only the *k* most likely tokens are considered.
+            ``-1`` disables top-k filtering.  Defaults to -1.
+        top_p:
+            Top-p (nucleus) sampling: tokens with cumulative probability
+            *p* are considered.  Defaults to 0.9.
+        seed:
+            Random seed for reproducible generation.  Defaults to 1337.
+        stop:
+            List of stop strings.  Generation stops when any of these
+            strings is produced.  For tactic-by-tactic generation, set
+            ``["\\n"]``.  Defaults to ``None``.
+        n:
+            Number of samples (children) to generate per prompt.  This
+            should match ``max_children`` in :class:`TreeThinkArgs`.
+            Defaults to 1.
+        logprobs:
+            Number of token-level log probabilities to return.  When using
+            :class:`~treethink.evaluators.LogprobEvaluator`, set this to 1
+            to enable cumulative-logprob scoring.  Defaults to ``None``.
     """
 
     max_tokens: int = 8192
@@ -210,19 +274,36 @@ class SamplingArgs(BaseArgs):
 
 @dataclass
 class ModelArgs(BaseArgs):
-    """
+    """vLLM model initialisation arguments.
+
+    These are unpacked as keyword arguments to :class:`vllm.LLM`
+    (or :class:`vllm.AsyncEngineArgs` for async mode).
+
     Args:
-        model (str): The name of the model to use. Defaults to None.
-        tensor_parallel_size (int): The tensor parallel size for vllm.
+        model:
+            HuggingFace model name or path (e.g.
+            ``"internlm/internlm2-7b"``).  Defaults to ``None``.
+        tensor_parallel_size:
+            Number of GPUs to use for tensor parallelism.
             Defaults to 1.
-        gpu_memory_utilization (float): The GPU memory utilization for vllm.
+        gpu_memory_utilization:
+            Fraction of GPU memory to reserve for the model.
             Defaults to 0.95.
-        enable_lora (bool): Whether to enable LoRA. Defaults to False.
-        dtype (str): The data type for the model. Defaults to "float16".
-        max_model_len (int): The maximum length of the model. Defaults to None.
-        download_dir (str): The directory to download the model. Defaults to None.
-        enable_prefix_caching (bool): Whether to enable prefix caching for vllm.
-            Defaults to False.
+        enable_lora:
+            Whether to enable LoRA adapter support.  Defaults to ``False``.
+        dtype:
+            Model dtype (``"float16"``, ``"bfloat16"``, ``"auto"``, etc.).
+            Defaults to ``"float16"``.
+        max_model_len:
+            Maximum sequence length the model can handle.  ``None`` uses
+            the model's default.  Defaults to ``None``.
+        download_dir:
+            Directory to cache/download the model weights.  ``None`` uses
+            the HuggingFace default cache.  Defaults to ``None``.
+        enable_prefix_caching:
+            Whether to enable vLLM's automatic prefix caching (reuses KV
+            cache across requests with common prefixes).  Defaults to
+            ``True``.
     """
 
     model: str = None
@@ -252,20 +333,36 @@ class ServerArgs(BaseArgs):
 
 @dataclass
 class PolicyArgs(BaseArgs):
-    """
+    """Configuration for the child-node generation policy.
+
+    The policy wraps an LLM to generate candidate children from a parent
+    node during tree search.
+
     Args:
-        func_name (str): The name of the function to use for finding children.
-        model (ModelArgs): The model arguments. See ModelArgs.
-        sampling (SamplingArgs): The sampling arguments. See SamplingArgs.
-        server (ServerArgs): Server arguments for remote API access. Defaults to None.
-        system_prompt (str): The system prompt to use. Defaults to
-            "You are a helpful math assistant.".
-        visible_devices (str): The visible devices for the model. While using
-            multiple GPUs (say 4) set it like this: "0,1,2,3". Defaults to "0".
-        store_method_class (bool): whether to store method class used in
-            generation to access additional functionality that method class
-            offers. Default to False, as it is memory-heavy in large sampling
-            scenarios.
+        func_name:
+            Name of the policy implementation.  One of the keys in
+            :data:`IMPLEMENTED_POLICIES` (sync) or
+            :data:`IMPLEMENTED_ASYNC_POLICIES` (async).
+            Common values: ``"vllm_policy"``, ``"dynamic_policy"``,
+            ``"vllm_server_policy"``.
+            When using ``--async``, sync names are auto-converted
+            (e.g. ``"vllm_policy"`` → ``"async_vllm_policy"``).
+        model:
+            Model configuration.  See :class:`ModelArgs`.
+        sampling:
+            Sampling configuration.  See :class:`SamplingArgs`.
+            The ``n`` field should match ``max_children`` in
+            :class:`TreeThinkArgs`.
+        server:
+            Server configuration for remote API access (used with
+            ``vllm_server_policy``).  Defaults to ``None``.
+        system_prompt:
+            System prompt prepended to every generation request.
+            Defaults to ``"You are a helpful math assistant."``.
+        visible_devices:
+            CUDA_VISIBLE_DEVICES string for GPU selection.
+            E.g. ``"0"`` for a single GPU, ``"0,1,2,3"`` for four GPUs.
+            Defaults to ``"0"``.
     """
 
     func_name: str
@@ -278,24 +375,44 @@ class PolicyArgs(BaseArgs):
 
 @dataclass
 class EvaluatorArgs(BaseArgs):
-    """
+    """Configuration for node evaluation (scoring).
+
+    The evaluator assigns a numeric score to each node, guiding the search
+    toward promising branches.
+
     Args:
-        func_name (str): The name of the function to use for evaluating nodes.
-            Defaults to None.
-        client_args (ClientArgs): The arguments for the proof-assistant client
-            when using repl_evaluator or llm_as_judge_evaluator. Defaults
-            to None.
-        llm_as_judge_model (ModelArgs): The model to use as a judge. Defaults
-            to None.
-        llm_as_judge_sampling (SamplingArgs): The sampling arguments for the
-            judge model. Defaults to None.
-        llm_as_judge_system_prompt (str): The system prompt for the judge model.
-            Defaults to "You are a helpful math assistant who judges the given
-            problem and score it out of 20.".
-        llm_as_judge_visible_devices (str): The visible devices for the judge
-            model. While using multiple GPUs (say 4) set it like this: "0,1,2,3".
-            Also see: see: https://discuss.vllm.ai/t/run-multiple-models/1181.
-            Defaults to "1".
+        func_name:
+            Name of the evaluator implementation.  One of the keys in
+            :data:`IMPLEMENTED_EVALUATORS` (sync) or
+            :data:`ASYNC_IMPLEMENTED_EVALUATORS` (async).
+            Common values: ``"cumulative_logprob_evaluator"``,
+            ``"lean_repl_evaluator"``, ``"llm_as_judge_evaluator"``,
+            ``"norm_len_evaluator"``.
+            When using ``--async``, sync names are auto-converted
+            (e.g. ``"lean_repl_evaluator"`` →
+            ``"async_lean_repl_evaluator"``).
+        client_args:
+            Arguments for the proof-assistant REPL client.  Required when
+            *func_name* involves REPL verification (``lean_repl_evaluator``,
+            ``llm_as_judge_evaluator``).  See :class:`ClientArgs`.
+        length_norm:
+            Exponent for length-normalised scoring.  The raw score is
+            divided by ``(length ** length_norm)``.  Only used by
+            ``norm_len_evaluator``.  Defaults to 0.5.
+        llm_as_judge_model:
+            Model configuration for the judge LLM.  Required when
+            *func_name* is ``"llm_as_judge_evaluator"``.
+            See :class:`ModelArgs`.
+        llm_as_judge_sampling:
+            Sampling configuration for the judge LLM.
+            See :class:`SamplingArgs`.
+        llm_as_judge_system_prompt:
+            System prompt for the judge LLM.
+            Defaults to a prompt asking the judge to score solutions
+            out of 20.
+        llm_as_judge_visible_devices:
+            CUDA_VISIBLE_DEVICES for the judge model (separate GPU from
+            the policy model).  Defaults to ``"1"``.
     """
 
     func_name: str = None
