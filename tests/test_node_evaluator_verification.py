@@ -2,15 +2,22 @@
 Test script for Node Evaluators with Kimina Server integration.
 
 This script tests:
-1. REPLNodeEvaluator - Basic proof verification
-2. LLMAsJudgeNodeEvaluator - Advanced evaluation with infotree
+1. LeanREPLEvaluator - Basic Lean proof verification
+2. JudgeEvaluator - Advanced evaluation with infotree
 """
 
 import sys
-from pathlib import Path
+from unittest.mock import patch
 
 from kimina_client import KiminaClient
 from kimina_client.models import Infotree
+
+from treethink import (
+    ClientArgs,
+    LeanREPLEvaluator,
+    Node,
+    RocqEvaluator,
+)
 
 # Mock proofs for testing
 VALID_PROOFS = [
@@ -48,23 +55,39 @@ class MockMethod:
         return node.answer
 
 
+class FakeRocqClient:
+    def __init__(self, host, port, **kwargs):
+        self.host = host
+        self.port = port
+        self.kwargs = kwargs
+        self.snippets = []
+
+    def verify_snippet(self, snippet, timeout=None):
+        self.snippets.append((snippet, timeout))
+        success = "INVALID" not in snippet
+        return {"proof_finished": success, "error": None if success else "boom"}
+
+    def close(self):
+        return None
+
+
 def create_mock_node(proof: str, level: int = 1) -> Node:
     """Create a mock node with a proof."""
     node = Node(answer=proof, level=level)
     return node
 
 
-def test_repl_node_evaluator():
-    """Test REPLNodeEvaluator with valid and invalid proofs."""
+def test_repl_evaluator():
+    """Test LeanREPLEvaluator with valid and invalid proofs."""
     print("\n" + "=" * 80)
-    print("Testing REPLNodeEvaluator")
+    print("Testing LeanREPLEvaluator")
     print("=" * 80)
 
     # Initialize evaluator
-    repl_args = LeanREPLArgs(
+    client_args = ClientArgs(
         lean_server_url="http://localhost:8000", timeout=30
     )
-    evaluator = REPLNodeEvaluator(repl_args=repl_args)
+    evaluator = LeanREPLEvaluator(client_args=client_args)
     method = MockMethod()
 
     print("\n📝 Testing VALID proofs...")
@@ -77,7 +100,7 @@ def test_repl_node_evaluator():
         print(f"\nProof {i + 1}:")
         print(f"  Code: {proof[:80]}...")
         print(f"  Score: {score}")
-        print(f"  Expected: 1.0 (valid)")
+        print("  Expected: 1.0 (valid)")
         print(f"  Status: {'✅ PASS' if score == 1.0 else '❌ FAIL'}")
 
     print("\n" + "-" * 80)
@@ -91,8 +114,19 @@ def test_repl_node_evaluator():
         print(f"\nProof {i + 1}:")
         print(f"  Code: {proof[:80]}...")
         print(f"  Score: {score}")
-        print(f"  Expected: 0.0 (invalid)")
+        print("  Expected: 0.0 (invalid)")
         print(f"  Status: {'✅ PASS' if score == 0.0 else '❌ FAIL'}")
+
+
+def test_rocq_evaluator_uses_shared_client():
+    with patch("treethink.evaluators.RocqBatchClient", FakeRocqClient):
+        evaluator = RocqEvaluator(statement="True")
+
+        scores = evaluator(["intro. exact I.", "INVALID tactic."])
+
+        assert scores == [1.0, 0.0]
+        assert evaluator._client.snippets[0][1] == 5.0
+        evaluator.close()
 
 
 def test_kimina_client_direct():
@@ -116,7 +150,7 @@ def test_kimina_client_direct():
     result = response.results[0]
 
     print(f"\nProof: {snips[0][:100]}...")
-    print(f"\nResult Analysis:")
+    print("\nResult Analysis:")
     analysis = result.analyze()
     print(f"  Status: {analysis.status.value}")
     print(f"  Time: {result.time}s")
@@ -127,7 +161,7 @@ def test_kimina_client_direct():
     # Check infotree
     if result.response and "infotree" in result.response:
         infotree = result.response["infotree"]
-        print(f"\n✅ Infotree retrieved successfully!")
+        print("\n✅ Infotree retrieved successfully!")
         print(f"  Type: {type(infotree)}")
 
         if isinstance(infotree, dict):
@@ -137,7 +171,7 @@ def test_kimina_client_direct():
             if len(infotree) > 0 and isinstance(infotree[0], dict):
                 print(f"  First item keys: {list(infotree[0].keys())}")
     else:
-        print(f"\n❌ No infotree in response")
+        print("\n❌ No infotree in response")
 
     # Check messages
     if result.response and "messages" in result.response:
@@ -172,7 +206,7 @@ def test_batch_verification():
         show_progress=True,
     )
 
-    print(f"\n📊 Results Summary:")
+    print("\n📊 Results Summary:")
     print("-" * 80)
 
     valid_count = 0
@@ -199,7 +233,7 @@ def test_batch_verification():
             f"{emoji} Proof {i + 1} ({proof_type}): {status} - {result.time:.2f}s"
         )
 
-    print(f"\n📈 Summary:")
+    print("\n📈 Summary:")
     print(f"  Valid: {valid_count}/{len(all_proofs)}")
     print(f"  Invalid: {invalid_count}/{len(all_proofs)}")
     print(
@@ -225,8 +259,8 @@ if __name__ == "__main__":
         # Test 2: Batch verification
         test_batch_verification()
 
-        # Test 3: REPLNodeEvaluator
-        test_repl_node_evaluator()
+        # Test 3: LeanREPLEvaluator
+        test_repl_evaluator()
 
         print("\n" + "=" * 80)
         print("✅ All tests completed!")

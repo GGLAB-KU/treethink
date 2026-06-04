@@ -1,10 +1,11 @@
 import asyncio
 import time
-from typing import Callable, List, Literal, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 from loguru import logger
 
+from ..utils.enums import BestAnswerReason, FinalDecisionMode
 from .base_method import BaseMethod
 from .node import Node
 
@@ -18,42 +19,40 @@ class MCTS(BaseMethod):
 
     Attributes:
         root_node (Node): The root node of the search tree.
-        child_finder: Function to generate child nodes.
-        node_evaluator: Function to evaluate node quality.
+        policy: Function to generate child nodes.
+        evaluator: Function to evaluate node quality.
     """
 
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        policy: Callable,
+        evaluator: Callable,
         exploration_weight: float = 0.5,
-        final_decision_mode: Literal[
-            "maximize_visits", "maximize_value", "native"
-        ] = "maximize_visits",
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.MAXIMIZE_VISITS,
         *args,
         **kwargs,
     ):
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            policy=policy,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
         # Exploration weight for UCT algorithm
         self.exploration_weight = exploration_weight
 
         # Set best_answer function based on the given final_decision_mode
-        if self.final_decision_mode == "maximize_value":
+        if self.final_decision_mode == FinalDecisionMode.MAXIMIZE_VALUE:
             self._compute_best_answer = self._best_answer_maximize_value
-        elif self.final_decision_mode == "maximize_visits":
+        elif self.final_decision_mode == FinalDecisionMode.MAXIMIZE_VISITS:
             self._compute_best_answer = self._best_answer_maximize_visits
-        elif self.final_decision_mode == "native":
+        elif self.final_decision_mode == FinalDecisionMode.NATIVE:
             # already set in BaseMethod
             pass
         else:
             logger.warning(
-                f"Given {self.final_decision_mode} is not supported, "
+                f"Given {self.final_decision_mode.value} is not supported, "
                 + "falling back to `native` implementation."
             )
 
@@ -103,7 +102,7 @@ class MCTS(BaseMethod):
 
         termination_checked_nodes = []
 
-        logger.debug(f"Simulation started.")
+        logger.debug("Simulation started.")
         while expansion_count is None or i < expansion_count:
             logger.debug(f"Expansion: {i}")
             i += 1
@@ -132,7 +131,7 @@ class MCTS(BaseMethod):
                 termination_checked_nodes.append(id(current_node))
                 if answer:
                     self.best_answer = answer
-                    self.best_answer_reason = "checked_and_true"
+                    self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
                 # If the proof is wrong, set nodes's win_value to -inf to avoid
@@ -175,7 +174,7 @@ class MCTS(BaseMethod):
                 weight = exploitation_term + exploration_term
 
             choices_weights.append(weight)
-        
+
         logger.trace(
             f"UCT weights for children of node {id(node)}: {choices_weights}"
         )
@@ -226,53 +225,56 @@ class MCTS(BaseMethod):
             node.win_value += val
             node.visits += 1
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("exploration_weight", self.exploration_weight),
+        ]
+
 
 class AsyncMCTS(MCTS):
     """
     Async version of MCTS that supports asynchronous node expansion.
-    
+
     This implementation leverages async_expand and async_expand_rm_dupes from
     BaseMethod to enable asynchronous evaluation of children nodes during MCTS
     tree search.
-    
+
     Key features:
     - Asynchronous expansion of selected nodes in MCTS iterations
     - Async node evaluation for I/O-bound operations (REPL, LLM-as-judge)
     - Compatible with both sync and async node evaluators
     - Maintains the same UCT selection and backpropagation semantics as MCTS
-    
+
     Note: MCTS is inherently sequential (select -> expand -> backpropagate), so
     the main benefit of async comes from concurrent evaluation of multiple children
     during the expansion phase, not from parallelizing MCTS iterations themselves.
     """
-    
+
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        policy: Callable,
+        evaluator: Callable,
         exploration_weight: float = 0.5,
-        final_decision_mode: Literal[
-            "maximize_visits", "maximize_value", "native"
-        ] = "maximize_visits",
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.MAXIMIZE_VISITS,
         *args,
         **kwargs,
     ):
         """
         Initialize AsyncMCTS.
-        
+
         Args:
             root_node: The root node of the search tree
-            child_finder: Function to generate child nodes
-            node_evaluator: Async function to evaluate nodes
+            policy: Function to generate child nodes
+            evaluator: Async function to evaluate nodes
             exploration_weight: Weight for exploration term in UCT
             final_decision_mode: How to compute the final answer
             *args, **kwargs: Additional arguments passed to MCTS
         """
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            policy=policy,
+            evaluator=evaluator,
             exploration_weight=exploration_weight,
             final_decision_mode=final_decision_mode,
             *args,
@@ -288,15 +290,15 @@ class AsyncMCTS(MCTS):
     ) -> None:
         """
         Async version of simulate method that expands nodes asynchronously.
-        
+
         This method follows the standard MCTS loop (select -> expand -> backpropagate)
         but uses async expansion for I/O-bound operations like node evaluation.
-        
+
         Note: The MCTS iterations themselves remain sequential as each iteration
         depends on the backpropagated values from the previous iteration. The
         async benefit comes from concurrent evaluation of multiple children during
         each expansion.
-        
+
         Args:
             expansion_count: Number of MCTS iterations to perform
             timeout: Maximum time in seconds for the search
@@ -326,7 +328,7 @@ class AsyncMCTS(MCTS):
             # Select node for expansion using UCT
             current_node = self.make_choice(self.root_node)
             logger.trace(f"Current node selected: {current_node}")
-            
+
             # Check if termination node is encountered and run termination fn
             if (
                 termination_encountered_fn is not None
@@ -334,18 +336,18 @@ class AsyncMCTS(MCTS):
                 and id(current_node) not in termination_checked_nodes
             ):
                 logger.trace(f"Termination node encountered: {current_node}")
-                
+
                 # Check if async or sync termination function
                 if asyncio.iscoroutinefunction(termination_encountered_fn):
                     answer = await termination_encountered_fn(current_node)
                 else:
                     answer = termination_encountered_fn(current_node)
-                
+
                 termination_checked_nodes.append(id(current_node))
-                
+
                 if answer:
                     self.best_answer = answer
-                    self.best_answer_reason = "checked_and_true"
+                    self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
                 # If the proof is wrong, set node's win_value to -inf to avoid
@@ -363,7 +365,7 @@ class AsyncMCTS(MCTS):
                     # Backpropagate parent's win_value if we expanded
                     logger.trace("Backpropagating node win value...")
                     self._backpropagate_node_win_value(current_node)
-                    
+
                 except Exception as e:
                     logger.error(f"Failed to expand node asynchronously: {e}")
                     self.stats_failed_expansion_count += 1
@@ -372,7 +374,7 @@ class AsyncMCTS(MCTS):
 
     async def async_expand(self, node):
         """Async version of expand that uses async node evaluation.
-        
+
         Uses the BaseMethod.async_expand for async node evaluation with
         concurrent evaluation of multiple children.
         """
@@ -380,7 +382,7 @@ class AsyncMCTS(MCTS):
 
     async def async_expand_rm_dupes(self, node):
         """Async version of expand_rm_dupes with async node evaluation.
-        
+
         Uses the BaseMethod.async_expand_rm_dupes for async node evaluation
         with duplicate removal and concurrent evaluation of children.
         """
@@ -395,10 +397,10 @@ class AsyncMCTS(MCTS):
     ) -> None:
         """
         Synchronous wrapper for async simulate.
-        
+
         This allows AsyncMCTS to be used with existing sync code by
         automatically running the async version in an event loop.
-        
+
         Args:
             expansion_count: Number of MCTS iterations to perform
             timeout: Maximum time in seconds for the search
@@ -431,3 +433,11 @@ class AsyncMCTS(MCTS):
                     termination_encountered_fn=termination_encountered_fn,
                 )
             )
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            (
+                "max_concurrent_expansions",
+                getattr(self, "max_concurrent_expansions", None),
+            ),
+        ]

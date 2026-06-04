@@ -4,12 +4,13 @@ import unittest
 
 from loguru import logger
 
-from tests.common import RandomNodeEvaluator, SimpleChildFinder
+from tests.common import RandomNodeEvaluator, SimpleChildPolicy
 from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
     save_tree_to_txt,
 )
 from treethink.methods import BFTS, Node  # noqa
+from treethink.utils.enums import FinalDecisionMode
 
 
 class TestBFTS(unittest.TestCase):
@@ -25,13 +26,14 @@ class TestBFTS(unittest.TestCase):
         """Test when exploration_weight is set to 0."""
 
         root = Node("root")
-        node_evaluator_func = RandomNodeEvaluator()
-        child_finder_func = SimpleChildFinder()
+        evaluator_func = RandomNodeEvaluator()
+        policy_func = SimpleChildPolicy()
 
         bfts = BFTS(
             root_node=None,
-            child_finder=child_finder_func,
-            node_evaluator=node_evaluator_func,
+            policy=policy_func,
+            evaluator=evaluator_func,
+            final_decision_mode=FinalDecisionMode.CLEAR_FRONTIER,
         )
         bfts.set_root_node(root)
         bfts.simulate(expansion_count=10)

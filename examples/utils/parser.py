@@ -1,4 +1,5 @@
 from dataclasses import fields, is_dataclass
+from enum import Enum
 from functools import partial
 from typing import (
     Any,
@@ -14,7 +15,44 @@ from typing import (
 import yaml
 from loguru import logger
 
+from treethink.utils.enums import coerce_enum
+
 T = TypeVar("T")
+
+
+def drop_none(value):
+    if isinstance(value, dict):
+        return {k: drop_none(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [drop_none(v) for v in value if v is not None]
+    return value
+
+
+def serialize_args(obj):
+    if obj is None:
+        return None
+    if is_dataclass(obj):
+        return drop_none(
+            {
+                dataclass_field.name: serialize_args(
+                    getattr(obj, dataclass_field.name)
+                )
+                for dataclass_field in fields(obj)
+            }
+        )
+    if isinstance(obj, dict):
+        return drop_none({k: serialize_args(v) for k, v in obj.items()})
+    if isinstance(obj, Enum):
+        return obj.value
+    if isinstance(obj, tuple):
+        return [serialize_args(v) for v in obj]
+    if isinstance(obj, list):
+        return [serialize_args(v) for v in obj]
+    if hasattr(obj, "__dict__"):
+        return drop_none(
+            {k: serialize_args(v) for k, v in obj.__dict__.items()}
+        )
+    return obj
 
 
 def _parse_yaml_file(
@@ -76,31 +114,9 @@ def _parse_config_to_dataclass(config_dict: dict, dataclass_type: Type[T]) -> T:
 
         expected_type = type_hints[field_name]
 
-        # Handle nested dataclasses
-        if is_dataclass(expected_type) and isinstance(field_value, dict):
-            parsed_args[field_name] = _parse_config_to_dataclass(
-                field_value, expected_type
-            )
-        # Handle basic type conversions
-        elif expected_type is float and isinstance(field_value, (str, int)):
-            parsed_args[field_name] = float(field_value)
-        elif expected_type is int and isinstance(field_value, str):
-            parsed_args[field_name] = int(field_value)
-        # Handle Optional types (Union[X, None])
-        elif _is_optional_type(expected_type):
-            inner_type = _get_optional_inner_type(expected_type)
-            if is_dataclass(inner_type) and isinstance(field_value, dict):
-                parsed_args[field_name] = _parse_config_to_dataclass(
-                    field_value, inner_type
-                )
-            elif inner_type is float and isinstance(field_value, (str, int)):
-                parsed_args[field_name] = float(field_value)
-            elif inner_type is int and isinstance(field_value, str):
-                parsed_args[field_name] = int(field_value)
-            else:
-                parsed_args[field_name] = field_value
-        else:
-            parsed_args[field_name] = field_value
+        parsed_args[field_name] = _coerce_config_value(
+            expected_type, field_value
+        )
 
     # Handle fields that weren't provided in config but have defaults
     dataclass_fields = {f.name: f for f in fields(dataclass_type)}
@@ -143,20 +159,46 @@ def _get_optional_inner_type(type_hint):
     return type_hint
 
 
+def _is_enum_type(type_hint) -> bool:
+    return isinstance(type_hint, type) and issubclass(type_hint, Enum)
+
+
+def _coerce_config_value(expected_type, field_value):
+    if _is_optional_type(expected_type):
+        inner_type = _get_optional_inner_type(expected_type)
+        if field_value is None:
+            return None
+        return _coerce_config_value(inner_type, field_value)
+
+    if is_dataclass(expected_type) and isinstance(field_value, dict):
+        return _parse_config_to_dataclass(field_value, expected_type)
+
+    if _is_enum_type(expected_type):
+        return coerce_enum(field_value, expected_type)
+
+    if expected_type is float and isinstance(field_value, (str, int)):
+        return float(field_value)
+
+    if expected_type is int and isinstance(field_value, str):
+        return int(field_value)
+
+    return field_value
+
+
 # Inference Time
 from treethink import (  # noqa: E402
-    ChildFinderArgs,
-    InferenceTimeArgs,
-    NodeEvaluatorArgs,
+    EvaluatorArgs,
+    PolicyArgs,
+    TreeThinkArgs,
 )
 
-__inftime = {
-    "inference_time": InferenceTimeArgs,
-    "child_finder": ChildFinderArgs,
-    "node_evaluator": NodeEvaluatorArgs,
+__treethink = {
+    "treethink": TreeThinkArgs,
+    "policy": PolicyArgs,
+    "evaluator": EvaluatorArgs,
 }
 
-parse_inftime_conf = partial(_parse_yaml_file, section_class=__inftime)
+parse_treethink_args = partial(_parse_yaml_file, section_class=__treethink)
 
 # Normal Inference
 from treethink import ModelArgs, SamplingArgs  # noqa: E402
@@ -165,6 +207,6 @@ __normal_inference = {
     "model": ModelArgs,
     "sampling": SamplingArgs,
 }
-parse_normal_inference_conf = partial(
+parse_normal_inference_args = partial(
     _parse_yaml_file, section_class=__normal_inference
 )

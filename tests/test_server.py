@@ -8,28 +8,27 @@ Infotree Types:
 - Infotree.substantive: Substantive information only
 """
 
-# Basit ve çalışan proof'lar
+from kimina_client import KiminaClient
+from kimina_client.models import Infotree, SnippetStatus
+
+# Simple and working proofs
 mock_proofs = [  # 10. Commutative property
     """theorem test9 (a b : Nat) : a + b = b + a := by
   rw [Nat.add_comm]""",
 ]
-
-# Kullanım örneği:
-from kimina_client import KiminaClient
-from kimina_client.models import Infotree, SnippetStatus
 
 client = KiminaClient()
 
 response = client.check(
     snips=mock_proofs,
     timeout=60,
-    batch_size=4,  # 4'lü gruplar halinde gönder
-    max_workers=2,  # 2 paralel worker
+    batch_size=4,  # Send in groups of 4
+    max_workers=2,  # 2 parallel workers
     show_progress=True,
-    infotree=Infotree.original,  # Infotree bilgisini al (options: full, tactics, original, substantive)
+    infotree=Infotree.original,  # Get Infotree information (options: full, tactics, original, substantive)
 )
 
-# Sonuçları detaylı yazdır
+# Print results in detail
 print(f"\n{'=' * 80}")
 print(f"Total proofs checked: {len(response.results)}")
 print(f"{'=' * 80}\n")
@@ -51,12 +50,12 @@ for i, result in enumerate(response.results):
     if result.error:
         print(f"\n❌ Error: {result.error}")
 
-    # Infotree bilgisini göster (only if response exists)
+    # Show Infotree information (only if response exists)
     if result.response and "infotree" in result.response:
         infotree = result.response["infotree"]
-        print(f"\n📊 Infotree Information:")
+        print("\n📊 Infotree Information:")
         print(f"  - Type: {type(infotree)}")
-        print(f"  - Available: Yes")
+        print("  - Available: Yes")
         if isinstance(infotree, dict):
             print(f"  - Keys: {list(infotree.keys())}")
         elif isinstance(infotree, list):
@@ -70,7 +69,7 @@ for i, result in enumerate(response.results):
     if result.response and "messages" in result.response:
         messages = result.response.get("messages", [])
         if messages:
-            print(f"\n💬 Messages:")
+            print("\n💬 Messages:")
             for msg in messages:
                 severity = msg.get("severity", "unknown")
                 emoji = (
@@ -98,13 +97,13 @@ for i, result in enumerate(response.results):
 
     # Success message
     if analysis.status == SnippetStatus.valid:
-        print(f"\n✅ Proof verified successfully!")
+        print("\n✅ Proof verified successfully!")
     elif analysis.status == SnippetStatus.sorry:
-        print(f"\n⚠️  Proof contains sorry")
+        print("\n⚠️  Proof contains sorry")
     elif analysis.status == SnippetStatus.lean_error:
-        print(f"\n❌ Lean error in proof")
+        print("\n❌ Lean error in proof")
     elif analysis.status == SnippetStatus.timeout_error:
-        print(f"\n⏱️  Timeout error")
+        print("\n⏱️  Timeout error")
     else:
         print(f"\n❌ Error: {analysis.status.value}")
 

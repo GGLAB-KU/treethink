@@ -1,10 +1,11 @@
 import asyncio
 import random
 import time
-from typing import Callable, List, Literal, Optional
+from typing import Callable, List, Optional
 
 from loguru import logger
 
+from ..utils.enums import BestAnswerReason, FinalDecisionMode, TieBreaker
 from .base_method import BaseMethod
 from .node import Node
 
@@ -17,19 +18,19 @@ class BeamSearch(BaseMethod):
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        policy: Callable,
+        evaluator: Callable,
         beam_width: int = 5,
         max_depth: Optional[int] = None,
-        tie_breaker: Literal["random", "deep", "stable"] = "random",
-        final_decision_mode: Literal["native"] = "native",
+        tie_breaker: TieBreaker = TieBreaker.RANDOM,
+        final_decision_mode: FinalDecisionMode = FinalDecisionMode.NATIVE,
         *args,
         **kwargs,
     ):
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            policy=policy,
+            evaluator=evaluator,
             final_decision_mode=final_decision_mode,
         )
 
@@ -43,12 +44,12 @@ class BeamSearch(BaseMethod):
         self._last_depth: int = 0
         self._tie_breaker = tie_breaker
 
-        if self.final_decision_mode == "native":
+        if self.final_decision_mode == FinalDecisionMode.NATIVE:
             # already set in BaseMethod
             pass
         else:
             logger.warning(
-                f"Given {self.final_decision_mode} is not supported, "
+                f"Given {self.final_decision_mode.value} is not supported, "
                 + "falling back to `native` implementation."
             )
 
@@ -68,7 +69,7 @@ class BeamSearch(BaseMethod):
         random.seed(42)
 
         # Sort descending by score; break ties either stably by index or randomly
-        if self._tie_breaker == "random":
+        if self._tie_breaker == TieBreaker.RANDOM:
             # add small random jitter to break ties reproducibly per call
             jittered = [
                 (s + random.random() * 1e-9, i, n, level)
@@ -76,7 +77,7 @@ class BeamSearch(BaseMethod):
             ]
             jittered.sort(key=lambda x: x[0], reverse=True)
             selected = [n for (_, _, n, _) in jittered[:k]]
-        elif self._tie_breaker == "deep":
+        elif self._tie_breaker == TieBreaker.DEEP:
             scored.sort(key=lambda x: (x[0], x[3]), reverse=True)
             selected = [n for (_, _, n, _) in scored[:k]]
         else:
@@ -109,7 +110,7 @@ class BeamSearch(BaseMethod):
             remaining_depth = max(0, depth_limit - self._last_depth)
             layers_to_expand = min(layers_to_expand, remaining_depth)
 
-        logger.debug(f"Simulation started.")
+        logger.debug("Simulation started.")
         for layer in range(layers_to_expand):
             start_time = time.time()
             logger.debug(f"Expansion count: {layer}")
@@ -135,7 +136,9 @@ class BeamSearch(BaseMethod):
                     answer = termination_encountered_fn(current_node)
                     if answer:
                         self.best_answer = answer
-                        self.best_answer_reason = "checked_and_true"
+                        self.best_answer_reason = (
+                            BestAnswerReason.CHECKED_AND_TRUE
+                        )
                         break
 
                 if current_node.is_expandable:
@@ -192,53 +195,61 @@ class BeamSearch(BaseMethod):
         return top2[1] if len(top2) > 1 else top2[0]
 
     def __repr__(self) -> str:
-        return (
-            f"BeamSearch(beam_width={self.beam_width}, "
-            f"max_depth={self.max_depth}, "
-            f"frontier_size={self._frontier_size}, "
-            f"depth_so_far={self._last_depth})"
-        )
+        return self.__str__()
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("beam_width", self.beam_width),
+            ("max_depth", self.max_depth),
+            ("tie_breaker", self._tie_breaker),
+            ("frontier_size", self._frontier_size),
+            ("depth_so_far", self._last_depth),
+        ]
+
+    def __str__(self) -> str:
+        return super().__str__()
+
 
 class AsyncBeamSearch(BeamSearch):
     """
     Async version of BeamSearch that supports asynchronous node expansion.
-    
+
     This implementation leverages async_expand and async_expand_rm_dupes from
     BaseMethod to enable concurrent evaluation of children nodes during beam
     search expansion.
-    
+
     Key features:
     - Parallel expansion of beam nodes at each depth level
     - Concurrent node evaluation for I/O-bound operations (REPL, LLM-as-judge)
     - Compatible with both sync and async node evaluators
-    
+
     Attributes:
         max_concurrent_expansions (int): Maximum number of nodes to expand concurrently
     """
-    
+
     def __init__(
         self,
         root_node: Optional[Node | str],
-        child_finder: Callable,
-        node_evaluator: Callable,
+        policy: Callable,
+        evaluator: Callable,
         max_concurrent_expansions: int = 8,
         *args,
         **kwargs,
     ):
         """
         Initialize AsyncBeamSearch.
-        
+
         Args:
             root_node: The root node of the search tree
-            child_finder: Function to generate child nodes
-            node_evaluator: Async function to evaluate nodes
+            policy: Function to generate child nodes
+            evaluator: Async function to evaluate nodes
             max_concurrent_expansions: Max number of nodes to expand in parallel
             *args, **kwargs: Additional arguments passed to BeamSearch
         """
         super().__init__(
             root_node=root_node,
-            child_finder=child_finder,
-            node_evaluator=node_evaluator,
+            policy=policy,
+            evaluator=evaluator,
             *args,
             **kwargs,
         )
@@ -254,10 +265,10 @@ class AsyncBeamSearch(BeamSearch):
     ):
         """
         Async version of simulate method that expands beam levels asynchronously.
-        
+
         This method processes all nodes in each beam level concurrently, allowing
         for significant speedup when using async node evaluators.
-        
+
         Args:
             expansion_count: Number of depth levels to expand
             timeout: Maximum time in seconds for the search
@@ -280,7 +291,7 @@ class AsyncBeamSearch(BeamSearch):
 
         for layer in range(layers_to_expand):
             logger.debug(f"Async expansion layer: {layer}")
-            
+
             # Check timeout
             if timeout is not None and (time.time() - start_time) >= timeout:
                 logger.warning("Reached timeout, stopping expansion.")
@@ -291,21 +302,31 @@ class AsyncBeamSearch(BeamSearch):
                 for current_node in self._current_beam:
                     if current_node.is_termination_node:
                         # Check if async or sync termination function
-                        if asyncio.iscoroutinefunction(termination_encountered_fn):
-                            answer = await termination_encountered_fn(current_node)
+                        if asyncio.iscoroutinefunction(
+                            termination_encountered_fn
+                        ):
+                            answer = await termination_encountered_fn(
+                                current_node
+                            )
                         else:
                             answer = termination_encountered_fn(current_node)
-                        
+
                         if answer:
                             self.best_answer = answer
-                            self.best_answer_reason = "checked_and_true"
+                            self.best_answer_reason = (
+                                BestAnswerReason.CHECKED_AND_TRUE
+                            )
                             return
 
             # Expand all nodes in current beam concurrently
-            expandable_nodes = [n for n in self._current_beam if n.is_expandable]
-            
+            expandable_nodes = [
+                n for n in self._current_beam if n.is_expandable
+            ]
+
             if expandable_nodes:
-                await self._expand_beam_async(expandable_nodes, remove_duplicate_children)
+                await self._expand_beam_async(
+                    expandable_nodes, remove_duplicate_children
+                )
 
             # Collect all children from expanded nodes
             all_candidates: List[Node] = []
@@ -326,13 +347,11 @@ class AsyncBeamSearch(BeamSearch):
             self._last_depth += 1
 
     async def _expand_beam_async(
-        self,
-        nodes: List[Node],
-        remove_duplicate_children: bool = False
+        self, nodes: List[Node], remove_duplicate_children: bool = False
     ):
         """
         Expand all nodes in the beam concurrently.
-        
+
         Args:
             nodes: List of nodes to expand
             remove_duplicate_children: Whether to remove duplicate children
@@ -342,23 +361,21 @@ class AsyncBeamSearch(BeamSearch):
         for node in nodes:
             task = self._expand_single_async(node, remove_duplicate_children)
             tasks.append(task)
-        
+
         # Execute all expansions concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Log any exceptions
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.error(f"Failed to expand node {i}: {result}")
 
     async def _expand_single_async(
-        self,
-        node: Node,
-        remove_duplicate_children: bool = False
+        self, node: Node, remove_duplicate_children: bool = False
     ):
         """
         Expand a single node asynchronously using semaphore for concurrency control.
-        
+
         Args:
             node: The node to expand
             remove_duplicate_children: Whether to remove duplicate children
@@ -370,7 +387,7 @@ class AsyncBeamSearch(BeamSearch):
                     await self.async_expand_rm_dupes(node)
                 else:
                     await self.async_expand(node)
-                    
+
             except Exception as e:
                 logger.exception(f"Failed to expand node asynchronously: {e}")
                 self.stats_failed_expansion_count += 1
@@ -384,10 +401,10 @@ class AsyncBeamSearch(BeamSearch):
     ):
         """
         Synchronous wrapper for async simulate.
-        
+
         This allows AsyncBeamSearch to be used with existing sync code by
         automatically running the async version in an event loop.
-        
+
         Args:
             expansion_count: Number of depth levels to expand
             timeout: Maximum time in seconds for the search
@@ -410,7 +427,7 @@ class AsyncBeamSearch(BeamSearch):
                     termination_encountered_fn=termination_encountered_fn,
                 )
             )
-        except RuntimeError:    # pragma: no cover
+        except RuntimeError:  # pragma: no cover
             # No event loop running, create new one
             asyncio.run(
                 self.async_simulate(
@@ -420,3 +437,11 @@ class AsyncBeamSearch(BeamSearch):
                     termination_encountered_fn=termination_encountered_fn,
                 )
             )
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            (
+                "max_concurrent_expansions",
+                self.max_concurrent_expansions,
+            ),
+        ]

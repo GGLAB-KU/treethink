@@ -18,11 +18,11 @@ from dataset_prep import (
     prepare_datapoints,
 )
 from loguru import logger
-from parallel_sampler import AsyncDatapointSampler
-from sampler import Sampler
+from sampler import TreeThinkSampler, VLLMSampler
 from utils.parser import (
-    parse_inftime_conf,
-    parse_normal_inference_conf,
+    parse_normal_inference_args,
+    parse_treethink_args,
+    serialize_args,
 )
 
 from treethink.graph import analyze_graph_stats
@@ -41,17 +41,17 @@ def parse_inference_arguments(gen_config_path: str):
     inference_type = None
     with open(gen_config_path, "r") as f:
         gen_config = yaml.safe_load(f)
-        if "inference_time" in gen_config.keys():
-            inference_type = "inftime"
+        if "treethink" in gen_config.keys():
+            inference_type = "treethink"
         else:
             inference_type = "normal"
 
     _args = None
 
-    if inference_type == "inftime":
-        _args = parse_inftime_conf(gen_config_path)
+    if inference_type == "treethink":
+        _args = parse_treethink_args(gen_config_path)
     else:
-        _args = parse_normal_inference_conf(gen_config_path)
+        _args = parse_normal_inference_args(gen_config_path)
 
     return _args, inference_type
 
@@ -74,63 +74,109 @@ def simple_messages_to_string(messages):
     return result
 
 
+def _infer_graph_dir(
+    treethink_args, output_path: Path, iteration_index: int, num_iterations
+):
+    base_graph_dir = output_path
+    if treethink_args and treethink_args.graph_path:
+        graph_path = Path(treethink_args.graph_path)
+        if graph_path.suffix:
+            base_graph_dir = graph_path.parent
+        else:
+            base_graph_dir = graph_path / "dev"
+
+    if num_iterations > 1 and base_graph_dir == output_path:
+        candidate = output_path / f"graphs_{iteration_index}"
+        if candidate.exists() and any(candidate.glob("*.txt")):
+            return candidate
+    return base_graph_dir
+
+
+def _build_graph_stats_payload(
+    model,
+    results,
+    output_path: Path,
+    run_name: str,
+    iteration_index: int,
+    timestamp: str,
+    num_iterations: int,
+):
+    if not results:
+        return None
+
+    graph_stats_list = [r["graph_stats"] for r in results if "graph_stats" in r]
+    if not graph_stats_list:
+        return None
+
+    treethink_args = getattr(model, "treethink_args", None)
+    policy_args = getattr(model, "policy_args", None)
+    evaluator_args = getattr(model, "evaluator_args", None)
+    method_name = (
+        treethink_args.method_name if treethink_args is not None else None
+    )
+
+    graph_dir = _infer_graph_dir(
+        treethink_args, output_path, iteration_index, num_iterations
+    )
+
+    return {
+        "run_name": run_name,
+        "iteration": iteration_index,
+        "timestamp": timestamp,
+        "output_dir": str(output_path),
+        "graph_dir": str(graph_dir),
+        "graph_path": getattr(treethink_args, "graph_path", None)
+        if treethink_args
+        else None,
+        "method_name": method_name,
+        "treethink_args": serialize_args(treethink_args),
+        "policy_args": serialize_args(policy_args),
+        "evaluator_args": serialize_args(evaluator_args),
+        "graph_stats_summary": analyze_graph_stats(graph_stats_list),
+        "graph_stats_count": len(graph_stats_list),
+    }
+
+
 def setup_model(
     gen_config_path,
     run_name,
-    use_parallel=False,
     use_async=False,
     max_concurrent=4,
 ):
     """Initialize the model with given parameters."""
     _args, _inference_type = parse_inference_arguments(gen_config_path)
-    if _inference_type == "inftime":
-        inference_time_args, child_finder_args, node_evaluator_args = _args
+    if _inference_type == "treethink":
+        treethink_args, policy_args, evaluator_args = _args
 
         if use_async:
-            # Pure async stack: AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
             logger.info("Using pure async stack (AsyncSampler)")
             model = AsyncSampler(
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
-                inference_time_args=inference_time_args,
-                prompter=simple_messages_to_string,
-                task_name=run_name,
-                max_concurrent_datapoints=max_concurrent,
-            )
-        elif use_parallel:
-            # Hybrid stack: Sync MCTS with async REPL parallelization
-            logger.info(
-                "Using parallel datapoint sampler (AsyncDatapointSampler)"
-            )
-            model = AsyncDatapointSampler(
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
-                inference_time_args=inference_time_args,
+                policy_args=policy_args,
+                evaluator_args=evaluator_args,
+                treethink_args=treethink_args,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
                 max_concurrent_datapoints=max_concurrent,
             )
         else:
             # Sequential processing
-            logger.info("Using sequential sampler (Sampler)")
-            model = Sampler(
-                model_args=None,
+            logger.info("Using sequential TreeThink sampler (TreeThinkSampler)")
+            model = TreeThinkSampler(
+                policy_args=policy_args,
+                evaluator_args=evaluator_args,
+                treethink_args=treethink_args,
                 sample_params=None,
-                child_finder_args=child_finder_args,
-                node_evaluator_args=node_evaluator_args,
-                inference_time_args=inference_time_args,
                 prompter=simple_messages_to_string,
                 task_name=run_name,
             )
     elif _inference_type == "normal":
         model_args, sample_args = _args
 
-        model = Sampler(
+        logger.info("Using standard vLLM sampler (VLLMSampler)")
+        model = VLLMSampler(
             model_args=model_args,
             sample_params=sample_args,
-            child_finder_args=None,
-            node_evaluator_args=None,
-            inference_time_args=None,
             prompter=None,
             task_name=run_name,
         )
@@ -151,7 +197,7 @@ async def run_async_iterations(
     data_key,
     prompt_format,
     skip_existing,
-    show_graph_stats,
+    save_graph_stats,
 ):
     """Async helper to run iterations within a single event loop."""
     output_path = Path(output_dir)
@@ -166,7 +212,7 @@ async def run_async_iterations(
         logger.info(f"Running iteration {i + 1}/{num_iterations}")
 
         if isinstance(model, AsyncSampler):
-            # Pure async stack: AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator
+            # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
             logger.info("Running with AsyncSampler (pure async stack)")
             results = await model.async_inference(
                 data=datapoints,
@@ -175,17 +221,6 @@ async def run_async_iterations(
                 prompt_format=prompt_format,
                 skip_if_exists=skip_existing,
                 show_progress=True,
-            )
-        elif isinstance(model, AsyncDatapointSampler):
-            # Hybrid stack: Sync MCTS with async REPL parallelization
-            logger.info("Running with AsyncDatapointSampler (parallel REPL)")
-            results = await model.async_inference(
-                data=datapoints,
-                system_prompt=system_prompt,
-                data_key=data_key,
-                prompt_format=prompt_format,
-                show_progress=True,
-                skip_if_exists=skip_existing,
             )
 
         _time = get_time()
@@ -202,26 +237,38 @@ async def run_async_iterations(
                 _graph.rename(_graph_path / _graph.name)
             logger.info(f"Moving graphs to {_graph_path}")
 
-        if show_graph_stats:
-            if "graph_stats" in results[0].keys():
-                # which means if inftime_args.store_graph_stats = True
-                graph_accum = []
-                for r in results:
-                    if "graph_stats" in r:
-                        graph_accum.append(r["graph_stats"])
-
-                graph_analysis = analyze_graph_stats(graph_accum)
-                _graph_analysis_pretty = json.dumps(graph_analysis, indent=2)
+        graph_stats_payload = None
+        if save_graph_stats:
+            graph_stats_payload = _build_graph_stats_payload(
+                model=model,
+                results=results,
+                output_path=output_path,
+                run_name=run_name,
+                iteration_index=i,
+                timestamp=_time,
+                num_iterations=num_iterations,
+            )
+            if graph_stats_payload:
+                _graph_analysis_pretty = json.dumps(
+                    graph_stats_payload["graph_stats_summary"], indent=2
+                )
                 logger.success(
                     f"Graph stats analysis for iteration {i + 1}/{num_iterations}: "
                     + f"\n{_graph_analysis_pretty}"
                 )
             else:
-                # something unexpected?
                 logger.warning(
                     "Failed to find `graph_stats` key in outputs, "
-                    "did you set `store_graph_stats=True` in InferenceTimeArgs?"
+                    "did you set `store_graph_stats=True` in TreeThinkArgs?"
                 )
+
+        if graph_stats_payload:
+            stats_path = output_path / f"{i}_exp_{run_name}_{_time}.json"
+            with open(stats_path, "w", encoding="utf-8") as f:
+                json.dump(graph_stats_payload, f, indent=2, ensure_ascii=False)
+            logger.success(
+                f"Experiment parameters and graph stats saved to {stats_path}."
+            )
         logger.success(f"Answers saved to {_path}.")
 
 
@@ -236,13 +283,12 @@ def run_inference_loop(
     data_key,
     prompt_format,
     lora_path,
-    show_graph_stats,
-    use_parallel=False,
+    save_graph_stats,
     use_async=False,
     skip_existing=True,
 ):
     """Run the main inference loop and save results."""
-    if use_async or use_parallel:
+    if use_async:
         # Use a single asyncio.run for async models to avoid loop issues
         asyncio.run(
             run_async_iterations(
@@ -255,7 +301,7 @@ def run_inference_loop(
                 data_key=data_key,
                 prompt_format=prompt_format,
                 skip_existing=skip_existing,
-                show_graph_stats=show_graph_stats,
+                save_graph_stats=save_graph_stats,
             )
         )
     else:
@@ -294,25 +340,43 @@ def run_inference_loop(
                     _graph.rename(_graph_path / _graph.name)
                 logger.info(f"Moving graphs to {_graph_path}")
 
-            if show_graph_stats:
-                if "graph_stats" in results[0].keys():
-                    # which means if inftime_args.store_graph_stats = True
-                    graph_analysis = analyze_graph_stats(
-                        [r["graph_stats"] for r in results]
-                    )
+            graph_stats_payload = None
+            if save_graph_stats:
+                graph_stats_payload = _build_graph_stats_payload(
+                    model=model,
+                    results=results,
+                    output_path=output_path,
+                    run_name=run_name,
+                    iteration_index=i,
+                    timestamp=_time,
+                    num_iterations=num_iterations,
+                )
+                if graph_stats_payload:
                     _graph_analysis_pretty = json.dumps(
-                        graph_analysis, indent=2
+                        graph_stats_payload["graph_stats_summary"],
+                        indent=2,
                     )
                     logger.success(
                         f"Graph stats analysis for iteration {i + 1}/{num_iterations}: "
                         + f"\n{_graph_analysis_pretty}"
                     )
                 else:
-                    # something unexpected?
                     logger.warning(
                         "Failed to find `graph_stats` key in outputs, "
-                        "did you set `store_graph_stats=True` in InferenceTimeArgs?"
+                        "did you set `store_graph_stats=True` in TreeThinkArgs?"
                     )
+
+            if graph_stats_payload:
+                stats_path = (
+                    output_path / f"{i}_exp_stats_{run_name}_{_time}.json"
+                )
+                with open(stats_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        graph_stats_payload, f, indent=2, ensure_ascii=False
+                    )
+                logger.success(
+                    f"Experiment parameters and graph stats saved to {stats_path}."
+                )
             logger.success(f"Answers saved to {_path}")
 
 
@@ -371,10 +435,10 @@ def parse_arguments():
         help="Path to LoRARequest",
     )
     parser.add_argument(
-        "--show-graph-stats",
+        "--no-save-graph-stats",
         action="store_true",
-        help="Calculate avg&mean of graph related statistics for each solution."
-        "In order to see these, set `store_graph_stats=True` in InferenceTimeArgs.",
+        help="Do NOT calculate avg&mean of graph related statistics for each solution."
+        "In order to see these, set `store_graph_stats=True` in TreeThinkArgs.",
     )
     parser.add_argument(
         "--continue-from-prev",
@@ -406,19 +470,11 @@ def parse_arguments():
         help="Whether to take only 4 many examples as debugging purpose.",
     )
 
-    # Parallel processing arguments
-    parser.add_argument(
-        "--parallel",
-        action="store_true",
-        help="Enable concurrent datapoint processing (hybrid mode). "
-        "vLLM is shared (serialized), REPL is parallelized. "
-        "Provides speedup for REPL-heavy workloads.",
-    )
     parser.add_argument(
         "--async",
         dest="use_async",
         action="store_true",
-        help="Enable pure async stack (AsyncMCTS + AsyncChildFinder + AsyncNodeEvaluator). "
+        help="Enable pure async stack (AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator). "
         "Fully asynchronous tree search with concurrent child generation and evaluation. "
         "Recommended for maximum throughput.",
     )
@@ -498,7 +554,6 @@ def main():
     model = setup_model(
         gen_config_path=args.gen_config_path,
         run_name=args.run_name,
-        use_parallel=args.parallel,
         use_async=args.use_async,
         max_concurrent=args.max_concurrent,
     )
@@ -517,10 +572,9 @@ def main():
         else data_config.data_keys,
         prompt_format=data_config.prompt_format,
         lora_path=args.lora_path,
-        use_parallel=args.parallel,
         use_async=args.use_async,
         skip_existing=not args.no_skip_existing,  # Skip by default, unless --no-skip-existing
-        show_graph_stats=args.show_graph_stats,
+        save_graph_stats=not args.no_save_graph_stats,  # Save graph stats by default, unless --no-save-graph-stats
     )
     logger.success("Inference completed successfully!")
 

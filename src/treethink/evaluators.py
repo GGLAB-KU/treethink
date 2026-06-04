@@ -1,27 +1,28 @@
-import json
 import math
 import os
-import uuid
 from abc import ABC, abstractmethod
+from enum import Enum
 from functools import partial
-from typing import Callable, List, Optional, Union, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
-import requests
 import vllm
 from loguru import logger
+from vllm.lora.request import LoRARequest
 
-from treethink.grading import (
+from treethink.clients.cache import CachedClient, ProofCache
+from treethink.clients.coq.rocq import RocqBatchClient
+from treethink.clients.lean import (
     extract_data,
     split_proof_header,
 )
-from kimina_client import KiminaClient
-from kimina_client.models import Infotree
+from treethink.clients.lean.adapter import LeanClientAdapter
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
-    LeanREPLArgs,
+    ClientArgs,
+    EvaluatorArgs,
     ModelArgs,
-    NodeEvaluatorArgs,
     SamplingArgs,
+    calculate_logprobs,
     extract_result,
 )
 
@@ -38,9 +39,27 @@ You score the solution out of 20 and put your final score inside \\boxed{}.
 Do NOT attempt to solve the problem, only provide a score out of 20 inside \\boxed{}.
 """
 
-class BaseNodeEvaluator(ABC):
+
+class BaseEvaluator(ABC):
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
+
+    def _format_str_value(self, value):
+        if callable(value):
+            return getattr(value, "__name__", value.__class__.__name__)
+        return repr(value)
+
+    def _str_fields(self):
+        return [("name", self.name)]
+
+    def __str__(self) -> str:
+        fields = ", ".join(
+            f"{name}={self._format_str_value(value)}"
+            for name, value in self._str_fields()
+        )
+        return f"{self.__class__.__name__}({fields})"
+
+    __repr__ = __str__
 
     @abstractmethod
     def __call__(
@@ -49,11 +68,9 @@ class BaseNodeEvaluator(ABC):
         pass
 
 
-class CumulativeLogprobNodeEvaluator(BaseNodeEvaluator):
+class LogprobEvaluator(BaseEvaluator):
     def __init__(self, *args, **kwargs):
-        super().__init__(
-            name="cumulative_logprob_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="cumulative_logprob_evaluator", *args, **kwargs)
 
     def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -62,17 +79,25 @@ class CumulativeLogprobNodeEvaluator(BaseNodeEvaluator):
             node = [node]
 
         if all([n.vllm_output for n in node]):
-            return [n.vllm_output.cumulative_logprob for n in node]
+            # Just return the cumulative logprobs from vllm
+            if hasattr(node[0].vllm_output, "cumulative_logprob"):
+                return [n.vllm_output.cumulative_logprob for n in node]
+
+            # Otherwise calculate cumulative logprobs by hand
+            return calculate_logprobs(node)
         else:
             # if it is root node
             if node[0].parent:
                 logger.warning(f"No vllm_output found in node(s): {node}")
             return [0.0] * len(node)
 
+    def _str_fields(self):
+        return super()._str_fields()
 
-class CumulativeProbNodeEvaluator(BaseNodeEvaluator):
+
+class ProbEvaluator(BaseEvaluator):
     def __init__(self, *args, **kwargs):
-        super().__init__(name="cumulative_prob_node_evaluator", *args, **kwargs)
+        super().__init__(name="cumulative_prob_evaluator", *args, **kwargs)
 
     def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -82,108 +107,131 @@ class CumulativeProbNodeEvaluator(BaseNodeEvaluator):
 
         if all([n.vllm_output for n in node]):
             # math.exp is x2 faster than np.exp for small lists
-            return [math.exp(n.vllm_output.cumulative_logprob) for n in node]
+            if hasattr(node[0].vllm_output, "cumulative_logprob"):
+                return [
+                    math.exp(n.vllm_output.cumulative_logprob) for n in node
+                ]
+
+            # Otherwise calculate cumulative logprobs by hand and exponentiate
+            _logprobs = calculate_logprobs(node)
+            return [math.exp(lp) for lp in _logprobs]
+
         else:
             # if it is root node
             if node[0].parent:
                 logger.warning(f"No vllm_output found in node(s): {node}")
             return [0.0] * len(node)
 
+    def _str_fields(self):
+        return super()._str_fields()
 
-class REPLNodeEvaluator(BaseNodeEvaluator):
-    def __init__(self, repl_args: LeanREPLArgs, *args, **kwargs):
-        super().__init__(name="repl_node_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
-        # Sync KiminaClient
-        self.lean_client = KiminaClient()
+
+class LeanREPLEvaluator(BaseEvaluator):
+    """Evaluate proof snippets via a Lean 4 REPL (Kimina server).
+
+    Uses :class:`LeanClientAdapter` to wrap the external ``KiminaClient``.
+    If *cache* is provided the client is wrapped with :class:`CachedClient`.
+    """
+
+    def __init__(
+        self,
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(name="lean_repl_evaluator", *args, **kwargs)
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
+        self.lean_client = LeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
+        if cache is not None:
+            self.lean_client = CachedClient(self.lean_client, cache=cache)
 
     def __call__(self, node: Union[Node, List[Node]], method: BaseMethod):
-        """
-        Evaluate the quality of a node using Lean server verification (KiminaClient).
-        Returns 1.0 for verification success, 0.0 otherwise.
-        """
+        """Evaluate node(s) — returns 1.0 for verified, 0.0 otherwise."""
         if isinstance(node, Node):
             nodes = [node]
         else:
             nodes = node
 
-        # Build snips
-        snips = []
-        for n in nodes:
-            snips.append(n.answer)
+        snips = [n.answer for n in nodes]
 
         try:
             response = self.lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
+                timeout=self.client_args.timeout,
                 show_progress=False,
+                batch_size=self.client_args.batch_size,
+                max_workers=self.client_args.num_proc,
             )
         except Exception as e:
-            logger.error(f"KiminaClient failed: {e}")
+            logger.error(f"Lean REPL evaluator failed: {e}")
             return [0.0] * len(nodes)
 
         results = []
-        for idx, n in enumerate(nodes):
+        for idx, _n in enumerate(nodes):
             try:
                 if response and getattr(response, "results", None):
-                    result = response.results[idx]
-                    entry = result.response
+                    entry = response.results[idx].response
                 else:
                     logger.warning("No results in Lean server response")
                     results.append(0.0)
                     continue
 
-                is_successful = self._is_lean_success(entry)
-
-                if is_successful:
-                    results.append(1.0)
-                else:
-                    results.append(0.0)
+                results.append(
+                    1.0 if self.lean_client.is_success_response(entry) else 0.0
+                )
             except Exception as e:
                 logger.error(f"Lean verification error: {e}")
                 results.append(0.0)
+
         return results if isinstance(node, list) else results[0]
 
-    def _is_lean_success(self, entry: dict) -> bool:
-        """
-        Check if a Lean verification entry represents a successful verification.
-        """
-        if not isinstance(entry, dict):
-            return False
-        # Check if there's an error at the top level
-        if entry.get("error") is not None:
-            return False
-
-        # Check if there are any error messages in the response
-        for msg in entry.get("messages", []):
-            if msg.get("severity", "").lower() == "error":
-                return False
-
-        return True
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("client_args", self.client_args),
+        ]
 
 
-class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
+class JudgeEvaluator(BaseEvaluator):
     def __init__(
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
-        repl_args: LeanREPLArgs,
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
+        lora_path: Optional[str] = None,
         *args,
         **kwargs,
     ):
-        super().__init__(name="llm_as_judge_node_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
+        super().__init__(name="llm_as_judge_evaluator", *args, **kwargs)
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
 
         if isinstance(llm_as_judge_model, ModelArgs):
             self.model = self.init_model(
                 llm_as_judge_model,
                 kwargs.get("llm_as_judge_visible_devices", "1"),
             )
+            self.enable_lora = llm_as_judge_model.enable_lora
         else:
             self.model = llm_as_judge_model
+            self.enable_lora = bool(kwargs.get("enable_lora", False))
+
+        self.lora_path = lora_path
+        if self.lora_path and not self.enable_lora:
+            logger.warning(
+                "lora_path provided but enable_lora is False. Ignoring lora_path."
+            )
+            self.lora_path = None
 
         self.sampling_params = (
             self.set_sampling_params(llm_as_judge_sampling)
@@ -193,8 +241,15 @@ class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
 
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Sync KiminaClient
-        self.lean_client = KiminaClient()
+        # Sync Lean Client
+        raw = LeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
+        self.lean_client = (
+            CachedClient(raw, cache=cache) if cache is not None else raw
+        )
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -206,6 +261,11 @@ class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
                 continue_final_message=False,
                 enable_thinking=False,
             )
+
+    def _get_lora_request(self) -> Optional[LoRARequest]:
+        if self.enable_lora and self.lora_path:
+            return LoRARequest("lora_adapter", 1, self.lora_path)
+        return None
 
     def set_sampling_params(
         self, sampling_params: Union[SamplingArgs, vllm.SamplingParams]
@@ -249,9 +309,18 @@ class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
         self, messages: Union[str, List[str]]
     ) -> List[str]:
         try:
-            output = self.model.generate(
-                messages, self.sampling_params, use_tqdm=False
-            )
+            lora_request = self._get_lora_request()
+            if lora_request:
+                output = self.model.generate(
+                    messages,
+                    self.sampling_params,
+                    use_tqdm=False,
+                    lora_request=lora_request,
+                )
+            else:
+                output = self.model.generate(
+                    messages, self.sampling_params, use_tqdm=False
+                )
             num_messages = len(messages) if isinstance(messages, list) else 1
             num_outputs = len(output)
             if num_outputs != num_messages:
@@ -307,8 +376,7 @@ class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
         try:
             response = self.lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
+                timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
@@ -433,12 +501,24 @@ class LLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
             return proof[start:]
         return proof[start:end]
 
-class PairwiseTournamentEvaluator(BaseNodeEvaluator):
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model", self.model.__class__.__name__),
+            ("enable_lora", self.enable_lora),
+            ("lora_path", self.lora_path),
+            ("sampling_params", self.sampling_params),
+            ("client_args", self.client_args),
+            ("system_prompt", self.system_prompt),
+        ]
+
+
+class TournamentEvaluator(BaseEvaluator):
     def __init__(
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
-        repl_args: LeanREPLArgs,
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
         prompter: Optional[Callable] = None,
         shuffle_bracket: bool = True,
@@ -446,7 +526,9 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
         **kwargs,
     ):
         super().__init__(name="pairwise_tournament_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
         self.shuffle_bracket = shuffle_bracket
 
         if isinstance(llm_as_judge_model, ModelArgs):
@@ -465,8 +547,17 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
 
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Sync KiminaClient
-        self.lean_client = KiminaClient()
+        # Sync Lean Client (optionally cached)
+        raw_lean = LeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
+        self.lean_client = (
+            CachedClient(raw_lean, cache=cache)
+            if cache is not None
+            else raw_lean
+        )
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -501,7 +592,7 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
     ):
         """Create a prompt for LLM to judge between two proofs."""
         prompt = "You are comparing two proof attempts. Choose which one is better.\n\n"
-        
+
         prompt += "# Proof A:\n"
         prompt += f"```lean\n{proof_a}\n```\n"
         if info_a:
@@ -513,7 +604,7 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
                 prompt += f"Solved Goals: {info_a['solved_goals']}\n"
             if info_a.get("error_message"):
                 prompt += f"Error: {info_a['error_message']}\n"
-        
+
         prompt += "\n# Proof B:\n"
         prompt += f"```lean\n{proof_b}\n```\n"
         if info_b:
@@ -525,28 +616,38 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
                 prompt += f"Solved Goals: {info_b['solved_goals']}\n"
             if info_b.get("error_message"):
                 prompt += f"Error: {info_b['error_message']}\n"
-        
+
         prompt += "\nWhich proof is better? Answer with either 'A' or 'B' in \\boxed{}."
-        
+
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
         ]
-        
+
         return self.prompter(messages)
 
-    def _extract_lean_info(self, snip: str, response, result_idx: int) -> Optional[dict]:
+    def _extract_lean_info(
+        self, snip: str, response, result_idx: int
+    ) -> Optional[dict]:
         """Extract tactic and goal information from Lean REPL response."""
         if not response or not getattr(response, "results", None):
             return None
-        
+
         result_obj = response.results[result_idx]
-        infotree = result_obj.response.get("infotree", None) if result_obj.response else None
-        
+        infotree = (
+            result_obj.response.get("infotree", None)
+            if result_obj.response
+            else None
+        )
+
         if not infotree:
-            error_message = result_obj.response.get("error", None) if result_obj.response else None
+            error_message = (
+                result_obj.response.get("error", None)
+                if result_obj.response
+                else None
+            )
             return {"error_message": error_message} if error_message else None
-        
+
         try:
             header, body = split_proof_header(snip)
             intervals = extract_data(infotree, body)
@@ -560,17 +661,17 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
             return None
 
     def _batch_compare_pairs(
-        self, 
-        pairs: List[Tuple[int, int]], 
-        nodes: List[Node], 
+        self,
+        pairs: List[Tuple[int, int]],
+        nodes: List[Node],
         method: BaseMethod,
         snips: List[str],
-        lean_infos: List[Optional[dict]]
+        lean_infos: List[Optional[dict]],
     ) -> List[int]:
         """Compare pairs of nodes in batch and return winner indices."""
         if not pairs:
             return []
-        
+
         # Prepare messages for all pairs
         messages = []
         for idx_a, idx_b in pairs:
@@ -581,19 +682,19 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
                 lean_infos[idx_b],
             )
             messages.append(message)
-        
+
         # Batch generate
         try:
             output = self.model.generate(
                 messages, self.sampling_params, use_tqdm=False
             )
-            
+
             if len(output) != len(messages):
                 logger.error(
                     f"vLLM generation mismatch: sent {len(messages)} messages, "
                     f"got {len(output)} outputs"
                 )
-            
+
             # Extract winners
             winners = []
             for i, (idx_a, idx_b) in enumerate(pairs):
@@ -601,26 +702,34 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
                     if i < len(output):
                         answer = output[i].outputs[0].text
                         extracted = extract_result(answer)
-                        
+
                         if extracted == "NO_BOXED_STRING_FOUND":
-                            logger.warning(f"No boxed answer found for pair ({idx_a}, {idx_b}), defaulting to A")
+                            logger.warning(
+                                f"No boxed answer found for pair ({idx_a}, {idx_b}), defaulting to A"
+                            )
                             winners.append(idx_a)
-                        elif extracted.strip().upper() == 'A':
+                        elif extracted.strip().upper() == "A":
                             winners.append(idx_a)
-                        elif extracted.strip().upper() == 'B':
+                        elif extracted.strip().upper() == "B":
                             winners.append(idx_b)
                         else:
-                            logger.warning(f"Invalid answer '{extracted}' for pair ({idx_a}, {idx_b}), defaulting to A")
+                            logger.warning(
+                                f"Invalid answer '{extracted}' for pair ({idx_a}, {idx_b}), defaulting to A"
+                            )
                             winners.append(idx_a)
                     else:
-                        logger.warning(f"Missing output for pair ({idx_a}, {idx_b}), defaulting to A")
+                        logger.warning(
+                            f"Missing output for pair ({idx_a}, {idx_b}), defaulting to A"
+                        )
                         winners.append(idx_a)
                 except Exception as e:
-                    logger.error(f"Failed to process pair ({idx_a}, {idx_b}): {e}")
+                    logger.error(
+                        f"Failed to process pair ({idx_a}, {idx_b}): {e}"
+                    )
                     winners.append(idx_a)
-            
+
             return winners
-            
+
         except Exception as e:
             logger.error(f"Batch comparison failed: {e}")
             # Fallback: return first element of each pair
@@ -631,69 +740,69 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
     ) -> List[float]:
         if isinstance(node, Node):
             node = [node]
-        
+
         n = len(node)
-        
+
         # Single node case
         if n == 1:
             return [1.0]
-        
+
         # Prepare all proofs
         snips = []
         for i in range(n):
             proof_so_far = method.traverse_to_root(node[i], include_root=True)
             proof_so_far = self.parse_proof(proof=proof_so_far)
             snips.append(proof_so_far)
-        
+
         # Get Lean info for all proofs in batch
         try:
             response = self.lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
-                show_progress=False
+                timeout=self.client_args.timeout,
+                show_progress=False,
             )
         except Exception as e:
             logger.error(f"KiminaClient failed: {e}")
             response = None
-        
+
         # Extract info for all nodes
         lean_infos = []
         for i in range(n):
             info = self._extract_lean_info(snips[i], response, i)
             lean_infos.append(info)
-        
+
         # Initialize bracket with shuffled or sequential indices
         bracket_indices = list(range(n))
         if self.shuffle_bracket:
             import random
+
             random.shuffle(bracket_indices)
             logger.info(f"Shuffled bracket order: {bracket_indices}")
-        
+
         # Pad to next power of 2 if needed
         n_padded = 2 ** math.ceil(math.log2(n))
-        
+
         # Add dummy indices for padding (they will lose immediately)
         while len(bracket_indices) < n_padded:
             bracket_indices.append(-1)  # -1 represents dummy/bye
-        
+
         # Track scores: initially all zeros
         scores = [0.0] * n
-        
+
         # Tournament rounds
         round_num = 1
         current_bracket = bracket_indices.copy()
-        
+
         while len(current_bracket) > 1:
             # Create pairs
             pairs = []
             valid_pairs = []  # pairs without dummies
             pair_to_valid_idx = {}
-            
+
             for i in range(0, len(current_bracket), 2):
                 idx_a = current_bracket[i]
                 idx_b = current_bracket[i + 1]
-                
+
                 # Handle dummy nodes (auto-advance real node)
                 if idx_a == -1 and idx_b == -1:
                     pairs.append((-1, -1))
@@ -705,7 +814,7 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
                     pair_to_valid_idx[len(pairs)] = len(valid_pairs)
                     valid_pairs.append((idx_a, idx_b))
                     pairs.append((idx_a, idx_b))
-            
+
             # Batch compare only valid pairs
             if valid_pairs:
                 winners_from_comparison = self._batch_compare_pairs(
@@ -713,11 +822,11 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
                 )
             else:
                 winners_from_comparison = []
-            
+
             # Process all pairs to get winners and assign scores to losers
             winners = []
             comparison_idx = 0
-            
+
             for pair_idx, (idx_a, idx_b) in enumerate(pairs):
                 if idx_a == -1 and idx_b == -1:
                     winners.append(-1)
@@ -729,28 +838,30 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
                     # Real comparison
                     winner_idx = winners_from_comparison[comparison_idx]
                     loser_idx = idx_b if winner_idx == idx_a else idx_a
-                    
+
                     # Assign score to loser based on round
                     # Round 1: score = 1, Round 2: score = 2, etc.
                     scores[loser_idx] = float(round_num)
-                    
+
                     winners.append(winner_idx)
                     comparison_idx += 1
-            
+
             current_bracket = winners
             round_num += 1
-        
+
         # Winner gets the highest score (number of rounds)
         winner_idx = current_bracket[0]
         if winner_idx != -1:
             scores[winner_idx] = float(round_num)
-        
+
         # Normalize scores to [0, 1]
         max_score = float(round_num)
         normalized_scores = [s / max_score for s in scores]
-        
-        logger.info(f"Tournament complete. Final scores: {scores} -> normalized: {normalized_scores}")
-        
+
+        logger.info(
+            f"Tournament complete. Final scores: {scores} -> normalized: {normalized_scores}"
+        )
+
         return normalized_scores
 
     def parse_proof(self, proof: str, pattern=None):
@@ -762,292 +873,17 @@ class PairwiseTournamentEvaluator(BaseNodeEvaluator):
             return proof[start:]
         return proof[start:end]
 
-
-class AsyncLLMAsJudgeNodeEvaluator(BaseNodeEvaluator):
-    """
-    Async LLM-as-judge node evaluator with AsyncLLMEngine.
-
-    This evaluator uses an LLM to judge proof quality asynchronously,
-    with support for batching multiple judgments.
-    """
-
-    def __init__(
-        self,
-        llm_as_judge_model: Union[vllm.LLM, ModelArgs],
-        llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
-        repl_args: LeanREPLArgs,
-        llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
-        prompter: Optional[Callable] = None,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(
-            name="async_llm_as_judge_node_evaluator", *args, **kwargs
-        )
-        self.repl_args = repl_args
-
-        # Initialize AsyncLLMEngine for judge
-        if isinstance(llm_as_judge_model, ModelArgs):
-            engine_args = AsyncEngineArgs(
-                model=llm_as_judge_model.model,
-                tensor_parallel_size=getattr(
-                    llm_as_judge_model, "tensor_parallel_size", 1
-                ),
-                gpu_memory_utilization=getattr(
-                    llm_as_judge_model, "gpu_memory_utilization", 0.9
-                ),
-                max_model_len=getattr(
-                    llm_as_judge_model, "max_model_len", None
-                ),
-                trust_remote_code=getattr(
-                    llm_as_judge_model, "trust_remote_code", True
-                ),
-                dtype=getattr(llm_as_judge_model, "dtype", "auto"),
-            )
-            self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-        else:
-            raise ValueError(
-                "llm_as_judge_model must be ModelArgs for async evaluator"
-            )
-
-        self.sampling_params = (
-            self.set_sampling_params(llm_as_judge_sampling)
-            if llm_as_judge_sampling
-            else vllm.SamplingParams()
-        )
-
-        self.system_prompt = llm_as_judge_system_prompt
-
-        # Async REPL client
-        self.lean_client = AsyncKiminaClient(
-            self.repl_args.lean_server_url
-            if hasattr(self.repl_args, "lean_server_url")
-            else None
-        )
-
-        if isinstance(prompter, Callable):
-            self.prompter = prompter
-        else:
-            self.prompter = self._default_prompter
-
-    def _default_prompter(self, messages):
-        """Default prompter for chat format."""
-        result = ""
-        for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            if content:
-                result += f"{role}: {content}\n\n"
-        return result
-
-    def set_sampling_params(self, sampling_params):
-        """Set sampling parameters."""
-        if isinstance(sampling_params, SamplingArgs):
-            sampling_params = vllm.SamplingParams(**sampling_params.__dict__)
-        return sampling_params
-
-    def _prepare_judge_messages(
-        self,
-        proof_so_far: str,
-        current_goals: Optional[str] = None,
-        applied_tactic: Optional[str] = None,
-        solved_goals: Optional[str] = None,
-        error_message_from_lean: Optional[str] = None,
-    ):
-        """Prepare judge prompt messages."""
-        prompt = f"# Proof So Far:\n{proof_so_far}\n"
-        prompt += f"# Applied Tactic:\n{applied_tactic}\n"
-        prompt += f"# Open Goals:\n{current_goals}\n"
-        prompt += f"# Solved Goals:\n{solved_goals}\n"
-        prompt += "If goals are not provided, judge based on proof so far. Put score in \\boxed{}. "
-
-        if error_message_from_lean:
-            prompt += f"# Error Message from Lean:\n{error_message_from_lean}\n"
-
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": prompt},
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model", self.model.__class__.__name__),
+            ("sampling_params", self.sampling_params),
+            ("client_args", self.client_args),
+            ("shuffle_bracket", self.shuffle_bracket),
+            ("system_prompt", self.system_prompt),
         ]
 
-        return self.prompter(messages)
 
-    async def __call__(
-        self, node: Union[Node, List[Node]], method: BaseMethod
-    ) -> List[float]:
-        """
-        Async LLM judge evaluation with batched inference.
-
-        Args:
-            node: Single node or list of nodes
-            method: Search method instance
-
-        Returns:
-            List of scores (0.0 to 20.0)
-        """
-        if isinstance(node, Node):
-            nodes = [node]
-        else:
-            nodes = node
-
-        # Prepare snips for REPL
-        snips = []
-        for n in nodes:
-            proof_so_far = method.traverse_to_root(n, include_root=True)
-            proof_so_far = self.parse_proof(proof=proof_so_far)
-            snips.append(proof_so_far)
-
-        # Async REPL check
-        try:
-            response = await self.lean_client.check(
-                snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
-                show_progress=False,
-            )
-        except Exception as e:
-            logger.error(f"AsyncKiminaClient failed: {e}")
-            response = None
-
-        # Prepare judge messages for all nodes
-        judge_prompts = []
-        for i, n in enumerate(nodes):
-            if response and hasattr(response, "results") and response.results:
-                result_obj = response.results[i]
-                infotree = (
-                    result_obj.response.get("infotree", None)
-                    if result_obj.response
-                    else None
-                )
-            else:
-                infotree = None
-
-            if infotree:
-                header, body = split_proof_header(snips[i])
-                intervals = extract_data(infotree, body)
-
-                current_goals = intervals[-1]["goalsAfter"]
-                applied_tactic = intervals[-1]["tactic"]
-                solved_goals = intervals[-1]["goalsBefore"]
-                error_message = None
-            else:
-                current_goals = None
-                applied_tactic = None
-                solved_goals = None
-                error_message = (
-                    result_obj.response.get("error", None)
-                    if response
-                    and hasattr(response, "results")
-                    and result_obj.response
-                    else None
-                )
-
-            judge_prompt = self._prepare_judge_messages(
-                snips[i],
-                current_goals,
-                applied_tactic,
-                solved_goals,
-                error_message,
-            )
-            judge_prompts.append(judge_prompt)
-
-        # Async judge generation (batched)
-        judge_answers = await self._async_generate_judge_answers(judge_prompts)
-
-        # Extract scores
-        scores = []
-        for i, answer in enumerate(judge_answers):
-            if answer.startswith("ERROR:"):
-                logger.warning(f"Judge error for node {i}: {answer}")
-                scores.append(10.0)  # Neutral score
-                continue
-
-            extracted_score = extract_result(answer)
-
-            if extracted_score == "NO_BOXED_STRING_FOUND":
-                logger.warning(f"No boxed score found for node {i}")
-                scores.append(10.0)
-                continue
-
-            if extracted_score.isnumeric():
-                score = float(extracted_score)
-                score = max(0.0, min(20.0, score))  # Clamp to [0, 20]
-                scores.append(score)
-            else:
-                logger.warning(f"Invalid score: {extracted_score}")
-                scores.append(10.0)
-
-        return scores
-
-    async def _async_generate_judge_answers(
-        self, prompts: List[str]
-    ) -> List[str]:
-        """
-        Generate judge answers for multiple prompts concurrently.
-
-        Args:
-            prompts: List of prompts to judge
-
-        Returns:
-            List of judge responses
-        """
-        try:
-            # Create async generation tasks
-            tasks = []
-            for i, prompt in enumerate(prompts):
-                request_id = f"judge_{i}"
-                task = self._generate_single_judge(prompt, request_id)
-                tasks.append(task)
-
-            # Run all generations concurrently
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Process results
-            answers = []
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    logger.error(f"Judge generation {i} failed: {result}")
-                    answers.append(f"ERROR: {str(result)}")
-                else:
-                    answers.append(result)
-
-            return answers
-
-        except Exception as e:
-            logger.error(f"Batch judge generation failed: {e}")
-            return [f"ERROR: {str(e)}"] * len(prompts)
-
-    async def _generate_single_judge(self, prompt: str, request_id: str) -> str:
-        """Generate a single judge response."""
-        try:
-            results = self.engine.generate(
-                prompt, self.sampling_params, request_id=request_id
-            )
-
-            final_output = None
-            async for request_output in results:
-                final_output = request_output
-
-            if final_output is None or len(final_output.outputs) == 0:
-                return "ERROR: No output from judge"
-
-            return final_output.outputs[0].text
-
-        except Exception as e:
-            logger.error(f"Judge generation failed for {request_id}: {e}")
-            return f"ERROR: {str(e)}"
-
-    def parse_proof(self, proof: str, pattern=None):
-        """Parse proof to extract code."""
-        start = proof.find("import Mathlib")
-        end = proof.find("```", start)
-        if end == -1 and start == -1:
-            return proof
-        elif end == -1:
-            return proof[start:]
-        return proof[start:end]
-
-
-class NormalizedLengthsNodeEvaluator(BaseNodeEvaluator):
+class NormLenEvaluator(BaseEvaluator):
     """Normalized Lengths node evaluation strategy from BFS-Prover paper:
     https://arxiv.org/pdf/2502.03438
 
@@ -1061,9 +897,7 @@ class NormalizedLengthsNodeEvaluator(BaseNodeEvaluator):
             length_norm (float): tunable alpha parameter that is used in L^alpha
         """
         self.length_norm = length_norm
-        super().__init__(
-            name="normalized_lengths_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="normalized_lengths_evaluator", *args, **kwargs)
 
     def __call__(
         self, node: Union[Node, List[Node]], method: BaseMethod
@@ -1087,16 +921,26 @@ class NormalizedLengthsNodeEvaluator(BaseNodeEvaluator):
         if not node.parent:
             return [0.0]
 
-        while node.parent:
-            whole_path_cumulative_logprobs += (
-                node.vllm_output.cumulative_logprob
-            )
-            node = node.parent
+        # Traverse back and sum the cumulative log probs.
+        if hasattr(node.vllm_output, "cumulative_logprob"):
+            while node.parent:
+                whole_path_cumulative_logprobs += (
+                    node.vllm_output.cumulative_logprob
+                )
+                node = node.parent
+        # If cumulative_logprob is not available, calculate logprobs by hand.
+        else:
+            while node.parent:
+                whole_path_cumulative_logprobs += calculate_logprobs([node])[0]
+                node = node.parent
 
         return [whole_path_cumulative_logprobs / (L**self.length_norm)]
 
+    def _str_fields(self):
+        return super()._str_fields() + [("length_norm", self.length_norm)]
 
-class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
+
+class NormLenProbEvaluator(BaseEvaluator):
     """Normalized Lengths node evaluation strategy from BFS-Prover paper:
     https://arxiv.org/pdf/2502.03438
 
@@ -1111,7 +955,7 @@ class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
         """
         self.length_norm = length_norm
         super().__init__(
-            name="normalized_lengths_probs_node_evaluator", *args, **kwargs
+            name="normalized_lengths_probs_evaluator", *args, **kwargs
         )
 
     def __call__(
@@ -1140,104 +984,135 @@ class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
         if not node.parent:
             return [0.0]
 
-        while node.parent:
-            # math.exp is x2 faster than np.exp for single values
-            whole_path_cumulative_probs += math.exp(
-                node.vllm_output.cumulative_logprob
-            )
-            node = node.parent
+        # Traverse back and sum the cumulative log probs.
+        if hasattr(node.vllm_output, "cumulative_logprob"):
+            while node.parent:
+                whole_path_cumulative_probs += math.exp(
+                    node.vllm_output.cumulative_logprob
+                )
+                node = node.parent
+        # If cumulative_logprob is not available, calculate logprobs by hand.
+        else:
+            while node.parent:
+                whole_path_cumulative_probs += math.exp(
+                    calculate_logprobs([node])[0]
+                )
+                node = node.parent
 
         return [whole_path_cumulative_probs / (L**self.length_norm)]
 
+    def _str_fields(self):
+        return super()._str_fields() + [("length_norm", self.length_norm)]
 
-class NormalizedLengthsProbsNodeEvaluator(BaseNodeEvaluator):
-    """Normalized Lengths node evaluation strategy from BFS-Prover paper:
-    https://arxiv.org/pdf/2502.03438
 
-    In the original paper, it is used with Best First Search (BFS) but it is an
-    applicable scoring mechanism for our other implementations.
+class RocqEvaluator(BaseEvaluator):
+    """
+    Evaluate Rocq code snippets by running them through a rocq-ml-server session.
+
+    The evaluator wraps a snippet in a temporary file containing a simple
+    theorem statement, then executes each Rocq command in order. If all
+    commands succeed and the proof closes, the snippet is considered correct.
     """
 
-    def __init__(self, length_norm: float = 0.5, *args, **kwargs):
-        """
-        Args:
-            length_norm (float): tunable alpha parameter that is used in L^alpha
-        """
-        self.length_norm = length_norm
-        super().__init__(
-            name="normalized_lengths_probs_node_evaluator", *args, **kwargs
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 5000,
+        workspace_dir: Optional[str] = ".",
+        timeout: Optional[float] = 5.0,
+        statement: str = "True",
+        theorem_name: str = "__eval",
+        prelude: Optional[str] = None,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.workspace_dir = workspace_dir
+        self.timeout = timeout
+        self.statement = statement
+        self.theorem_name = theorem_name
+        self.prelude = prelude
+        self._client = RocqBatchClient(
+            host=self.host,
+            port=self.port,
+            workspace_dir=self.workspace_dir,
+            theorem_name=self.theorem_name,
+            statement=self.statement,
+            prelude=self.prelude,
         )
+
+        super().__init__(name="rocq_evaluator")
 
     def __call__(
-        self, node: Union[Node, List[Node]], method: BaseMethod
-    ) -> List[float]:
-        """
-        1. Collect cumulative_logprobs of the whole path.
-        2. Take count of the total length passed.
-        3. Divide the result with L^alpha and return.
-        """
-        if isinstance(node, list):
-            evaluatio
-            ns = []
-            for n in node:
-                evaluations.extend(self.__call__(node=n, method=method))
-            return evaluations
+        self, code: Union[str, List[str]]
+    ) -> Union[float, List[float]]:
+        snippets = [code] if isinstance(code, str) else code
+        results: List[float] = []
 
-        # We already know the path length from node.level
-        L = node.level
+        for snippet in snippets:
+            response = self._client.verify_snippet(snippet)
+            results.append(1.0 if response.get("proof_finished") else 0.0)
 
-        # By whole path, we mean for every node,
-        # by "cumulative_logprob" we mean that tactic's logprobs as a sentence.
-        whole_path_cumulative_probs = 0.0
+        return results[0] if isinstance(code, str) else results
 
-        # If it is already root, just return a value of 0.0 as it will be
-        # processed first no matter what.
-        if not node.parent:
-            logger.trace("Node is root, returning 0.0.")
-            return [0.0]
+    def close(self) -> None:
+        self._client.close()
 
-        # Accumulate until we reach to the root
-        while node.parent:
-            # math.exp is x2 faster than np.exp for single values
-            whole_path_cumulative_probs += math.exp(
-                node.vllm_output.cumulative_logprob
-            )
-            node = node.parent
+    def __enter__(self) -> "RocqEvaluator":
+        return self
 
-        return [whole_path_cumulative_probs / (L**self.length_norm)]
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    def _build_file_text(self) -> str:
+        parts: List[str] = []
+        if self.prelude:
+            parts.append(self.prelude.rstrip())
+        parts.append(f"Theorem {self.theorem_name} : {self.statement}.")
+        return "\n".join(parts) + "\n"
 
 
-IMPLEMENTED_ND = {
-    "cumulative_logprob_node_evaluator": CumulativeLogprobNodeEvaluator,
-    "repl_node_evaluator": REPLNodeEvaluator,
-    "llm_as_judge_node_evaluator": LLMAsJudgeNodeEvaluator,
-    "normalized_lengths_node_evaluator": NormalizedLengthsNodeEvaluator,
-    "async_llm_as_judge_node_evaluator": AsyncLLMAsJudgeNodeEvaluator,
-    "normalized_lengths_probs_node_evaluator": NormalizedLengthsProbsNodeEvaluator,
-}
-NODE_EVALUATORS = list(IMPLEMENTED_ND.keys())
+class EvaluatorType(Enum):
+    CUMULATIVE_LOGPROB = LogprobEvaluator
+    REPL = LeanREPLEvaluator
+    LLM_AS_JUDGE = JudgeEvaluator
+    TOURNAMENT = TournamentEvaluator
+    NORMALIZED_LENGTHS = NormLenEvaluator
+    NORMALIZED_LENGTHS_PROBS = NormLenProbEvaluator
+    ROCQ = RocqEvaluator
 
-
-def get_node_evaluator(func_name, *args, **kwargs) -> Callable:
-    try:
-        return IMPLEMENTED_ND[func_name](*args, **kwargs)
-    except KeyError:
-        logger.error(
-            f"Could not initialize node evaluator: {func_name}"
-            + f"Available node evaluators: {list(IMPLEMENTED_ND.keys())}"
+    @classmethod
+    def from_str(cls, name: str) -> "EvaluatorType":
+        normalized = name.strip().lower().replace("-", "_")
+        for suffix in ("_evaluator", "_policy"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+        for member in cls:
+            if normalized == member.name.lower():
+                return member
+        valid_keys = [member.name.lower() for member in cls]
+        raise ValueError(
+            f"Unknown evaluator '{name}'. Valid options: {valid_keys}"
         )
 
+    def initialize(self, *args, **kwargs) -> Callable:
+        return self.value(*args, **kwargs)
 
-def get_node_evaluator_from_config(
-    config: NodeEvaluatorArgs, *args, **kwargs
+
+IMPLEMENTED_EVALUATORS = EvaluatorType
+EVALUATORS = [member.name.lower() for member in EvaluatorType]
+
+
+def get_evaluator(func_name, *args, **kwargs) -> Callable:
+    return EvaluatorType.from_str(func_name).initialize(*args, **kwargs)
+
+
+def get_evaluator_from_config(
+    config: EvaluatorArgs, *args, **kwargs
 ) -> Callable:
-    try:
-        logger.info(
-            f"Instantiating node evaluator from config: {config.func_name}"
-        )
-        return IMPLEMENTED_ND[config.func_name](*args, **config, **kwargs)
-    except KeyError:
-        logger.error(
-            f"Could not initialize node evaluator: {config.func_name}"
-            + f"Available node evaluators: {list(IMPLEMENTED_ND.keys())}"
-        )
+    logger.info(f"Instantiating node evaluator from config: {config.func_name}")
+    return EvaluatorType.from_str(config.func_name).initialize(
+        *args, **dict(vars(config)), **kwargs
+    )

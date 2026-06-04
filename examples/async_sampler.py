@@ -1,7 +1,7 @@
 """
 Fully Asynchronous Sampler for TreeThink.
 
-This sampler leverages AsyncMCTS, AsyncChildFinder, and AsyncNodeEvaluator
+This sampler leverages AsyncMCTS, AsyncChildPolicy, and AsyncNodeEvaluator
 to achieve high-throughput parallel inference on multiple datapoints.
 """
 
@@ -13,21 +13,16 @@ from typing import Callable, Dict, List, Optional
 from loguru import logger
 from tqdm.asyncio import tqdm_asyncio
 
-from treethink import (
-    ChildFinderArgs,
-    InferenceTimeArgs,
-    NodeEvaluatorArgs,
-    get_inference_time_method,
-)
-from treethink.async_node_evaluators import get_async_node_evaluator_from_config
-
 # Import async components
-from treethink.child_finders import (
-    get_child_finder_from_config,  # Has async support
-)
-from treethink.inference_time_methods import (
-    InferenceTimeMethods,
+from treethink import (
+    EvaluatorArgs,
+    PolicyArgs,
+    TreeThink,
+    TreeThinkArgs,
+    get_method,
 )  # Wrapper class
+from treethink.async_evaluators import get_async_evaluator_from_config
+from treethink.async_policies import get_async_policy_from_config
 
 # Check for AsyncEngine
 try:
@@ -44,9 +39,9 @@ class AsyncSampler:
 
     def __init__(
         self,
-        child_finder_args: ChildFinderArgs,
-        node_evaluator_args: NodeEvaluatorArgs,
-        inference_time_args: InferenceTimeArgs,
+        policy_args: PolicyArgs,
+        evaluator_args: EvaluatorArgs,
+        treethink_args: TreeThinkArgs,
         prompter: Optional[Callable] = None,
         max_concurrent_datapoints: int = 16,
         gpu_memory_utilization: float = 0.8,
@@ -54,9 +49,9 @@ class AsyncSampler:
         visible_devices: str = "0",
         task_name: str = "async_generate",
     ):
-        self.child_finder_args = child_finder_args
-        self.node_evaluator_args = node_evaluator_args
-        self.inference_time_args = inference_time_args
+        self.policy_args = policy_args
+        self.evaluator_args = evaluator_args
+        self.treethink_args = treethink_args
         self.max_concurrent_datapoints = max_concurrent_datapoints
         self.prompter = prompter or self._default_prompter
         self.task_name = task_name
@@ -68,21 +63,18 @@ class AsyncSampler:
                 "vLLM AsyncLLMEngine not found. Please upgrade vLLM."
             )
 
-        # Create engine args from child_finder config or defaults
-        model_name = child_finder_args.model.model
-
         # Initialize Shared Components
-        # Use get_child_finder_from_config - it supports async child finders
-        self.shared_child_finder = get_child_finder_from_config(
-            child_finder_args, prompter=self.prompter
+        # Use get_policy_from_config - it supports async policies
+        self.shared_policy = get_async_policy_from_config(
+            policy_args, prompter=self.prompter
         )
 
         # For Judge, if it uses the same model, we can reuse the engine
         # If Judge is a different model, we would need a separate engine (and GPU memory!)
         # Here we assume Judge uses the SAME model for simplicity or it's handled externally.
-        # If node_evaluator needs a model, we pass the SAME engine.
-        self.shared_node_evaluator = get_async_node_evaluator_from_config(
-            node_evaluator_args,
+        # If evaluator needs a model, we pass the SAME engine.
+        self.shared_evaluator = get_async_evaluator_from_config(
+            evaluator_args,
             # We try to pass model if the evaluator needs it (like LLMAsJudge)
             prompter=self.prompter,
         )
@@ -140,9 +132,9 @@ class AsyncSampler:
 
         try:
             # Skip check
-            if skip_if_exists and self.inference_time_args.graph_path:
+            if skip_if_exists and self.treethink_args.graph_path:
                 if self._check_if_processed(
-                    problem_id, self.inference_time_args.graph_path
+                    problem_id, self.treethink_args.graph_path
                 ):
                     logger.info(f"Skipping {problem_id}")
                     datapoint["skipped"] = True
@@ -156,22 +148,22 @@ class AsyncSampler:
 
             logger.debug(f"Starting async_simulate for {problem_id}")
 
-            method = get_inference_time_method(
-                inference_time_config=self.inference_time_args,
+            method = get_method(
+                treethink_config=self.treethink_args,
                 root_node=None,
-                child_finder=self.shared_child_finder,
-                node_evaluator=self.shared_node_evaluator,
+                policy=self.shared_policy,
+                evaluator=self.shared_evaluator,
             )
 
-            wrapper = InferenceTimeMethods(method, self.inference_time_args)
+            wrapper = TreeThink(method, self.treethink_args)
 
             # Use the wrapper's async generation which handles simulation,
             # REPL checks, and saving the tree safely.
             result = await wrapper.async_generate(prompt, problem_id=problem_id)
 
-            # Extract output from InfTimeRequestOutput
+            # Extract output from TreeThinkOutputs
             if result.outputs:
-                datapoint["output"] = [result.outputs[0].text]
+                datapoint["output"] = [result.solution]
             else:
                 datapoint["output"] = [""]
 

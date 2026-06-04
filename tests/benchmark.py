@@ -54,4 +54,4 @@ output_json = {
 with open("kimina_benchmark_results.json", "w") as out_f:
     json.dump(output_json, out_f, indent=2)
 
-print(f"Results saved to kimina_benchmark_results.json")
+print("Results saved to kimina_benchmark_results.json")

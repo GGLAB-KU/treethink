@@ -3,23 +3,23 @@
 import itertools
 import random
 
-from treethink import BaseChildFinder, BaseNodeEvaluator, Node
+from treethink import BaseEvaluator, BasePolicy, Node
 
 # -------------
-# Child Finders
+# POLICIES
 # -------------
 
 
-class SimpleChildFinder(BaseChildFinder):
+class SimpleChildPolicy(BasePolicy):
     def __init__(self, num_child: int = 5, *args, **kwargs):
-        super().__init__(name="simple_child_finder", *args, **kwargs)
+        super().__init__(name="simple_policy", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
         self._id_gen = itertools.count(0)  # Infinite counter
 
     def __call__(self, node, method):
-        def _child_finder(x: Node, y):
+        def _policy(x: Node, y):
             for i in range(self.num_child - 1):
                 child_id = next(self._id_gen)
                 node.add_child(
@@ -31,14 +31,14 @@ class SimpleChildFinder(BaseChildFinder):
                     )
                 )
 
-        return _child_finder(node, method)
+        return _policy(node, method)
 
 
-class SetStrChildFinder(BaseChildFinder):
+class SetStrChildPolicy(BasePolicy):
     def __init__(
         self, text: str, num_child: int = 5, sep="\n", *args, **kwargs
     ):
-        super().__init__(name="set_str_child_finder", *args, **kwargs)
+        super().__init__(name="set_str_policy", *args, **kwargs)
         self.num_child = num_child
 
         # Create generators that maintain their own state
@@ -75,7 +75,7 @@ class SetStrChildFinder(BaseChildFinder):
             )
 
 
-class PreferTerminationChildFinder(BaseChildFinder):
+class PreferTerminationChildPolicy(BasePolicy):
     def __init__(
         self,
         termination_str: str = "```",
@@ -87,9 +87,7 @@ class PreferTerminationChildFinder(BaseChildFinder):
     ):
         """Occasionally produce a node with text `termination_str` to test if
         we can REPL that proof trajectory."""
-        super().__init__(
-            name="prefer_termination_child_finder", *args, **kwargs
-        )
+        super().__init__(name="prefer_termination_policy", *args, **kwargs)
         self.termination_str = termination_str
         self.num_child = num_child
         self.start_prob = start_prob
@@ -152,15 +150,15 @@ class PreferTerminationChildFinder(BaseChildFinder):
 # ---------------
 
 
-class RandomNodeEvaluator(BaseNodeEvaluator):
+class RandomNodeEvaluator(BaseEvaluator):
     def __init__(self, min_val=-20.0, max_val=0.0, *args, **kwargs):
         self.min_val = min_val
         self.max_val = max_val
 
-        super().__init__(name="random_node_evaluator", *args, **kwargs)
+        super().__init__(name="random_evaluator", *args, **kwargs)
 
     def __call__(self, node, method):
-        def _node_evaluator(x, y):
+        def _evaluator(x, y):
             if isinstance(x, Node):
                 x = [x]
 
@@ -169,10 +167,10 @@ class RandomNodeEvaluator(BaseNodeEvaluator):
                 for i in range(len(x))
             ]
 
-        return _node_evaluator(node, method)
+        return _evaluator(node, method)
 
 
-class FirstPosOthersNegNodeEvaluator(BaseNodeEvaluator):
+class FirstPosOthersNegNodeEvaluator(BaseEvaluator):
     """Score nodes in decreasing order from 0 to max_children, setting the first
     element to be the highest among all other children by making it positive."""
 
@@ -183,12 +181,10 @@ class FirstPosOthersNegNodeEvaluator(BaseNodeEvaluator):
     ):
         self._val_gen = itertools.count(-1.0, -1.0)
 
-        super().__init__(
-            name="first_pos_others_neg_node_evaluator", *args, **kwargs
-        )
+        super().__init__(name="first_pos_others_neg_evaluator", *args, **kwargs)
 
     def __call__(self, node, method):
-        def _node_evaluator(x, y):
+        def _evaluator(x, y):
             if isinstance(x, Node):
                 x = [x]
 
@@ -198,4 +194,4 @@ class FirstPosOthersNegNodeEvaluator(BaseNodeEvaluator):
                 breakpoint()
             return scores
 
-        return _node_evaluator(node, method)
+        return _evaluator(node, method)

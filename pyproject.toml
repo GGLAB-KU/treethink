@@ -3,7 +3,16 @@ name = "treethink"
 version = "0.1.0"
 description = "Formal Mathematical Reasoning of LLMs with Tree Search Methods"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=4.8.5",
+    "kimina-client",
+    "mkinit>=1.2.0",
+    "pytanque",
+    "pytest>=9.0.3",
+    "rocq-ml-toolbox",
+    "toml>=0.10.2",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -13,6 +22,9 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [dependency-groups]
+main = [
+    "vllm>=0.8.5.post1",
+]
 build = [
     "setuptools>=75.8.0",
 ]
@@ -21,4 +33,9 @@ direct = [
 ]
 
 [tool.uv]
-default-groups = ["build", "direct", "main"]
+default-groups = ["main", "build", "direct"]
+
+[tool.uv.sources]
+kimina-client = { git = "https://github.com/project-numina/kimina-lean-server.git" }
+rocq-ml-toolbox = { git = "https://github.com/LLM4Rocq/rocq-ml-toolbox.git" }
+pytanque = { git = "https://github.com/llm4rocq/pytanque.git" }

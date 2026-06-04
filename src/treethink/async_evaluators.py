@@ -7,16 +7,13 @@ operations like REPL verification and LLM-as-judge scoring.
 """
 
 import asyncio
-from typing import List, Union, Callable, Optional
-from abc import ABC, abstractmethod
-
-from loguru import logger
-from kimina_client import AsyncKiminaClient
-from kimina_client.models import Infotree
-
 import os
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Callable, List, Optional, Union
 
 import vllm
+from loguru import logger
 
 try:
     from vllm import AsyncEngineArgs, AsyncLLMEngine
@@ -24,26 +21,43 @@ except ImportError:
     AsyncEngineArgs = None
     AsyncLLMEngine = None
 
-from treethink.grading import extract_data, split_proof_header
-from treethink.methods import BaseMethod, Node
-from treethink.node_evaluators import (
-    BaseNodeEvaluator,
-    LLMAsJudgeNodeEvaluator,
-    REPLNodeEvaluator,
+from treethink.clients.cache import AsyncCachedClient, ProofCache
+from treethink.clients.lean import extract_data, split_proof_header
+from treethink.clients.lean.adapter import AsyncLeanClientAdapter
+from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
 )
+from treethink.methods import BaseMethod, Node
 from treethink.utils import (
-    LeanREPLArgs,
-    extract_result,
-    NodeEvaluatorArgs,
+    ClientArgs,
+    EvaluatorArgs,
     ModelArgs,
     SamplingArgs,
+    calculate_logprobs,
+    extract_result,
 )
 
 
-class AsyncBaseNodeEvaluator(ABC):
+class AsyncBaseEvaluator(ABC):
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
+
+    def _format_str_value(self, value):
+        if callable(value):
+            return getattr(value, "__name__", value.__class__.__name__)
+        return repr(value)
+
+    def _str_fields(self):
+        return [("name", self.name)]
+
+    def __str__(self) -> str:
+        fields = ", ".join(
+            f"{name}={self._format_str_value(value)}"
+            for name, value in self._str_fields()
+        )
+        return f"{self.__class__.__name__}({fields})"
+
+    __repr__ = __str__
 
     @abstractmethod
     async def __call__(
@@ -52,28 +66,33 @@ class AsyncBaseNodeEvaluator(ABC):
         pass
 
 
-class AsyncREPLNodeEvaluator(AsyncBaseNodeEvaluator):
+class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
+    """Async version of Lean REPL Node Evaluator.
+
+    Uses :class:`AsyncLeanClientAdapter` for parallel proof verification.
+    If *cache* is provided the client is wrapped with :class:`AsyncCachedClient`.
     """
-    Async version of REPL Node Evaluator.
 
-    Uses AsyncKiminaClient for parallel proof verification.
-    """
+    def __init__(
+        self,
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(name="async_lean_repl_evaluator", *args, **kwargs)
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
 
-    def __init__(self, repl_args: LeanREPLArgs, *args, **kwargs):
-        super().__init__(name="async_repl_node_evaluator", *args, **kwargs)
-        self.repl_args = repl_args
-        self.async_client = AsyncKiminaClient(api_url=repl_args.lean_server_url)
-
-    def _is_lean_success(self, entry: dict) -> bool:
-        """Check if a Lean verification entry represents a successful verification."""
-        if not isinstance(entry, dict):
-            return False
-        if entry.get("error") is not None:
-            return False
-        for msg in entry.get("messages", []):
-            if msg.get("severity", "").lower() == "error":
-                return False
-        return True
+        raw = AsyncLeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
+        self.async_client = (
+            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
+        )
 
     async def __call__(
         self, nodes: Union[Node, List[Node]], method: BaseMethod
@@ -88,56 +107,69 @@ class AsyncREPLNodeEvaluator(AsyncBaseNodeEvaluator):
             snips = [node.answer for node in nodes]
 
             response = await self.async_client.check(
-                snips=snips, timeout=self.repl_args.timeout, show_progress=False
+                snips=snips,
+                timeout=self.client_args.timeout,
+                show_progress=False,
+                batch_size=self.client_args.batch_size,
+                max_workers=self.client_args.num_proc,
             )
 
             scores = []
             if response and getattr(response, "results", None):
                 for result in response.results:
-                    # Async client might return different structure than sync?
-                    # Assuming similar structure: result has error, response fields
                     if result.error:
                         scores.append(0.0)
                         continue
-
-                    is_successful = self._is_lean_success(result.response)
-                    scores.append(1.0 if is_successful else 0.0)
+                    scores.append(
+                        1.0
+                        if self.async_client.is_success_response(
+                            result.response
+                        )
+                        else 0.0
+                    )
             else:
-                # Fallback if no results
                 scores = [0.0] * len(nodes)
 
             return scores
 
         except Exception as e:
-            logger.error(f"Async REPL evaluation failed: {e}")
-            logger.debug("Returning default scores of 0.0 for all nodes due to error.")
+            logger.error(f"Async Lean REPL evaluation failed: {e}")
             return [0.0] * len(nodes)
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("client_args", self.client_args),
+        ]
 
-class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
-    """
-    Async version of LLM-as-Judge Node Evaluator.
-    """
+
+class AsyncJudgeEvaluator(AsyncBaseEvaluator):
+    """Async version of LLM-as-Judge Node Evaluator."""
 
     def __init__(
         self,
         llm_as_judge_model: Union["AsyncLLMEngine", ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
-        repl_args: LeanREPLArgs,
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
         *args,
         **kwargs,
     ):
-        super().__init__(
-            name="async_llm_as_judge_node_evaluator", *args, **kwargs
-        )
-        self.repl_args = repl_args
+        super().__init__(name="async_judge_evaluator", *args, **kwargs)
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Async Lean Client
-        self.async_lean_client = AsyncKiminaClient(
-            api_url=self.repl_args.lean_server_url
+        # Async Lean Client (optionally cached)
+        raw = AsyncLeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
+        self.async_lean_client = (
+            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
         )
 
         # Initialize Model (AsyncLLMEngine)
@@ -196,8 +228,8 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
 
     async def generate_judge_answers(self, prompts: List[str]) -> List[str]:
         """Generate answers for multiple prompts concurrently."""
-        import uuid
         import time
+        import uuid
 
         results = [None] * len(prompts)
         logger.debug(f"Generating judge answers for {len(prompts)} prompts.")
@@ -239,7 +271,9 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
         if isinstance(nodes, Node):
             nodes = [nodes]
         if not nodes:
-            logger.warning("No nodes provided for AsyncLLMAsJudgeNodeEvaluator, returning [].")
+            logger.warning(
+                "No nodes provided for AsyncJudgeEvaluator, returning []."
+            )
             return []
 
         # 1. REPL Check
@@ -249,12 +283,10 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
             parsed_proof = self.parse_proof(proof)
             snips.append(parsed_proof)
 
-
         try:
             response = await self.async_lean_client.check(
                 snips=snips,
-                timeout=self.repl_args.timeout,
-                infotree=Infotree.original,
+                timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
@@ -295,9 +327,7 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
                     if result_obj and result_obj.response
                     else None
                 )
-                logger.warning(
-                    f"No infotree for node {i}: {error_msg}"
-                )
+                logger.warning(f"No infotree for node {i}: {error_msg}")
 
             judge_prompt = self._prepare_judge_messages(
                 snips[i],
@@ -318,7 +348,9 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
         for idx, ans in enumerate(answers):
             if ans.startswith("ERROR"):
                 scores.append(10.0)
-                logger.debug(f"Answer {idx} indicates error, setting score 10.0")
+                logger.debug(
+                    f"Answer {idx} indicates error, setting score 10.0"
+                )
                 logger.trace(f"Answer {idx}\nContent: {ans}")
                 continue
 
@@ -331,24 +363,32 @@ class AsyncLLMAsJudgeNodeEvaluator(AsyncBaseNodeEvaluator):
                 scores.append(score_val)
             else:
                 scores.append(10.0)
-                logger.debug(f"Could not extract numeric score for answer {idx}, using default 10.0")
+                logger.debug(
+                    f"Could not extract numeric score for answer {idx}, using default 10.0"
+                )
 
         final_scores = [score / 20.0 for score in scores]
         logger.debug(f"Final normalized scores: {final_scores}")
 
         return final_scores
 
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model", self.model.__class__.__name__),
+            ("sampling_params", self.sampling_params),
+            ("client_args", self.client_args),
+            ("system_prompt", self.system_prompt),
+        ]
 
 
-
-class AsyncNormalizedLengthsNodeEvaluator(AsyncBaseNodeEvaluator):
+class AsyncNormLenEvaluator(AsyncBaseEvaluator):
     """
-    Async wrapper for NormalizedLengths (CPU bound, so just wraps).
+    Async wrapper for NormalizedLengths.
     """
 
     def __init__(self, length_norm: float = 0.5, *args, **kwargs):
         super().__init__(
-            name="async_normalized_lengths_node_evaluator", *args, **kwargs
+            name="async_normalized_lengths_evaluator", *args, **kwargs
         )
         self.length_norm = length_norm
 
@@ -372,12 +412,18 @@ class AsyncNormalizedLengthsNodeEvaluator(AsyncBaseNodeEvaluator):
         if not curr.parent:
             return [0.0]
 
-        while curr.parent:
-            if hasattr(curr, "vllm_output") and curr.vllm_output:
+        # Traverse back and sum the cumulative log probs.
+        if hasattr(node.vllm_output, "cumulative_logprob"):
+            while node.parent:
                 whole_path_cumulative_logprobs += (
-                    curr.vllm_output.cumulative_logprob
+                    node.vllm_output.cumulative_logprob
                 )
-            curr = curr.parent
+                node = node.parent
+        # If cumulative_logprob is not available, calculate logprobs by hand.
+        else:
+            while node.parent:
+                whole_path_cumulative_logprobs += calculate_logprobs([node])[0]
+                node = node.parent
 
         scores = [whole_path_cumulative_logprobs / (L**self.length_norm)]
         logger.debug(
@@ -385,27 +431,46 @@ class AsyncNormalizedLengthsNodeEvaluator(AsyncBaseNodeEvaluator):
         )
         return scores
 
-
-# Registry
-ASYNC_IMPLEMENTED_ND = {
-    "async_repl_node_evaluator": AsyncREPLNodeEvaluator,
-    "async_llm_as_judge_node_evaluator": AsyncLLMAsJudgeNodeEvaluator,
-    "async_normalized_lengths_node_evaluator": AsyncNormalizedLengthsNodeEvaluator,
-}
+    def _str_fields(self):
+        return super()._str_fields() + [("length_norm", self.length_norm)]
 
 
-def get_async_node_evaluator_from_config(
-    config: NodeEvaluatorArgs, *args, **kwargs
-):
-    try:
-        func_name = config.func_name
-        if not func_name.startswith("async_"):
-            logger.warning(
-                f"NodeEvaluatorArgs func_name '{func_name}' does not start with 'async_', " 
-                + "but we're in async_node_evaluators. Prepending 'async_' to func_name."
-            )
-            func_name = "async_" + func_name
-        return ASYNC_IMPLEMENTED_ND[func_name](*args, **config, **kwargs)
-    except KeyError:
-        logger.error(f"Async node evaluator not found: {config.func_name}")
-        return None
+class AsyncEvaluatorType(Enum):
+    ASYNC_REPL = AsyncLeanREPLEvaluator
+    ASYNC_JUDGE = AsyncJudgeEvaluator
+    ASYNC_NORMALIZED_LENGTHS = AsyncNormLenEvaluator
+
+    @classmethod
+    def from_str(cls, name: str) -> "AsyncEvaluatorType":
+        normalized = name.strip().lower().replace("-", "_")
+        for suffix in ("_evaluator", "_policy"):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+        for member in cls:
+            if normalized == member.name.lower():
+                return member
+        valid_keys = [member.name.lower() for member in cls]
+        raise ValueError(
+            f"Unknown async evaluator '{name}'. Valid options: {valid_keys}"
+        )
+
+    def initialize(self, *args, **kwargs) -> Callable:
+        return self.value(*args, **kwargs)
+
+
+ASYNC_IMPLEMENTED_EVALUATORS = AsyncEvaluatorType
+ASYNC_EVALUATORS = [member.name.lower() for member in AsyncEvaluatorType]
+
+
+def get_async_evaluator_from_config(config: EvaluatorArgs, *args, **kwargs):
+    func_name = config.func_name
+    if not func_name.startswith("async_"):
+        logger.warning(
+            f"EvaluatorArgs func_name '{func_name}' does not start with 'async_', "
+            + "but we're in async_evaluators. Prepending 'async_' to func_name."
+        )
+        func_name = "async_" + func_name
+
+    return AsyncEvaluatorType.from_str(func_name).initialize(
+        *args, **dict(vars(config)), **kwargs
+    )
