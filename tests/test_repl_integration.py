@@ -10,7 +10,8 @@ from tests.common import (
     SetStrChildPolicy,
 )
 from treethink import (  # noqa
-    LeanREPLArgs,
+    ClientArgs,
+    TerminationOnPathsConfig,
     TreeThink,
     TreeThinkArgs,
 )
@@ -41,8 +42,7 @@ class TestREPLIntegration(unittest.TestCase):
             store_method_class=False,
             store_graph_stats=True,
             remove_duplicate_children=True,
-            repl_args=LeanREPLArgs(),
-            max_repl=8,
+            client_args=ClientArgs(),
             beam_width=2,
             exploration_weight=1.414213,
             final_decision_mode=FinalDecisionMode.CLEAR_FRONTIER,
@@ -52,7 +52,7 @@ class TestREPLIntegration(unittest.TestCase):
         """Test of REPL checking finished proof trajectories."""
 
         # Testing repl_terminated_paths
-        self.treethink_args.repl_terminated_paths_args.enabled = True
+        self.treethink_args.termination_on_paths.enabled = True
         self.treethink_args.graph_path = (
             "tests/outputs/repl_terminated_paths.txt"
         )
@@ -76,7 +76,7 @@ class TestREPLIntegration(unittest.TestCase):
 
     def test_repl_encountered_termination(self):
         """Test of REPL checking encountered termination trajectories."""
-        self.treethink_args.repl_encountered_termination_args.enabled = True
+        self.treethink_args.termination_on_encounter.enabled = True
         self.treethink_args.graph_path = (
             "tests/outputs/repl_encountered_termination.txt"
         )

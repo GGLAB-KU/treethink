@@ -1,16 +1,29 @@
-from treethink.clients import coq
-from treethink.clients import isabelle
-from treethink.clients import lean
-
+from treethink.clients import base, cache, coq, isabelle, lean
+from treethink.clients.base import (
+    AsyncProofAssistantClient,
+    ProofAssistantClient,
+)
+from treethink.clients.cache import (
+    AsyncCachedClient,
+    CachedClient,
+    CacheEntry,
+    ProofCache,
+)
 from treethink.clients.coq import (
     RocqBatchClient,
     RocqSnippetResult,
     rocq,
-    rocq_response_is_success,
+)
+from treethink.clients.isabelle import (
+    IsabelleClient,
+    client,
 )
 from treethink.clients.lean import (
-    Lean4Client,
     WRAPPER_TACTICS,
+    AsyncLeanClientAdapter,
+    Lean4Client,
+    LeanClientAdapter,
+    adapter,
     adjust_intervals,
     analyze,
     analyze_sample,
@@ -45,14 +58,26 @@ from treethink.clients.lean import (
 )
 
 __all__ = [
+    "AsyncCachedClient",
+    "AsyncLeanClientAdapter",
+    "AsyncProofAssistantClient",
+    "CacheEntry",
+    "CachedClient",
+    "IsabelleClient",
     "Lean4Client",
+    "LeanClientAdapter",
+    "ProofAssistantClient",
+    "ProofCache",
     "RocqBatchClient",
     "RocqSnippetResult",
     "WRAPPER_TACTICS",
+    "adapter",
     "adjust_intervals",
     "analyze",
     "analyze_sample",
+    "base",
     "batch_verify_proof",
+    "cache",
     "client",
     "coq",
     "ends_with_by",
@@ -80,7 +105,6 @@ __all__ = [
     "remove_lean_comments",
     "retrieve_tactics",
     "rocq",
-    "rocq_response_is_success",
     "separate_trailing_comment",
     "separate_trailing_whitespace",
     "split_proof_header",

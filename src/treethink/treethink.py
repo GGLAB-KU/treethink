@@ -142,7 +142,7 @@ class TreeThink:
         # Check all terminated leaves via REPL
         _solution_found = False
         if (
-            self.repl_runtime.terminated_paths.enabled
+            self.repl_runtime.paths_config.enabled
             and self.method.best_answer_reason
             != BestAnswerReason.CHECKED_AND_TRUE
         ):
@@ -244,7 +244,7 @@ class TreeThink:
         # Check terminated paths with REPL
         _solution_found = False
         if (
-            self.repl_runtime.terminated_paths.enabled
+            self.repl_runtime.paths_config.enabled
             and self.method.best_answer_reason
             != BestAnswerReason.CHECKED_AND_TRUE
         ):

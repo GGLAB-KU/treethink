@@ -8,13 +8,15 @@ from loguru import logger
 from pytanque import PetanqueError
 from rocq_ml_toolbox.inference.client import PytanqueExtended
 
+from ..base import ProofAssistantClient
+
 
 @dataclass
 class RocqSnippetResult:
     response: dict[str, Any]
 
 
-class RocqBatchClient:
+class RocqBatchClient(ProofAssistantClient):
     backend_name = "rocq"
 
     def __init__(
@@ -205,6 +207,7 @@ class RocqBatchClient:
         ]
         return SimpleNamespace(results=results)
 
-
-def rocq_response_is_success(response: dict[str, Any]) -> bool:
-    return bool(response.get("proof_finished")) and not response.get("error")
+    def is_success_response(self, response: dict[str, Any]) -> bool:
+        return bool(response.get("proof_finished")) and not response.get(
+            "error"
+        )

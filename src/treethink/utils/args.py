@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, fields
-from typing import List, Optional
+from typing import List
 
-from .enums import FinalDecisionMode, TieBreaker
+from .enums import FinalDecisionMode, FormalLanguage, TieBreaker
 
 
 class BaseArgs:
@@ -17,52 +17,96 @@ class BaseArgs:
         return getattr(self, key)
 
 
+# ---------------------------------------------------------------------------
+# Client-level arguments (unified across formal languages)
+# ---------------------------------------------------------------------------
+
+
 @dataclass
-class LeanREPLArgs(BaseArgs):
-    """
-    Args:
-        lean_server_url (str): The URL of the Lean server. Defaults to
-            "http://localhost:8000".
-        batch_size (int): The batch size for processing. Defaults to 8.
-        num_proc (int): The number of processes to use. Defaults to 4.
-        timeout (int): The timeout in seconds. Defaults to 400.
+class ClientArgs(BaseArgs):
+    """Arguments for any proof-assistant REPL client.
+
+    Only the fields relevant to the selected :class:`FormalLanguage` are
+    used at runtime; the rest are quietly ignored.
+
+    Common fields:
+        batch_size (int): Batch size for verification requests. Default 8.
+        num_proc (int): Number of parallel workers. Default 4.
+        timeout (int): Per-request timeout in seconds. Default 400.
+
+    Cache:
+        enable_cache (bool): Whether to use an in-memory LRU cache for
+            proof-snippet verification results. Default ``True``.
+        cache_maxsize (int): Maximum number of entries in the LRU cache.
+            Default 4096.
+
+    Lean 4:
+        lean_server_url (str): Kimina Lean server URL.
+            Default ``"http://localhost:8000"``.
+
+    Rocq:
+        host (str): Rocq ML server host. Default ``"127.0.0.1"``.
+        port (int): Rocq ML server port. Default 5000.
+        workspace_dir (str): Temporary file workspace. Default ``"."``.
+        theorem_name (str): Wrapper theorem name. Default ``"__eval"``.
+        statement (str): Theorem statement. Default ``"True"``.
+        prelude (str | None): Optional prelude code.
     """
 
-    lean_server_url: str = "http://localhost:8000"
+    # Common
     batch_size: int = 8
     num_proc: int = 4
     timeout: int = 400
 
+    # Cache
+    enable_cache: bool = True
+    cache_maxsize: int = 4096
+
+    # Lean 4
+    lean_server_url: str | None = None
+
+    # Rocq
+    host: str | None = None
+    port: int | None = None
+    workspace_dir: str | None = None
+    theorem_name: str | None = None
+    statement: str | None = None
+    prelude: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Termination-check configuration
+# ---------------------------------------------------------------------------
+
 
 @dataclass
-class RocqREPLArgs(BaseArgs):
-    """
+class TerminationOnEncounterConfig(BaseArgs):
+    """Settings for checking a termination node as soon as it is found.
+
     Args:
-        host (str): The host name or IP address of the Rocq server.
-        port (int): The port of the Rocq server.
-        workspace_dir (str): The workspace root used for temporary proof files.
-        batch_size (int): The batch size for processing. Defaults to 8.
-        num_proc (int): The number of processes to use. Defaults to 4.
-        timeout (int): The timeout in seconds. Defaults to 400.
+        enabled (bool): Whether to perform the check. Default ``True``.
     """
 
-    host: str = "127.0.0.1"
-    port: int = 5000
-    workspace_dir: str = "."
-    batch_size: int = 8
-    num_proc: int = 4
-    timeout: int = 400
+    enabled: bool = True
 
 
 @dataclass
-class ReplStrategyArgs(BaseArgs):
-    enabled: bool = False
-    backend_name: str = "kimina"
-    backend_args: dict = field(default_factory=dict)
-    repl_args: Optional[BaseArgs] = None
+class TerminationOnPathsConfig(BaseArgs):
+    """Settings for batch-checking terminated leaves after search.
+
+    Args:
+        enabled (bool): Whether to perform the check. Default ``True``.
+        max_repl (int): Maximum number of terminated leaves to verify.
+            Default 16.
+    """
+
+    enabled: bool = True
     max_repl: int = 16
-    sync_fn_name: str = "repl_encountered_termination"
-    async_fn_name: str = "async_repl_encountered_termination"
+
+
+# ---------------------------------------------------------------------------
+# TreeThink configuration
+# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -76,34 +120,29 @@ class TreeThinkArgs(BaseArgs):
         expansion_count (int): The number of times to expand the tree.
             Defaults to 128.
         timeout (int): The timeout in seconds for the inference process.
-            Defaults to None.
         graph_path (str): The path to save the generated graph.
-            Defaults to None.
         termination_str (str): The string that indicates the termination of a
-            proof path. Used when repl_terminated_paths_args.enabled=True.
-            Set None to disable. Defaults to None.
-        store_method_class (bool): Whether to store the method class under the
-            generation. Can be quite memory-intensive as method class contains
-            the whole proof tree. Defaults to False.
-        store_graph_stats (bool): Whether to store the graph related statistics
-            under the generation. Defaults to False.
-        remove_duplicate_children (bool): Whether to remove duplicate children
-            in the generation process. Defaults to False.
-        repl_args (LeanREPLArgs): The arguments for the Lean REPL server, if
-            repl_terminated_paths_args.enabled=True. Defaults to None.
-        max_repl (int): The maximum number of REPL calls, if
-            repl_terminated_paths_args.enabled=True. Defaults to 16.
-        repl_terminated_paths_args (ReplStrategyArgs): Strategy settings for
-            checking terminated paths after the generation ends.
-        repl_encountered_termination_args (ReplStrategyArgs): Strategy settings
-            for checking a termination node when it is encountered in
-            expansion.
-        beam_width (int): The beam width for beam search. Defaults to None.
+            proof path. Used when termination_on_paths.enabled=True.
+            Set None to disable.
+        store_method_class (bool): Whether to store the method class.
+        store_graph_stats (bool): Whether to store graph statistics.
+        remove_duplicate_children (bool): Whether to remove duplicate
+            children during generation.
+
+        # REPL / termination
+        language (FormalLanguage): The formal language in use.
+            Default ``FormalLanguage.LEAN4``.
+        client_args (ClientArgs): Arguments passed to the language-specific
+            REPL client.
+        termination_on_encounter (TerminationOnEncounterConfig): Settings
+            for checking a termination node as soon as it is found.
+        termination_on_paths (TerminationOnPathsConfig): Settings for
+            batch-checking terminated leaves after search completes.
+
+        # Method special
+        beam_width (int): The beam width for beam search.
         exploration_weight (float): The exploration weight for MCTS.
-            Defaults to None.
-        final_decision_mode (FinalDecisionMode): See methods for information regarding
-            the final-answer selection mode. This parameter is not applicable
-            for all methods.
+        final_decision_mode (FinalDecisionMode): Final-answer selection mode.
     """
 
     method_name: str = "MCTS"
@@ -116,17 +155,14 @@ class TreeThinkArgs(BaseArgs):
     store_graph_stats: bool = True
     remove_duplicate_children: bool = False
 
-    # REPL Proof Paths
-    repl_args: BaseArgs = None
-    max_repl: int = 16
-    repl_terminated_paths_args: ReplStrategyArgs = field(
-        default_factory=lambda: ReplStrategyArgs(
-            sync_fn_name="repl_terminated_paths",
-            async_fn_name="async_repl_terminated_paths",
-        )
+    # REPL / termination
+    language: FormalLanguage = FormalLanguage.LEAN4
+    client_args: ClientArgs = field(default_factory=ClientArgs)
+    termination_on_encounter: TerminationOnEncounterConfig = field(
+        default_factory=TerminationOnEncounterConfig,
     )
-    repl_encountered_termination_args: ReplStrategyArgs = field(
-        default_factory=lambda: ReplStrategyArgs()
+    termination_on_paths: TerminationOnPathsConfig = field(
+        default_factory=TerminationOnPathsConfig,
     )
 
     # Method Special
@@ -246,8 +282,8 @@ class EvaluatorArgs(BaseArgs):
     Args:
         func_name (str): The name of the function to use for evaluating nodes.
             Defaults to None.
-        repl_args (LeanREPLArgs): The arguments for the Lean REPL server when
-            using repl_evaluator or llm_as_judge_evaluator. Defaults
+        client_args (ClientArgs): The arguments for the proof-assistant client
+            when using repl_evaluator or llm_as_judge_evaluator. Defaults
             to None.
         llm_as_judge_model (ModelArgs): The model to use as a judge. Defaults
             to None.
@@ -263,7 +299,7 @@ class EvaluatorArgs(BaseArgs):
     """
 
     func_name: str = None
-    repl_args: LeanREPLArgs = None
+    client_args: ClientArgs = None
     length_norm: float = 0.5
     llm_as_judge_model: ModelArgs = None
     llm_as_judge_sampling: SamplingArgs = None

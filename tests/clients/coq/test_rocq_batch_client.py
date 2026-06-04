@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from treethink.clients.coq.rocq import RocqBatchClient, rocq_response_is_success
+from treethink.clients.coq.rocq import RocqBatchClient
 
 # Local rocq server coordinates
 ROCQ_HOST = os.environ.get("ROCQ_HOST", "localhost")
@@ -44,7 +44,7 @@ Qed."""
     assert result["backend"] == "rocq"
     assert result["proof_finished"] is True
     assert result["error"] is None
-    assert rocq_response_is_success(result) is True
+    assert rocq_client.is_success_response(result) is True
 
 
 def test_rocq_batch_client_invalid(rocq_client):
@@ -62,4 +62,4 @@ Qed."""
     assert result["backend"] == "rocq"
     assert result["proof_finished"] is False
     assert result["error"] is not None
-    assert rocq_response_is_success(result) is False
+    assert rocq_client.is_success_response(result) is False
