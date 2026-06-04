@@ -21,6 +21,7 @@ except ImportError:
     AsyncEngineArgs = None
     AsyncLLMEngine = None
 
+from treethink.clients.cache import AsyncCachedClient, ProofCache
 from treethink.clients.lean import extract_data, split_proof_header
 from treethink.clients.lean.adapter import AsyncLeanClientAdapter
 from treethink.evaluators import (
@@ -69,19 +70,28 @@ class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
     """Async version of Lean REPL Node Evaluator.
 
     Uses :class:`AsyncLeanClientAdapter` for parallel proof verification.
+    If *cache* is provided the client is wrapped with :class:`AsyncCachedClient`.
     """
 
     def __init__(
-        self, client_args: Optional[ClientArgs] = None, *args, **kwargs
+        self,
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
+        *args,
+        **kwargs,
     ):
         super().__init__(name="async_lean_repl_evaluator", *args, **kwargs)
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
-        self.async_client = AsyncLeanClientAdapter(
+
+        raw = AsyncLeanClientAdapter(
             lean_server_url=(
                 client_args.lean_server_url or "http://localhost:8000"
             ),
+        )
+        self.async_client = (
+            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
         )
 
     async def __call__(
@@ -140,6 +150,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         llm_as_judge_model: Union["AsyncLLMEngine", ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
         client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
         *args,
@@ -151,11 +162,14 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         self.client_args = client_args
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Async Lean Client
-        self.async_lean_client = AsyncLeanClientAdapter(
+        # Async Lean Client (optionally cached)
+        raw = AsyncLeanClientAdapter(
             lean_server_url=(
                 client_args.lean_server_url or "http://localhost:8000"
             ),
+        )
+        self.async_lean_client = (
+            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
         )
 
         # Initialize Model (AsyncLLMEngine)

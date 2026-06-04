@@ -34,6 +34,12 @@ class ClientArgs(BaseArgs):
         num_proc (int): Number of parallel workers. Default 4.
         timeout (int): Per-request timeout in seconds. Default 400.
 
+    Cache:
+        enable_cache (bool): Whether to use an in-memory LRU cache for
+            proof-snippet verification results. Default ``True``.
+        cache_maxsize (int): Maximum number of entries in the LRU cache.
+            Default 4096.
+
     Lean 4:
         lean_server_url (str): Kimina Lean server URL.
             Default ``"http://localhost:8000"``.
@@ -51,6 +57,10 @@ class ClientArgs(BaseArgs):
     batch_size: int = 8
     num_proc: int = 4
     timeout: int = 400
+
+    # Cache
+    enable_cache: bool = True
+    cache_maxsize: int = 4096
 
     # Lean 4
     lean_server_url: str | None = None

@@ -9,6 +9,7 @@ import vllm
 from loguru import logger
 from vllm.lora.request import LoRARequest
 
+from treethink.clients.cache import CachedClient, ProofCache
 from treethink.clients.coq.rocq import RocqBatchClient
 from treethink.clients.lean import (
     extract_data,
@@ -129,10 +130,15 @@ class LeanREPLEvaluator(BaseEvaluator):
     """Evaluate proof snippets via a Lean 4 REPL (Kimina server).
 
     Uses :class:`LeanClientAdapter` to wrap the external ``KiminaClient``.
+    If *cache* is provided the client is wrapped with :class:`CachedClient`.
     """
 
     def __init__(
-        self, client_args: Optional[ClientArgs] = None, *args, **kwargs
+        self,
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
+        *args,
+        **kwargs,
     ):
         super().__init__(name="lean_repl_evaluator", *args, **kwargs)
         if client_args is None:
@@ -143,6 +149,8 @@ class LeanREPLEvaluator(BaseEvaluator):
                 client_args.lean_server_url or "http://localhost:8000"
             ),
         )
+        if cache is not None:
+            self.lean_client = CachedClient(self.lean_client, cache=cache)
 
     def __call__(self, node: Union[Node, List[Node]], method: BaseMethod):
         """Evaluate node(s) — returns 1.0 for verified, 0.0 otherwise."""
@@ -196,6 +204,7 @@ class JudgeEvaluator(BaseEvaluator):
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
         client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
         lora_path: Optional[str] = None,
@@ -233,10 +242,13 @@ class JudgeEvaluator(BaseEvaluator):
         self.system_prompt = llm_as_judge_system_prompt
 
         # Sync Lean Client
-        self.lean_client = LeanClientAdapter(
+        raw = LeanClientAdapter(
             lean_server_url=(
                 client_args.lean_server_url or "http://localhost:8000"
             ),
+        )
+        self.lean_client = (
+            CachedClient(raw, cache=cache) if cache is not None else raw
         )
 
         if isinstance(prompter, Callable):
@@ -506,6 +518,7 @@ class TournamentEvaluator(BaseEvaluator):
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
         llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
         client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
         prompter: Optional[Callable] = None,
         shuffle_bracket: bool = True,
@@ -534,11 +547,16 @@ class TournamentEvaluator(BaseEvaluator):
 
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Sync Lean Client
-        self.lean_client = LeanClientAdapter(
+        # Sync Lean Client (optionally cached)
+        raw_lean = LeanClientAdapter(
             lean_server_url=(
                 client_args.lean_server_url or "http://localhost:8000"
             ),
+        )
+        self.lean_client = (
+            CachedClient(raw_lean, cache=cache)
+            if cache is not None
+            else raw_lean
         )
 
         if isinstance(prompter, Callable):

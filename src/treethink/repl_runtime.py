@@ -10,6 +10,7 @@ from loguru import logger
 
 from .client_factory import create_async_client, create_client
 from .clients.base import AsyncProofAssistantClient, ProofAssistantClient
+from .clients.cache import ProofCache
 from .termination import check_terminated_paths, check_termination_encountered
 from .utils.args import (
     ClientArgs,
@@ -24,6 +25,11 @@ from .utils.enums import FormalLanguage
 class ReplRuntime:
     """Thin coordinator that owns proof-assistant clients and exposes
     termination-callback helpers consumed by `TreeThink`.
+
+    If :attr:`client_args.enable_cache` is ``True``, a single shared
+    :class:`ProofCache` instance is created and used by both the sync
+    and async clients, so that a proof verified via ``check_termination_encountered``
+    (sync) is also cached for ``async_check_terminated_paths``.
     """
 
     language: FormalLanguage
@@ -33,6 +39,9 @@ class ReplRuntime:
 
     client: Optional[ProofAssistantClient] = None
     async_client: Optional[AsyncProofAssistantClient] = None
+
+    # Internal: shared LRU cache (created when enable_cache=True)
+    _cache: Optional[ProofCache] = None
 
     # -- factory -----------------------------------------------------------
 
@@ -48,6 +57,11 @@ class ReplRuntime:
         )
         paths_enabled = args.termination_on_paths.enabled and repl_enabled
 
+        # Create shared cache when caching is enabled.
+        cache: Optional[ProofCache] = None
+        if args.client_args.enable_cache and repl_enabled:
+            cache = ProofCache(maxsize=args.client_args.cache_maxsize)
+
         return cls(
             language=args.language,
             client_args=args.client_args,
@@ -58,6 +72,7 @@ class ReplRuntime:
                 enabled=paths_enabled,
                 max_repl=args.termination_on_paths.max_repl,
             ),
+            _cache=cache,
         )
 
     # -- properties --------------------------------------------------------
@@ -70,7 +85,11 @@ class ReplRuntime:
 
     def _sync_client(self) -> ProofAssistantClient:
         if self.client is None:
-            self.client = create_client(self.language, self.client_args)
+            self.client = create_client(
+                self.language,
+                self.client_args,
+                cache=self._cache,
+            )
         return self.client
 
     def _async_client(self) -> AsyncProofAssistantClient:
@@ -78,6 +97,7 @@ class ReplRuntime:
             self.async_client = create_async_client(
                 self.language,
                 self.client_args,
+                cache=self._cache,
             )
         return self.async_client
 

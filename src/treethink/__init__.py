@@ -81,6 +81,12 @@ from treethink.clients import (
     split_proof_header,
     transfer_trailing_whitespaces_and_comments,
 )
+from treethink.clients.cache import (
+    AsyncCachedClient,
+    CachedClient,
+    CacheEntry,
+    ProofCache,
+)
 from treethink.evaluators import (
     EVALUATORS,
     IMPLEMENTED_EVALUATORS,
@@ -179,6 +185,7 @@ __all__ = [
     "ASYNC_POLICY_TYPE",
     "AsyncBaseEvaluator",
     "AsyncBatchVLLMPolicy",
+    "AsyncCachedClient",
     "AsyncEvaluatorType",
     "AsyncJudgeEvaluator",
     "AsyncLeanClientAdapter",
@@ -195,6 +202,8 @@ __all__ = [
     "BasePolicy",
     "BeamSearch",
     "BestAnswerReason",
+    "CachedClient",
+    "CacheEntry",
     "ClientArgs",
     "DynamicPolicy",
     "EVALUATORS",
@@ -224,6 +233,7 @@ __all__ = [
     "PolicyType",
     "ProbEvaluator",
     "ProofAssistantClient",
+    "ProofCache",
     "RocqBatchClient",
     "RocqEvaluator",
     "RocqSnippetResult",
