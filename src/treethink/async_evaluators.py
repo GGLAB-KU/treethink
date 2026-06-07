@@ -22,8 +22,6 @@ except ImportError:
     AsyncLLMEngine = None
 
 from treethink.clients.cache import AsyncCachedClient, ProofCache
-from treethink.clients.lean import extract_data, split_proof_header
-from treethink.clients.lean.adapter import AsyncLeanClientAdapter
 from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
 )
@@ -94,6 +92,8 @@ class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
+
+        from treethink.clients.lean.adapter import AsyncLeanClientAdapter
 
         raw = AsyncLeanClientAdapter(
             lean_server_url=(
@@ -173,6 +173,8 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         self.system_prompt = llm_as_judge_system_prompt
 
         # Async Lean Client (optionally cached)
+        from treethink.clients.lean.adapter import AsyncLeanClientAdapter
+
         raw = AsyncLeanClientAdapter(
             lean_server_url=(
                 client_args.lean_server_url or "http://localhost:8000"
@@ -318,6 +320,8 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
                 )
 
             if infotree:
+                from treethink.clients.lean import extract_data, split_proof_header
+
                 header, body = split_proof_header(snips[i])
                 intervals = extract_data(infotree, body)
                 current_goals = (

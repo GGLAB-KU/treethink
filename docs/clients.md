@@ -3,6 +3,10 @@
 REPL clients are the **language-specific backends** that verify proof snippets
 against formal proof assistants (Lean 4, Rocq, Isabelle).
 
+> **Dependencies:** Each client requires its own extra. Install with
+> `treethink[lean]`, `treethink[rocq]`, or `treethink[full]`.
+> See [README → Installation](../README.md#installation) for details.
+
 ---
 
 ## Architecture

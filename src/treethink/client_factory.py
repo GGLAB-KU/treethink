@@ -8,9 +8,6 @@ from .clients.cache import (
     CachedClient,
     ProofCache,
 )
-from .clients.coq.rocq import RocqBatchClient
-from .clients.isabelle.client import IsabelleClient
-from .clients.lean.adapter import AsyncLeanClientAdapter, LeanClientAdapter
 from .utils.args import ClientArgs
 from .utils.enums import FormalLanguage
 
@@ -22,11 +19,15 @@ def _create_raw_client(
     """Build a synchronous client **without** cache wrapping."""
     match language:
         case FormalLanguage.LEAN4:
+            from .clients.lean.adapter import LeanClientAdapter
+
             return LeanClientAdapter(
                 lean_server_url=client_args.lean_server_url
                 or "http://localhost:8000",
             )
         case FormalLanguage.ROCQ:
+            from .clients.coq.rocq import RocqBatchClient
+
             return RocqBatchClient(
                 host=client_args.host or "127.0.0.1",
                 port=client_args.port or 5000,
@@ -36,6 +37,8 @@ def _create_raw_client(
                 prelude=client_args.prelude,
             )
         case FormalLanguage.ISABELLE:
+            from .clients.isabelle.client import IsabelleClient
+
             return IsabelleClient()
         case _:
             raise ValueError(f"Unsupported formal language: {language}")
@@ -48,6 +51,8 @@ def _create_raw_async_client(
     """Build an asynchronous client **without** cache wrapping."""
     match language:
         case FormalLanguage.LEAN4:
+            from .clients.lean.adapter import AsyncLeanClientAdapter
+
             return AsyncLeanClientAdapter(
                 lean_server_url=client_args.lean_server_url
                 or "http://localhost:8000",

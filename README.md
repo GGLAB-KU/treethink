@@ -127,25 +127,65 @@ policies, and evaluators to async equivalents when `--async` is passed.
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (package manager)
 
-### Setup
+### Install from PyPI (when published)
+
+```bash
+# Core only (vLLM + base utilities)
+uv pip install treethink
+
+# With Lean 4 support
+uv pip install treethink[lean]
+
+# With Rocq (Coq) support
+uv pip install treethink[rocq]
+
+# With Isabelle support
+uv pip install treethink[isabelle]
+
+# Everything (all languages + dev tools)
+uv pip install treethink[full]
+```
+
+### Development Setup
 
 ```bash
 # Clone the repository
 git clone https://github.com/GGLAB-KU/treethink.git
 cd treethink
 
-# Create a virtual environment and install dependencies
-uv sync
+# Create a virtual environment and install everything for development
+uv sync --all-extras
 
 # Verify the CLI works
 uv run treethink help --list
 ```
 
-### Additional Dependencies
+To install only a subset of extras during development:
 
-For **Lean 4** proof verification, you need a running Kimina Lean server.
-For **Rocq** proof verification, you need a running `rocq-ml-server` on
-`localhost:5000`.
+```bash
+# Core + Lean only
+uv sync --extra lean
+
+# Core + Rocq only
+uv sync --extra rocq
+```
+
+### What's in each extra?
+
+| Extra | Includes | Purpose |
+|-------|----------|---------|
+| *(core)* | `vllm`, `loguru`, `datasets`, `typer`, … | Always installed — policies, CLI, logging |
+| `lean` | `kimina-client` | Lean 4 proof verification (via Kimina server) |
+| `rocq` | `rocq-ml-toolbox`, `pytanque` | Rocq (Coq 8.20) proof verification (via `rocq-ml-server`) |
+| `isabelle` | *(empty — placeholder)* | Isabelle support (not yet implemented) |
+| `dev` | `pytest` | Development & testing tools |
+| `full` | all of the above | Everything |
+
+### Runtime Requirements
+
+- **Lean 4:** A running Kimina Lean server (typically `http://localhost:8000`).
+- **Rocq:** A running `rocq-ml-server` on `localhost:5000`.
+- **Isabelle:** Not yet available.
 
 ---
 

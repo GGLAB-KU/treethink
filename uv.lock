@@ -4240,42 +4240,54 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "datasets" },
-    { name = "kimina-client" },
+    { name = "loguru" },
     { name = "mkinit" },
+    { name = "toml" },
+    { name = "typer" },
+    { name = "vllm" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+full = [
+    { name = "kimina-client" },
     { name = "pytanque" },
     { name = "pytest" },
     { name = "rocq-ml-toolbox" },
-    { name = "toml" },
-    { name = "typer" },
+]
+lean = [
+    { name = "kimina-client" },
+]
+rocq = [
+    { name = "pytanque" },
+    { name = "rocq-ml-toolbox" },
 ]
 
 [package.dev-dependencies]
 build = [
     { name = "setuptools" },
 ]
-direct = [
-    { name = "vllm" },
-]
-main = [
-    { name = "vllm" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "datasets", specifier = ">=4.8.5" },
-    { name = "kimina-client", git = "https://github.com/project-numina/kimina-lean-server.git" },
+    { name = "kimina-client", marker = "extra == 'lean'", git = "https://github.com/project-numina/kimina-lean-server.git" },
+    { name = "loguru" },
     { name = "mkinit", specifier = ">=1.2.0" },
-    { name = "pytanque", git = "https://github.com/llm4rocq/pytanque.git" },
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "rocq-ml-toolbox", git = "https://github.com/LLM4Rocq/rocq-ml-toolbox.git" },
+    { name = "pytanque", marker = "extra == 'rocq'", git = "https://github.com/llm4rocq/pytanque.git" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
+    { name = "rocq-ml-toolbox", marker = "extra == 'rocq'", git = "https://github.com/LLM4Rocq/rocq-ml-toolbox.git" },
     { name = "toml", specifier = ">=0.10.2" },
+    { name = "treethink", extras = ["lean", "rocq", "isabelle", "dev"], marker = "extra == 'full'" },
     { name = "typer", specifier = ">=0.12.0" },
+    { name = "vllm", specifier = ">=0.8.5.post1" },
 ]
+provides-extras = ["lean", "rocq", "isabelle", "dev", "full"]
 
 [package.metadata.requires-dev]
 build = [{ name = "setuptools", specifier = ">=75.8.0" }]
-direct = [{ name = "vllm", specifier = ">=0.8.5.post1" }]
-main = [{ name = "vllm", specifier = ">=0.8.5.post1" }]
 
 [[package]]
 name = "triton"

@@ -7,8 +7,6 @@ Lean identically to any other formal language.
 
 from typing import Any, List
 
-from kimina_client import AsyncKiminaClient, KiminaClient
-
 from ..base import AsyncProofAssistantClient, ProofAssistantClient
 from .proof_utils import has_error_response
 
@@ -17,6 +15,8 @@ class LeanClientAdapter(ProofAssistantClient):
     """Synchronous adapter around ``KiminaClient``."""
 
     def __init__(self, lean_server_url: str = "http://localhost:8000") -> None:
+        from kimina_client import KiminaClient
+
         self._client = KiminaClient(lean_server_url)
 
     # -- ProofAssistantClient interface -----------------------------------
@@ -50,6 +50,8 @@ class AsyncLeanClientAdapter(AsyncProofAssistantClient):
     """Asynchronous adapter around ``AsyncKiminaClient``."""
 
     def __init__(self, lean_server_url: str = "http://localhost:8000") -> None:
+        from kimina_client import AsyncKiminaClient
+
         self._client = AsyncKiminaClient(api_url=lean_server_url)
 
     # -- AsyncProofAssistantClient interface -------------------------------
