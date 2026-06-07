@@ -7,6 +7,25 @@ from vllm import CompletionOutput
 
 
 class Node:
+    """Tree node for representing states in proof-search trees.
+
+    Each node represents a proof state and tracks exploration metrics for
+    search algorithms.  Nodes form a tree via parent-child relationships,
+    with ``win_value`` and ``visits`` used to compute average node quality.
+
+    Key properties:
+    - ``is_termination_node`` — ``True`` when ``text == termination_str``
+    - ``is_expandable`` — ``True`` if not expanded and not a termination node
+    - ``answer`` — the node's text (for evaluators that access this attribute)
+
+    Key methods:
+    - ``add_children()`` — attach multiple child nodes
+    - ``remove_duplicate_children()`` — deduplicate by text
+    - ``print_node()`` — generate graphviz DOT output
+    - ``traverse_to_root()`` — walk from this node back to the root
+    - ``parse_proof()`` — extract proof text from code fences
+    """
+
     def __init__(
         self,
         text: Optional[str] = None,

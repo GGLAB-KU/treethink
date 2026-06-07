@@ -23,13 +23,11 @@ from .utils.enums import FormalLanguage
 
 @dataclass
 class ReplRuntime:
-    """Thin coordinator that owns proof-assistant clients and exposes
-    termination-callback helpers consumed by `TreeThink`.
+    """Coordinates proof-assistant clients and termination callbacks.
 
-    If :attr:`client_args.enable_cache` is ``True``, a single shared
-    :class:`ProofCache` instance is created and used by both the sync
-    and async clients, so that a proof verified via ``check_termination_encountered``
-    (sync) is also cached for ``async_check_terminated_paths``.
+    Owns sync and async REPL clients and exposes callbacks consumed by
+    ``TreeThink.generate()`` / ``async_generate()``.  Manages a shared
+    :class:`ProofCache` when caching is enabled.
     """
 
     language: FormalLanguage

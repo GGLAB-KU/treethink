@@ -10,7 +10,15 @@ from typing import Any, List
 
 
 class ProofAssistantClient(ABC):
-    """Synchronous interface for a proof-assistant REPL client."""
+    """Synchronous interface for a proof-assistant REPL client.
+
+    All language-specific clients (Lean 4, Rocq, Isabelle) implement this
+    ABC so the termination layer and evaluators can verify proof snippets
+    without knowing which formal language is in use.
+
+    To add a new language backend, implement this interface and register
+    in ``client_factory.py``.
+    """
 
     @abstractmethod
     def check(
@@ -39,7 +47,11 @@ class ProofAssistantClient(ABC):
 
 
 class AsyncProofAssistantClient(ABC):
-    """Asynchronous interface for a proof-assistant REPL client."""
+    """Asynchronous interface for a proof-assistant REPL client.
+
+    Like :class:`ProofAssistantClient` but with ``async check()`` for
+    non-blocking proof verification.
+    """
 
     @abstractmethod
     async def check(

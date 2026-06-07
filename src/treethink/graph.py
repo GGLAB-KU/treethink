@@ -32,15 +32,23 @@ def save_tree_to_txt(
     selected_solution: Optional[str] = None,
     problem_id: Optional[str] = None,
 ):
-    """Save the resulting tree with to be visualized by graphviz.
+    """Export a search tree to graphviz DOT format for rendering.
 
     Args:
-        root_node (Node): root node of the tree.
-        output_path (Union[str, Path]): output path to save the tree to.
-        selected_solution (Optional[str], optional): If provided will color the
-            solution path with red. Defaults to None.
-        problem_id (Optional[str], optional): If provided will be added to the filename
-            for easier tracking of which tree belongs to which problem. Defaults to None.
+        root_node: Root node of the tree.
+        output_path: File or directory path.  If a directory, a timestamped
+            filename is generated.
+        selected_solution: If provided, nodes on the solution path are
+            coloured red.
+        problem_id: Included in the filename for tracking.
+
+    The output file uses a simplified DOT format::
+
+        graph
+        {
+            "node_0" [label="...", color="blue"];
+            "node_0" -- "node_1";
+        }
     """
     output_path = Path(output_path)
     if output_path.is_dir():

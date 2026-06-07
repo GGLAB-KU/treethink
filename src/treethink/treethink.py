@@ -15,9 +15,9 @@ from .utils.enums import BestAnswerReason
 class TreeThinkOutputs:
     """TreeThink-native generation result.
 
-    This object intentionally stays small and serialization-friendly. It holds
-    the generated solution text(s) plus TreeThink-specific metadata, without
-    inheriting from vLLM request types.
+    Holds the generated solution text(s) plus TreeThink-specific metadata
+    (method, graph stats, verification status).  Designed to be
+    serialization-friendly and independent of vLLM types.
     """
 
     solution_text: str = ""

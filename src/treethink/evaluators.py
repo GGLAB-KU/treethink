@@ -41,6 +41,17 @@ Do NOT attempt to solve the problem, only provide a score out of 20 inside \\box
 
 
 class BaseEvaluator(ABC):
+    """Abstract base for all node scoring evaluators.
+
+    An evaluator wraps a callable that scores nodes based on proof quality,
+    model likelihood, or verification results.  Subclasses must implement
+    ``__call__(self, node, method)`` which accepts a node or list of nodes
+    and returns a list of float scores.
+
+    To create a custom evaluator, subclass this and implement ``__call__``,
+    then register in the ``EvaluatorType`` enum.
+    """
+
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
 
@@ -69,6 +80,16 @@ class BaseEvaluator(ABC):
 
 
 class LogprobEvaluator(BaseEvaluator):
+    """Returns cumulative log-probability score from vLLM output.
+
+    Score is in the range (-\u221e, 0] and represents the cumulative likelihood
+    of the generated tokens.  Simple likelihood-based selection prefers
+    sequences with higher (less negative) cumulative logprobs.
+
+    Extracts from ``node.vllm_output.cumulative_logprob`` or calculates
+    from token logprobs if unavailable.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(name="cumulative_logprob_evaluator", *args, **kwargs)
 
@@ -96,6 +117,13 @@ class LogprobEvaluator(BaseEvaluator):
 
 
 class ProbEvaluator(BaseEvaluator):
+    """Returns cumulative probability score from vLLM output.
+
+    Like :class:`LogprobEvaluator` but exponentiates cumulative logprobs
+    to probabilities in the range [0, 1].  Represents the joint probability
+    of the generated sequence.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(name="cumulative_prob_evaluator", *args, **kwargs)
 
@@ -199,6 +227,26 @@ class LeanREPLEvaluator(BaseEvaluator):
 
 
 class JudgeEvaluator(BaseEvaluator):
+    """Uses a secondary LLM judge to score proof quality.
+
+    Queries the Lean 4 REPL to extract proof state information (applied
+    tactics, open goals, solved goals), then uses an LLM judge to assign
+    a score out of 20 based on proof progress and quality.  Supports LoRA
+    adapters for task-specific fine-tuning.
+
+    Scores are normalized to [0, 1] for use in tree search.
+
+    Typical YAML config::
+
+        evaluator:
+          func_name: "llm_as_judge_evaluator"
+          llm_as_judge_model:
+            model: "meta-llama/Llama-2-7b-hf"
+          llm_as_judge_sampling:
+            temperature: 0.7
+            max_tokens: 256
+    """
+
     def __init__(
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
@@ -513,6 +561,24 @@ class JudgeEvaluator(BaseEvaluator):
 
 
 class TournamentEvaluator(BaseEvaluator):
+    """Single-elimination tournament evaluation between sibling nodes.
+
+    Runs a bracket-style tournament where an LLM judge picks winners
+    pairwise among siblings.  Losers are scored by their elimination round
+    (first round loss = 1, second = 2, etc.), and the winner receives the
+    highest score.  All scores are normalized to [0, 1].
+
+    Supports optional bracket shuffling for varied comparisons.
+
+    Typical YAML config::
+
+        evaluator:
+          func_name: "pairwise_tournament_evaluator"
+          llm_as_judge_model:
+            model: "meta-llama/Llama-2-7b-hf"
+          shuffle_bracket: true
+    """
+
     def __init__(
         self,
         llm_as_judge_model: Union[vllm.LLM, ModelArgs],
@@ -884,11 +950,13 @@ class TournamentEvaluator(BaseEvaluator):
 
 
 class NormLenEvaluator(BaseEvaluator):
-    """Normalized Lengths node evaluation strategy from BFS-Prover paper:
-    https://arxiv.org/pdf/2502.03438
+    """Normalized Lengths node evaluation: cumulative_logprob / L^alpha.
 
-    In the original paper, it is used with Best First Search (BFS) but it is an
-    applicable scoring mechanism for our other implementations.
+    BFS-Prover style scoring (https://arxiv.org/pdf/2502.03438) that
+    penalizes depth by dividing cumulative logprobability by path length
+    raised to the *length_norm* (alpha) power.
+
+    Applicable to any tree search method, not just Best First Search.
     """
 
     def __init__(self, length_norm: float = 0.5, *args, **kwargs):
@@ -941,11 +1009,14 @@ class NormLenEvaluator(BaseEvaluator):
 
 
 class NormLenProbEvaluator(BaseEvaluator):
-    """Normalized Lengths node evaluation strategy from BFS-Prover paper:
-    https://arxiv.org/pdf/2502.03438
+    """Normalized Lengths node evaluation: cumulative_prob / L^alpha.
 
-    In the original paper, it is used with Best First Search (BFS) but it is an
-    applicable scoring mechanism for our other implementations.
+    Like :class:`NormLenEvaluator` but uses probabilities (exponentiated
+    logprobs) instead of cumulative logprobs.  Same depth penalty strategy
+    with tunable *length_norm* (alpha) parameter.
+
+    BFS-Prover variant (https://arxiv.org/pdf/2502.03438) applicable to
+    any tree search method.
     """
 
     def __init__(self, length_norm: float = 0.5, *args, **kwargs):
@@ -1006,12 +1077,14 @@ class NormLenProbEvaluator(BaseEvaluator):
 
 
 class RocqEvaluator(BaseEvaluator):
-    """
-    Evaluate Rocq code snippets by running them through a rocq-ml-server session.
+    """Evaluates Rocq proof snippets via rocq-ml-server.
 
-    The evaluator wraps a snippet in a temporary file containing a simple
-    theorem statement, then executes each Rocq command in order. If all
-    commands succeed and the proof closes, the snippet is considered correct.
+    Wraps a snippet in a theorem statement and executes commands via the
+    ``rocq-ml-server`` (typically on ``localhost:5000``).  Returns 1.0 if
+    the proof closes, 0.0 otherwise.
+
+    Supports custom prelude code, theorem statements, and workspace
+    configuration.
     """
 
     def __init__(
@@ -1075,6 +1148,16 @@ class RocqEvaluator(BaseEvaluator):
 
 
 class EvaluatorType(Enum):
+    """Enum mapping evaluator config names to their implementation classes.
+
+    Members are accessed via ``from_str()`` which normalises the config
+    ``func_name`` (e.g. ``"cumulative_logprob_evaluator"`` →
+    ``EvaluatorType.CUMULATIVE_LOGPROB``).
+
+    To add a new evaluator, add a member here and ensure the value is a
+    :class:`BaseEvaluator` subclass.
+    """
+
     CUMULATIVE_LOGPROB = LogprobEvaluator
     REPL = LeanREPLEvaluator
     LLM_AS_JUDGE = JudgeEvaluator

@@ -33,11 +33,8 @@ from treethink.utils.args import (
 class SamplerBase:
     """Abstract base for batched-inference samplers.
 
-    Args:
-        sample_params: vLLM sampling parameters or a :class:`SamplingArgs` wrapper.
-        prompter: Callable that converts a message list into a single prompt string.
-        task_name: Identifier for the current task (used in output filenames).
-        model_name: Name/path of the model (for tokenizer init).
+    Handles tokenizer initialisation, sampling parameter setup, and prompt
+    formatting.  Subclasses implement the actual inference loop.
     """
 
     def __init__(
@@ -210,10 +207,10 @@ class SamplerBase:
 
 
 class TreeThinkSampler(SamplerBase):
-    """Sequential (sync) tree-search sampler.
+    """Sync batched tree-search sampler.
 
-    Uses sync :class:`BaseMethod`, :class:`BasePolicy`, and
-    :class:`BaseEvaluator` to expand and evaluate search trees.
+    Processes problems one at a time.  For each problem, creates a
+    ``TreeThink`` instance and calls ``generate()``.
     """
 
     def __init__(

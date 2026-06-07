@@ -5,6 +5,12 @@ from .enums import FinalDecisionMode, FormalLanguage, TieBreaker
 
 
 class BaseArgs:
+    """Base dataclass with iteration and dict-like access.
+
+    Provides ``__iter__``, ``keys()``, and ``__getitem__`` so config
+    dataclasses can be unpacked with ``*`` and accessed like dicts.
+    """
+
     def __iter__(self):
         """Enable unpacking with * operator by yielding field values"""
         for dataclass_field in fields(self):
@@ -322,12 +328,12 @@ class ModelArgs(BaseArgs):
 
 @dataclass
 class ServerArgs(BaseArgs):
-    """
+    """vLLM OpenAI-compatible server connection parameters.
+
     Args:
-        base_url (str): The base URL of the OpenAI compatible server (vLLM server).
-            Defaults to "http://localhost:8000/v1".
-        api_key (str): The API key for the server. Defaults to "EMPTY".
-        timeout (int): The timeout for the server connection. Defaults to 600.
+        base_url: Server URL (default: ``"http://localhost:8000/v1"``)
+        api_key: API key (default: ``"EMPTY"``)
+        timeout: Connection timeout in seconds (default: 600)
     """
 
     base_url: str = "http://localhost:8000/v1"

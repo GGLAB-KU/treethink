@@ -275,7 +275,8 @@ def prepare_datapoints(config: PreparationConfig):
     """Load and transform a dataset according to *config*.
 
     Returns a list of dicts where each dict's keys are *data_keys*
-    (or *renamed_data_keys* if provided).
+    (or *renamed_data_keys* if provided).  Handles multiple dataset
+    formats (jsonl, huggingface, csv, etc.).
     """
     logger.info(f"Processing dataset with config: {config.name}")
     logger.info(f"Dataset split: {config.dataset_split}")
