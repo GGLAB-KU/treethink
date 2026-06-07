@@ -26,7 +26,7 @@ def _create_raw_client(
                 lean_server_url=client_args.lean_server_url
                 or "http://localhost:8000",
             )
-        case FormalLanguage.RCOQ:
+        case FormalLanguage.ROCQ:
             return RocqBatchClient(
                 host=client_args.host or "127.0.0.1",
                 port=client_args.port or 5000,
@@ -52,7 +52,7 @@ def _create_raw_async_client(
                 lean_server_url=client_args.lean_server_url
                 or "http://localhost:8000",
             )
-        case FormalLanguage.RCOQ:
+        case FormalLanguage.ROCQ:
             raise NotImplementedError("Rocq async client is not yet supported.")
         case FormalLanguage.ISABELLE:
             raise NotImplementedError(

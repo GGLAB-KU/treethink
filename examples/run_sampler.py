@@ -1,6 +1,8 @@
-"""Different datasets and tasks require different loading and processing
-pipelines. This file aims to separate different dataset processing pipelines
-into various functions that can be used with `prompters.py` and `sampler.py`
+"""
+DEPRECATED — Use ``treethink run`` (CLI) or ``examples/run_vllm_sampler.py``
+instead.
+
+This file is kept for reference but no longer maintained.
 """
 
 import argparse
@@ -12,20 +14,20 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
-from async_sampler import AsyncSampler
-from dataset_prep import (
+from loguru import logger
+from sampler import VLLMSampler
+
+from treethink.dataset_prep import (
     ConfigRegistry,
     prepare_datapoints,
 )
-from loguru import logger
-from sampler import TreeThinkSampler, VLLMSampler
-from utils.parser import (
+from treethink.graph import analyze_graph_stats
+from treethink.sampler import AsyncTreeThinkSampler, TreeThinkSampler
+from treethink.utils.parser import (
     parse_normal_inference_args,
     parse_treethink_args,
     serialize_args,
 )
-
-from treethink.graph import analyze_graph_stats
 
 
 def get_time():
@@ -150,8 +152,8 @@ def setup_model(
 
         if use_async:
             # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
-            logger.info("Using pure async stack (AsyncSampler)")
-            model = AsyncSampler(
+            logger.info("Using pure async stack (AsyncTreeThinkSampler)")
+            model = AsyncTreeThinkSampler(
                 policy_args=policy_args,
                 evaluator_args=evaluator_args,
                 treethink_args=treethink_args,
@@ -211,9 +213,9 @@ async def run_async_iterations(
     for i in range(num_iterations):
         logger.info(f"Running iteration {i + 1}/{num_iterations}")
 
-        if isinstance(model, AsyncSampler):
+        if isinstance(model, AsyncTreeThinkSampler):
             # Pure async stack: AsyncMCTS + AsyncChildPolicy + AsyncNodeEvaluator
-            logger.info("Running with AsyncSampler (pure async stack)")
+            logger.info("Running with AsyncTreeThinkSampler (pure async stack)")
             results = await model.async_inference(
                 data=datapoints,
                 system_prompt=system_prompt,
@@ -580,4 +582,8 @@ def main():
 
 
 if __name__ == "__main__":
+    logger.warning(
+        "run_sampler.py is deprecated. Use the 'treethink run' CLI for tree-search methods or "
+        "examples/run_vllm_sampler.py for normal vLLM inference instead.",
+    )
     main()

@@ -56,7 +56,7 @@ class TestReplRuntime(unittest.TestCase):
     def test_rocq_language_client_created(self):
         args = TreeThinkArgs(
             termination_str="```",
-            language=FormalLanguage.RCOQ,
+            language=FormalLanguage.ROCQ,
             client_args=ClientArgs(
                 host="127.0.0.1", port=5000, workspace_dir="/tmp/test"
             ),
@@ -64,7 +64,7 @@ class TestReplRuntime(unittest.TestCase):
 
         runtime = args.build_repl_runtime()
 
-        self.assertEqual(runtime.language, FormalLanguage.RCOQ)
+        self.assertEqual(runtime.language, FormalLanguage.ROCQ)
         self.assertTrue(runtime.needs_repl)
 
     def test_needs_repl_false_when_all_disabled(self):
