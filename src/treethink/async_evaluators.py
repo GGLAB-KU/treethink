@@ -39,6 +39,16 @@ from treethink.utils import (
 
 
 class AsyncBaseEvaluator(ABC):
+    """Abstract base for async node scoring evaluators.
+
+    Like :class:`BaseEvaluator` but with ``async __call__`` for non-blocking
+    evaluation.  Subclasses must implement ``async __call__(self, node, method)``
+    returning a list of float scores.
+
+    To create a custom async evaluator, subclass this, implement
+    ``async __call__``, and register in the ``AsyncEvaluatorType`` enum.
+    """
+
     def __init__(self, name: str, *args, **kwargs):
         self.name = name
 
@@ -143,7 +153,7 @@ class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
 
 
 class AsyncJudgeEvaluator(AsyncBaseEvaluator):
-    """Async version of LLM-as-Judge Node Evaluator."""
+    """Async version of LLM-as-Judge Evaluator."""
 
     def __init__(
         self,

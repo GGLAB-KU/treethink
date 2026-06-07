@@ -72,8 +72,8 @@ def create_client(
 ) -> ProofAssistantClient:
     """Build a synchronous proof-assistant client for *language*.
 
-    If *cache* is provided (or ``client_args.enable_cache`` is ``True``),
-    the raw client is wrapped with :class:`CachedClient`.
+    Selects the appropriate client based on the ``FormalLanguage`` enum
+    and wraps it with :class:`CachedClient` if caching is enabled.
     """
     inner = _create_raw_client(language, client_args)
     cache_to_use = (
@@ -95,10 +95,12 @@ def create_async_client(
     client_args: ClientArgs,
     cache: Optional[ProofCache] = None,
 ) -> AsyncProofAssistantClient:
-    """Build an asynchronous proof-assistant client for *language*.
+    """Build an async proof-assistant client for *language*.
 
-    If *cache* is provided (or ``client_args.enable_cache`` is ``True``),
-    the raw client is wrapped with :class:`AsyncCachedClient`.
+    Selects the appropriate async client based on the ``FormalLanguage``
+    enum and wraps it with :class:`AsyncCachedClient` if caching is enabled.
+    Raises ``NotImplementedError`` for languages without async support
+    (Rocq, Isabelle).
     """
     inner = _create_raw_async_client(language, client_args)
     cache_to_use = (

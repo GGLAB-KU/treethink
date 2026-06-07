@@ -14,6 +14,17 @@ from .utils import ModelArgs, PolicyArgs, SamplingArgs, ServerArgs
 
 
 class BasePolicy(ABC):
+    """Abstract base for all child-generation policies.
+
+    A policy wraps an LLM to produce candidate next proof steps (child
+    nodes) from a given parent node.  Subclasses must implement
+    ``__call__(self, node, method)`` which generates completions and
+    attaches them to the node via ``node.add_children()``.
+
+    To create a custom policy, subclass this and implement ``__call__``,
+    then register in the ``PolicyType`` enum.
+    """
+
     def __init__(
         self,
         name: str,
@@ -60,6 +71,28 @@ class BasePolicy(ABC):
 
 
 class VLLMPolicy(BasePolicy):
+    """Standard vLLM-based child-generation policy.
+
+    Uses a local vLLM model to generate ``n`` completions from a chat-style
+    prompt (system + problem + proof so far).  Automatically clips
+    ``max_tokens`` to stay within the model's context window.
+
+    Supports LoRA adapters via the ``lora_path`` parameter.
+
+    Typical YAML config::
+
+        policy:
+          func_name: "vllm_policy"
+          model:
+            model: "internlm/internlm2-7b"
+            tensor_parallel_size: 1
+          sampling:
+            max_tokens: 2048
+            temperature: 1.0
+            n: 4
+            stop: ["\\n"]
+    """
+
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -194,6 +227,26 @@ class VLLMPolicy(BasePolicy):
 
 
 class DynamicPolicy(BasePolicy):
+    """vLLM policy with dynamically adjustable sampling parameters.
+
+    Like :class:`VLLMPolicy`, but accepts a ``param_modifier`` callback
+    that can adjust sampling parameters (temperature, top_p, etc.)
+    per-node based on tree depth or sibling index.
+
+    The default modifier linearly decreases temperature with depth::
+
+        temperature = max(0.1, 1.1 - node.level * 0.01)
+
+    An experimental modifier (``param_modifier_experimental``) also adjusts
+    ``top_p`` based on depth and child position.
+
+    Typical YAML config::
+
+        policy:
+          func_name: "dynamic_policy"
+          # All other fields same as vllm_policy
+    """
+
     def __init__(
         self,
         model: Union[vllm.LLM, ModelArgs],
@@ -357,7 +410,28 @@ class DynamicPolicy(BasePolicy):
 
 
 class VLLMServerPolicy(BasePolicy):
-    """vLLM Server based inference for node expansion."""
+    """vLLM child-generation policy using the OpenAI-compatible API.
+
+    Connects to an **external vLLM server** via the OpenAI chat endpoint
+    instead of loading the model locally.  Useful when the model is hosted
+    on a separate machine or when sharing a GPU across processes.
+
+    Uses ``openai.OpenAI`` client under the hood.
+
+    Typical YAML config::
+
+        policy:
+          func_name: "vllm_server_policy"
+          model:
+            model: "internlm/internlm2-7b"
+          sampling:
+            max_tokens: 2048
+            temperature: 1.0
+            n: 4
+          server:
+            base_url: "http://localhost:8000/v1"
+            api_key: "token-abc123"
+    """
 
     def __init__(
         self,
@@ -447,6 +521,15 @@ class VLLMServerPolicy(BasePolicy):
 
 
 class PolicyType(Enum):
+    """Enum mapping policy config names to their implementation classes.
+
+    Members are accessed via ``from_str()`` which normalises the config
+    ``func_name`` (e.g. ``"vllm_policy"`` → ``PolicyType.VLLM``).
+
+    To add a new policy, add a member here and ensure the value is a
+    :class:`BasePolicy` subclass.
+    """
+
     VLLM = VLLMPolicy
     DYNAMIC = DynamicPolicy
     VLLM_SERVER = VLLMServerPolicy

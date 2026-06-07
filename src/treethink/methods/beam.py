@@ -11,8 +11,16 @@ from .node import Node
 
 
 class BeamSearch(BaseMethod):
-    """
-    Beam Search implementation built on top of BaseMethod.
+    """Beam Search tree exploration.
+
+    Maintains a fixed-size beam (set) of the most promising nodes.  At each
+    step all beam nodes are expanded, their children are scored, and the top-k
+    children form the new beam.
+
+    Parameter ``beam_width`` controls the beam size (defaults to
+    ``max_children``).
+
+    Async variant: :class:`AsyncBeamSearch`
     """
 
     def __init__(
@@ -212,7 +220,7 @@ class BeamSearch(BaseMethod):
 
 class AsyncBeamSearch(BeamSearch):
     """
-    Async version of BeamSearch that supports asynchronous node expansion.
+    Async version of :class:`BeamSearch` that supports asynchronous node expansion.
 
     This implementation leverages async_expand and async_expand_rm_dupes from
     BaseMethod to enable concurrent evaluation of children nodes during beam

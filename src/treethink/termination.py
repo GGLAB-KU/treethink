@@ -21,22 +21,12 @@ def check_termination_encountered(
     num_proc: int = 4,
     batch_size: int = 8,
 ):
-    """Verify a single termination node as soon as it is encountered.
+    """Verify a single termination node immediately when encountered.
 
-    This is meant to be passed as ``termination_encountered_fn`` to
-    ``method.simulate()``, e.g.::
-
-        from functools import partial
-
-        fn = partial(
-            check_termination_encountered,
-            client=my_client,
-            timeout=400,
-        )
-        method.simulate(..., termination_encountered_fn=fn)
-
-    Returns the raw proof path (str) if the snippet is verified, or
-    ``None`` otherwise.
+    Called as ``termination_encountered_fn`` inside ``method.simulate()``.
+    Traverses from the node to root, sends the parsed proof snippet to the
+    REPL client, and returns the proof path if verified (``None`` otherwise).
+    On success, sets ``best_answer_reason = CHECKED_AND_TRUE``.
     """
 
     proof_path = method.traverse_to_root(node, include_root=True)
@@ -84,7 +74,10 @@ def check_terminated_paths(
 ):
     """Batch-verify all terminated leaves after search completes.
 
-    Returns the first verified proof path (str) or ``None``.
+    Collects leaves where ``is_termination_node == True``, limits to
+    ``max_repl`` (prioritised by ``win_value``), and batch-verifies
+    them via the REPL client.  Returns the first verified proof path
+    (str) or ``None``.
     """
     node = node if node else method.root_node
 
