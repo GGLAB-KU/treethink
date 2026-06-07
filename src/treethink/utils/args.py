@@ -85,9 +85,13 @@ class TerminationOnEncounterConfig(BaseArgs):
 
     Args:
         enabled (bool): Whether to perform the check. Default ``True``.
+        batch_size (int): Number of termination nodes to accumulate before
+            sending to the REPL in a single batch. ``1`` (default) sends
+            immediately.
     """
 
     enabled: bool = True
+    batch_size: int = 1
 
 
 @dataclass
