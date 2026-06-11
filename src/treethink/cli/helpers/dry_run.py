@@ -106,37 +106,20 @@ def _perform_dry_run(
         policy_display = f"{policy_name} \u2192 {running_policy}"
         evaluator_display = f"{evaluator_name} \u2192 {running_evaluator}"
     else:
-        running_method = method_name
-        running_policy = policy_name
-        running_evaluator = evaluator_name
-        if async_method:
-            method_display = (
-                f"{method_name}  (\u2192 {async_method} with --async)"
-            )
-        else:
-            method_display = method_name
-        if async_policy:
-            policy_display = (
-                f"{policy_name}  (\u2192 {async_policy} with --async)"
-            )
-        else:
-            policy_display = policy_name
-        if async_evaluator:
-            evaluator_display = (
-                f"{evaluator_name}  (\u2192 {async_evaluator} with --async)"
-            )
-        else:
-            evaluator_display = evaluator_name
+        method_display = method_name
+        policy_display = policy_name
+        evaluator_display = evaluator_name
 
     # ── 5. Check file paths ─────────────────────────────────────────────
-    output_path = Path(output_dir)
     graph_path_str = getattr(treethink_args, "graph_path", None)
-
     path_warnings: List[str] = []
-    if output_path.exists():
-        path_warnings.append(
-            "\u26a0  Output directory already exists \u2014 files may be overwritten"
-        )
+
+    # output_path = Path(output_dir)
+    # NOTE(burak): we don't override existing .json files because of the unique naming.
+    # if output_path.exists():
+    #     path_warnings.append(
+    #         "\u26a0  Output directory already exists \u2014 files may be overwritten"
+    #     )
     if graph_path_str:
         graph_path = Path(graph_path_str)
         if graph_path.exists() and any(graph_path.iterdir()):
@@ -148,6 +131,9 @@ def _perform_dry_run(
     model_name: Optional[str] = None
     if policy_args.model:
         model_name = policy_args.model.model
+
+    language = getattr(treethink_args, "language", None)
+    language_str = language.value if language else ""
 
     _print_dry_run_summary(
         method_display=method_display,
@@ -162,6 +148,7 @@ def _perform_dry_run(
         path_warnings=path_warnings,
         sample_prompt=sample_prompt,
         model_name=model_name,
+        language=language_str,
     )
 
     raise SystemExit(85)
@@ -206,71 +193,52 @@ def _print_dry_run_summary(
     path_warnings: List[str],
     sample_prompt: str,
     model_name: Optional[str] = None,
+    language: str = "",
 ) -> None:
     """Print the compact dry-run summary to stderr."""
     lines: List[str] = []
     lines.append("")
+    lines.append("--- Dry Run ---")
 
-    # ── Header ──────────────────────────────────────────────────────────
-    lines.append(
-        "\u250c\u2500\u2500 Dry Run \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510"
-    )
+    lines.append(f"  Method:     {method_display}")
 
-    # ── Method ──────────────────────────────────────────────────────────
-    lines.append(f"\u2502  Method:     {method_display}")
-
-    # ── Policy ──────────────────────────────────────────────────────────
     if model_name:
-        lines.append(f"\u2502  Policy:     {policy_display}")
-        lines.append(f"\u2502              Model: {model_name}")
+        lines.append(f"  Policy:     {policy_display}")
+        lines.append(f"              Model: {model_name}")
     else:
-        lines.append(f"\u2502  Policy:     {policy_display}")
+        lines.append(f"  Policy:     {policy_display}")
 
-    # ── Evaluator ───────────────────────────────────────────────────────
-    lines.append(f"\u2502  Evaluator:  {evaluator_display}")
+    lines.append(f"  Evaluator:  {evaluator_display}")
 
-    # ── Dataset ─────────────────────────────────────────────────────────
+    if language:
+        lines.append(f"  Language:   {language}")
+
     if filter_notes:
         notes_str = ", ".join(filter_notes)
         lines.append(
-            f"\u2502  Dataset:    {dataset_name} \u2014 "
+            f"  Dataset:    {dataset_name} \u2014 "
             f"{total_count:,} points ({notes_str} \u2192 {filtered_count:,})"
         )
     else:
         lines.append(
-            f"\u2502  Dataset:    {dataset_name} \u2014 {total_count:,} points"
+            f"  Dataset:    {dataset_name} \u2014 {total_count:,} points"
         )
 
-    # ── Output ──────────────────────────────────────────────────────────
-    lines.append(f"\u2502  Output:     {output_dir}")
-    lines.append(f"\u2502  Iterations: {num_iterations}")
+    lines.append(f"  Output:     {output_dir}")
+    lines.append(f"  Iterations: {num_iterations}")
 
-    # ── Warnings ────────────────────────────────────────────────────────
     for warning in path_warnings:
-        lines.append(f"\u2502  {warning}")
+        lines.append(f"  {warning}")
 
-    # ── Sample prompt ───────────────────────────────────────────────────
-    lines.append(
-        "\u2502  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-    )
+    lines.append("  --- prompt ---")
     if sample_prompt:
         truncated = sample_prompt[:500]
         if len(sample_prompt) > 500:
             truncated += "..."
         display_prompt = truncated.replace("\n", "\\n")
-        lines.append("\u2502  Sample prompt (truncated to 500 chars):")
-        lines.append(f'\u2502  "{display_prompt}"')
+        lines.append(f'  "{display_prompt}"')
     else:
-        lines.append("\u2502  Sample prompt: (empty)")
+        lines.append("  (empty)")
 
-    # ── Footer ──────────────────────────────────────────────────────────
-    lines.append(
-        "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
-        "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518"
-    )
     lines.append("")
-
     print("\n".join(lines), file=sys.stderr)

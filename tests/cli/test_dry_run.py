@@ -117,6 +117,7 @@ class TestPrintDryRunSummary(TestCase):
             path_warnings=[],
             sample_prompt="some prompt",
             model_name=None,
+            language="",
         )
         defaults.update(kwargs)
         with contextlib.redirect_stderr(self.buffer):
@@ -191,11 +192,19 @@ class TestPrintDryRunSummary(TestCase):
         # The full 2000 chars should NOT appear
         self.assertNotIn("X" * 1000, output)
 
-    def test_sync_async_mapping_shown(self):
-        output = self._capture(
-            method_display="MCTS  (\u2192 AsyncMCTS with --async)"
-        )
-        self.assertIn("AsyncMCTS", output)
+    def test_method_display_no_async_hint_in_sync_mode(self):
+        """Without --async, no async conversion hints appear."""
+        output = self._capture(method_display="MCTS")
+        self.assertIn("MCTS", output)
+        self.assertNotIn("AsyncMCTS", output)
+
+    def test_language_shown_when_provided(self):
+        output = self._capture(language="lean4")
+        self.assertIn("lean4", output)
+
+    def test_language_omitted_when_empty(self):
+        output = self._capture(language="")
+        self.assertNotIn("Language:", output)
 
 
 # ---------------------------------------------------------------------------
