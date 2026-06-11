@@ -16,26 +16,21 @@ from treethink.utils.parser import (
     parse_treethink_args,
 )
 
-# -- Async auto-conversion maps -------------------------------------------
 
-ASYNC_METHOD_MAP = {
-    "MCTS": "AsyncMCTS",
-    "BFTS": "AsyncBFTS",
-    "BeamSearch": "AsyncBeamSearch",
-}
+def _async_method_name(sync_name: str) -> str:
+    """Convert a sync method name to its async variant.
 
-ASYNC_POLICY_MAP = {
-    "vllm_policy": "async_vllm_policy",
-    "vllm_server_policy": "async_vllm_server_policy",
-}
+    Convention: prepend ``\"Async\"``, e.g. ``AlphaZeroMCTS`` → ``AsyncAlphaZeroMCTS``.
+    """
+    return f"Async{sync_name}"
 
-ASYNC_EVALUATOR_MAP = {
-    "cumulative_logprob_evaluator": "async_cumulative_logprob_evaluator",
-    "lean_repl_evaluator": "async_lean_repl_evaluator",
-    "llm_as_judge_evaluator": "async_judge_evaluator",
-    "norm_len_evaluator": "async_norm_len_evaluator",
-    "rocq_evaluator": "async_rocq_evaluator",
-}
+
+def _async_func_name(sync_name: str) -> str:
+    """Convert a sync policy/evaluator func_name to its async variant.
+
+    Convention: prepend ``\"async_\"``, e.g. ``vllm_policy`` → ``async_vllm_policy``.
+    """
+    return f"async_{sync_name}"
 
 
 def convert_to_async(
@@ -45,10 +40,10 @@ def convert_to_async(
 ) -> Tuple[TreeThinkArgs, PolicyArgs, EvaluatorArgs]:
     """Mutate args in-place to async variants when ``--async`` is set.
 
-    Converts:
-    * ``method_name`` → ``AsyncMCTS`` / ``AsyncBFTS`` / ``AsyncBeamSearch``
-    * ``policy.func_name`` → async policy equivalent
-    * ``evaluator.func_name`` → async evaluator equivalent
+    Uses a simple prefix convention:
+    * ``method_name`` → ``\"Async\" + method_name``
+    * ``policy.func_name`` → ``\"async_\" + func_name``
+    * ``evaluator.func_name`` → ``\"async_\" + func_name``
 
     Args:
         treethink_args: TreeThink configuration (mutated in place).
@@ -58,24 +53,21 @@ def convert_to_async(
     Returns:
         The same three objects, now with async-compatible names.
     """
-    if treethink_args.method_name in ASYNC_METHOD_MAP:
-        new_name = ASYNC_METHOD_MAP[treethink_args.method_name]
-        logger.info(
-            f"Converting method: {treethink_args.method_name} → {new_name}"
-        )
-        treethink_args.method_name = new_name
+    async_method = _async_method_name(treethink_args.method_name)
+    logger.info(
+        f"Converting method: {treethink_args.method_name} → {async_method}"
+    )
+    treethink_args.method_name = async_method
 
-    if policy_args.func_name in ASYNC_POLICY_MAP:
-        new_name = ASYNC_POLICY_MAP[policy_args.func_name]
-        logger.info(f"Converting policy: {policy_args.func_name} → {new_name}")
-        policy_args.func_name = new_name
+    async_policy = _async_func_name(policy_args.func_name)
+    logger.info(f"Converting policy: {policy_args.func_name} → {async_policy}")
+    policy_args.func_name = async_policy
 
-    if evaluator_args.func_name in ASYNC_EVALUATOR_MAP:
-        new_name = ASYNC_EVALUATOR_MAP[evaluator_args.func_name]
-        logger.info(
-            f"Converting evaluator: {evaluator_args.func_name} → {new_name}"
-        )
-        evaluator_args.func_name = new_name
+    async_evaluator = _async_func_name(evaluator_args.func_name)
+    logger.info(
+        f"Converting evaluator: {evaluator_args.func_name} → {async_evaluator}"
+    )
+    evaluator_args.func_name = async_evaluator
 
     return treethink_args, policy_args, evaluator_args
 

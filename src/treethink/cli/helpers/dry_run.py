@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from treethink.cli.helpers.config import (
-    ASYNC_EVALUATOR_MAP,
-    ASYNC_METHOD_MAP,
-    ASYNC_POLICY_MAP,
+    _async_func_name,
+    _async_method_name,
     parse_inference_arguments,
     simple_messages_to_string,
 )
@@ -94,17 +93,13 @@ def _perform_dry_run(
     policy_name = policy_args.func_name
     evaluator_name = evaluator_args.func_name
 
-    async_method = ASYNC_METHOD_MAP.get(method_name)
-    async_policy = ASYNC_POLICY_MAP.get(policy_name)
-    async_evaluator = ASYNC_EVALUATOR_MAP.get(evaluator_name)
-
     if use_async:
-        running_method = async_method or method_name
-        running_policy = async_policy or policy_name
-        running_evaluator = async_evaluator or evaluator_name
-        method_display = f"{method_name} \u2192 {running_method}"
-        policy_display = f"{policy_name} \u2192 {running_policy}"
-        evaluator_display = f"{evaluator_name} \u2192 {running_evaluator}"
+        running_method = _async_method_name(method_name)
+        running_policy = _async_func_name(policy_name)
+        running_evaluator = _async_func_name(evaluator_name)
+        method_display = f"{method_name} → {running_method}"
+        policy_display = f"{policy_name} → {running_policy}"
+        evaluator_display = f"{evaluator_name} → {running_evaluator}"
     else:
         method_display = method_name
         policy_display = policy_name
