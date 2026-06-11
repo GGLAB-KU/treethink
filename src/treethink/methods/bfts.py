@@ -14,6 +14,15 @@ from .node import Node
 
 
 class BFTS(BaseMethod):
+    """Breadth-First Tree Search.
+
+    Explores the tree level by level.  At each level, all nodes are expanded
+    before moving deeper.  Useful for exhaustive search in shallow trees or
+    when breadth of exploration is preferred over depth.
+
+    Async variant: :class:`AsyncBFTS`
+    """
+
     def __init__(
         self,
         root_node: Optional[Node | str],
@@ -252,7 +261,7 @@ class BFTS(BaseMethod):
 
 class AsyncBFTS(BFTS):
     """
-    Async version of BFTS that supports asynchronous node expansion.
+    Async version of :class:`BFTS` that supports asynchronous node expansion.
 
     This implementation leverages async_expand and async_expand_rm_dupes from
     BaseMethod to enable concurrent evaluation of children nodes during best-first

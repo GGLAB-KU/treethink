@@ -2,9 +2,9 @@
 language-specific client and exposes a narrow API consumed by `TreeThink`.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
-from typing import Optional
+from typing import Any, List, Optional
 
 from loguru import logger
 
@@ -23,13 +23,11 @@ from .utils.enums import FormalLanguage
 
 @dataclass
 class ReplRuntime:
-    """Thin coordinator that owns proof-assistant clients and exposes
-    termination-callback helpers consumed by `TreeThink`.
+    """Coordinates proof-assistant clients and termination callbacks.
 
-    If :attr:`client_args.enable_cache` is ``True``, a single shared
-    :class:`ProofCache` instance is created and used by both the sync
-    and async clients, so that a proof verified via ``check_termination_encountered``
-    (sync) is also cached for ``async_check_terminated_paths``.
+    Owns sync and async REPL clients and exposes callbacks consumed by
+    ``TreeThink.generate()`` / ``async_generate()``.  Manages a shared
+    :class:`ProofCache` when caching is enabled.
     """
 
     language: FormalLanguage
@@ -42,6 +40,11 @@ class ReplRuntime:
 
     # Internal: shared LRU cache (created when enable_cache=True)
     _cache: Optional[ProofCache] = None
+
+    # Encountered-termination batching
+    _encountered_batch_size: int = 1
+    _pending_encountered: List[tuple] = field(default_factory=list)
+    # each entry: (method, node, proof_path, parsed_snippet)
 
     # -- factory -----------------------------------------------------------
 
@@ -67,12 +70,14 @@ class ReplRuntime:
             client_args=args.client_args,
             encountered_config=TerminationOnEncounterConfig(
                 enabled=encountered_enabled,
+                batch_size=args.termination_on_encounter.batch_size,
             ),
             paths_config=TerminationOnPathsConfig(
                 enabled=paths_enabled,
                 max_repl=args.termination_on_paths.max_repl,
             ),
             _cache=cache,
+            _encountered_batch_size=args.termination_on_encounter.batch_size,
         )
 
     # -- properties --------------------------------------------------------
@@ -101,16 +106,183 @@ class ReplRuntime:
             )
         return self.async_client
 
+    # -- encountered-termination batching ---------------------------------
+
+    def _flush_pending_encountered(self, method) -> Optional[str]:
+        """Flush accumulated encountered-termination proofs to the REPL.
+
+        Returns the *proof path* (str) of the first verified proof, or
+        ``None`` if none verified.  Failed nodes are penalised with
+        ``win_value = float("-inf")`` just as the immediate-send path does.
+        """
+        if not self._pending_encountered:
+            return None
+
+        batch = self._pending_encountered
+        self._pending_encountered = []
+
+        nodes: List[Any] = [entry[1] for entry in batch]
+        proof_paths: List[str] = [entry[2] for entry in batch]
+        snips: List[str] = [entry[3] for entry in batch]
+
+        logger.debug(
+            f"Flushing encountered-termination batch ({len(snips)} snippet(s))."
+        )
+
+        client = self._sync_client()
+        try:
+            resp = client.check(
+                snips=snips,
+                timeout=self.client_args.timeout,
+                show_progress=False,
+                batch_size=self.client_args.batch_size,
+                max_workers=self.client_args.num_proc,
+            )
+        except Exception as e:
+            logger.error(f"REPL batch (encountered) failed: {e}")
+            return None
+
+        if not resp or not hasattr(resp, "results"):
+            logger.warning("REPL batch (encountered) returned no results.")
+            return None
+
+        for idx, result in enumerate(resp.results):
+            if client.is_success_response(result.response):
+                logger.success(
+                    f"REPL batch (encountered) found a solution at index {idx}!"
+                )
+                return proof_paths[idx]
+            # Penalise failed node (same as immediate-send path).
+            if idx < len(nodes):
+                nodes[idx].win_value = float("-inf")
+
+        logger.debug("No valid solution in encountered-termination batch.")
+        return None
+
+    async def _async_flush_pending_encountered(self, method) -> Optional[str]:
+        """Async variant of :meth:`_flush_pending_encountered`."""
+        if not self._pending_encountered:
+            return None
+
+        batch = self._pending_encountered
+        self._pending_encountered = []
+
+        nodes: List[Any] = [entry[1] for entry in batch]
+        proof_paths: List[str] = [entry[2] for entry in batch]
+        snips: List[str] = [entry[3] for entry in batch]
+
+        logger.debug(
+            "Async flushing encountered-termination batch "
+            f"({len(snips)} snippet(s))."
+        )
+
+        client = self._async_client()
+        try:
+            resp = await client.check(
+                snips=snips,
+                timeout=self.client_args.timeout,
+                show_progress=False,
+                batch_size=self.client_args.batch_size,
+                max_workers=self.client_args.num_proc,
+            )
+        except Exception as e:
+            logger.error(f"Async REPL batch (encountered) failed: {e}")
+            return None
+
+        if not resp or not hasattr(resp, "results"):
+            logger.warning(
+                "Async REPL batch (encountered) returned no results."
+            )
+            return None
+
+        for idx, result in enumerate(resp.results):
+            if client.is_success_response(result.response):
+                logger.success(
+                    "Async REPL batch (encountered) found a solution "
+                    f"at index {idx}!"
+                )
+                return proof_paths[idx]
+            if idx < len(nodes):
+                nodes[idx].win_value = float("-inf")
+
+        logger.debug(
+            "No valid solution in async encountered-termination batch."
+        )
+        return None
+
+    def flush_encountered_batch(self, method) -> Optional[str]:
+        """Flush any remaining pending encountered-termination proofs.
+
+        Call this **after** the search loop completes so that proofs
+        collected but not yet sent to the REPL are still verified.
+
+        Returns the verified proof path or ``None``.
+        """
+        from .utils.enums import BestAnswerReason
+
+        result = self._flush_pending_encountered(method)
+        if result is not None:
+            method._best_answer = result
+            method.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
+        return result
+
+    async def async_flush_encountered_batch(self, method) -> Optional[str]:
+        """Async variant of :meth:`flush_encountered_batch`."""
+        from .utils.enums import BestAnswerReason
+
+        result = await self._async_flush_pending_encountered(method)
+        if result is not None:
+            method._best_answer = result
+            method.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
+        return result
+
     # -- termination callbacks ---------------------------------------------
 
     def build_termination_callback(self, method, async_mode: bool = False):
-        """Return a callable suitable for ``termination_encountered_fn``."""
+        """Return a callable suitable for ``termination_encountered_fn``.
+
+        When ``_encountered_batch_size > 1``, the callable accumulates
+        proof snippets and only sends them to the REPL once the batch
+        threshold is reached.  Otherwise it sends immediately (legacy
+        behaviour).
+        """
         if not self.encountered_config.enabled:
             return None
 
-        if async_mode:
-            # Build a coroutine that uses the async client inline.
-            async def _async_callback(node):
+        is_batching = self._encountered_batch_size > 1
+
+        # ----------  Sync path  ----------
+        if not async_mode:
+            if not is_batching:
+                # Legacy path — send on every call.
+                return partial(
+                    check_termination_encountered,
+                    client=self._sync_client(),
+                    timeout=self.client_args.timeout,
+                    num_proc=self.client_args.num_proc,
+                    batch_size=self.client_args.batch_size,
+                )
+
+            # Batching path — accumulate then flush.
+            def _batch_callback(node):
+                proof_path = method.traverse_to_root(node, include_root=True)
+                parsed = method.parse_proof(proof_path)
+                self._pending_encountered.append(
+                    (method, node, proof_path, parsed)
+                )
+                if (
+                    len(self._pending_encountered)
+                    >= self._encountered_batch_size
+                ):
+                    return self._flush_pending_encountered(method)
+                return None
+
+            return _batch_callback
+
+        # ----------  Async path  ----------
+        if not is_batching:
+            # Legacy path — send immediately.
+            async def _immediate_async_callback(node):
                 client = self._async_client()
                 proof_path = method.traverse_to_root(node, include_root=True)
                 parsed = method.parse_proof(proof_path)
@@ -135,16 +307,18 @@ class ReplRuntime:
                     return proof_path
                 return None
 
-            return _async_callback
+            return _immediate_async_callback
 
-        # Sync
-        return partial(
-            check_termination_encountered,
-            client=self._sync_client(),
-            timeout=self.client_args.timeout,
-            num_proc=self.client_args.num_proc,
-            batch_size=self.client_args.batch_size,
-        )
+        # Batching async path.
+        async def _async_batch_callback(node):
+            proof_path = method.traverse_to_root(node, include_root=True)
+            parsed = method.parse_proof(proof_path)
+            self._pending_encountered.append((method, node, proof_path, parsed))
+            if len(self._pending_encountered) >= self._encountered_batch_size:
+                return await self._async_flush_pending_encountered(method)
+            return None
+
+        return _async_batch_callback
 
     def check_terminated_paths(self, method):
         """Batch-verify terminated leaves (sync)."""

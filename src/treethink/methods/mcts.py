@@ -11,16 +11,22 @@ from .node import Node
 
 
 class MCTS(BaseMethod):
-    """
-    Implements the Monte Carlo Tree Search (MCTS) algorithm.
+    """Monte Carlo Tree Search with UCB1 selection.
 
-    This class orchestrates the search process by selecting, expanding, simulating,
-    and backpropagating through the tree to find the best answer.
+    Four phases per iteration:
+    1. **Select** — walk from root to a leaf using UCB1:
+       UCB = win_value/visits + exploration_weight * sqrt(ln(N) / n_i)
+    2. **Expand** — call the policy on the selected leaf
+    3. **Evaluate** — score each child via the evaluator
+    4. **Backpropagate** — propagate scores up to the root
 
     Attributes:
         root_node (Node): The root node of the search tree.
         policy: Function to generate child nodes.
+
         evaluator: Function to evaluate node quality.
+
+    Async variant: :class:`AsyncMCTS`
     """
 
     def __init__(
@@ -233,7 +239,7 @@ class MCTS(BaseMethod):
 
 class AsyncMCTS(MCTS):
     """
-    Async version of MCTS that supports asynchronous node expansion.
+    Async version of :class:`MCTS` that supports asynchronous node expansion.
 
     This implementation leverages async_expand and async_expand_rm_dupes from
     BaseMethod to enable asynchronous evaluation of children nodes during MCTS

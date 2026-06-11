@@ -3,11 +3,13 @@ from treethink import (
     async_policies,
     client_factory,
     clients,
+    dataset_prep,
     evaluators,
     graph,
     methods,
     policies,
     repl_runtime,
+    sampler,
     termination,
     treethink,
     utils,
@@ -90,6 +92,11 @@ from treethink.clients import (
     split_proof_header,
     transfer_trailing_whitespaces_and_comments,
 )
+from treethink.dataset_prep import (
+    ConfigRegistry,
+    PreparationConfig,
+    prepare_datapoints,
+)
 from treethink.evaluators import (
     EVALUATORS,
     IMPLEMENTED_EVALUATORS,
@@ -146,6 +153,11 @@ from treethink.policies import (
 )
 from treethink.repl_runtime import (
     ReplRuntime,
+)
+from treethink.sampler import (
+    AsyncTreeThinkSampler,
+    SamplerBase,
+    TreeThinkSampler,
 )
 from treethink.termination import (
     check_terminated_paths,
@@ -262,6 +274,7 @@ __all__ = [
     "args",
     "async_evaluators",
     "async_policies",
+    "AsyncTreeThinkSampler",
     "base",
     "base_method",
     "batch_verify_proof",
@@ -277,10 +290,12 @@ __all__ = [
     "client_factory",
     "clients",
     "coerce_enum",
+    "ConfigRegistry",
     "convert_folder_of_txt_to_proofs",
     "coq",
     "create_async_client",
     "create_client",
+    "dataset_prep",
     "ends_with_by",
     "enums",
     "evaluators",
@@ -320,6 +335,8 @@ __all__ = [
     "parse_lean_response",
     "parse_messages",
     "policies",
+    "PreparationConfig",
+    "prepare_datapoints",
     "process_batch",
     "process_batches",
     "proof_utils",
@@ -328,12 +345,15 @@ __all__ = [
     "retrieve_tactics",
     "rocq",
     "run_graphviz_on_file",
+    "sampler",
+    "SamplerBase",
     "save_tree_to_txt",
     "separate_trailing_comment",
     "separate_trailing_whitespace",
     "split_proof_header",
     "str_manip",
     "termination",
+    "TreeThinkSampler",
     "transfer_trailing_whitespaces_and_comments",
     "treethink",
     "utils",

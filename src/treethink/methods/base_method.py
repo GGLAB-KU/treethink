@@ -11,7 +11,23 @@ from .node import Node
 
 
 class BaseMethod(ABC):
-    """Class implementing the necessary utilities for every method to have."""
+    """Abstract base class for all tree-search inference methods.
+
+    Provides core utilities for tree search algorithms including node traversal,
+    proof parsing, and best-answer selection.  All tree-search methods (MCTS,
+    BFTS, BeamSearch, etc.) inherit from this class.
+
+    Subclasses must implement ``simulate()`` for their specific search strategy.
+
+    Key features:
+    - ``traverse_to_root()`` — reconstruct the full proof path from node to root
+    - ``parse_proof()`` — extract proof text from code-fence delimiters
+    - ``best_answer`` / ``best_answer_reason`` — track selected answer and how
+      it was determined (calculated, manually set, or REPL-verified)
+    - ``final_decision_mode`` — strategy for picking the best node after search
+      (native, maximize_visits, maximize_value, clear_frontier)
+    - Expansion statistics (``stats_expansion_count``, etc.)
+    """
 
     def _format_str_value(self, value):
         if callable(value):

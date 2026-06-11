@@ -15,9 +15,9 @@ from .utils.enums import BestAnswerReason
 class TreeThinkOutputs:
     """TreeThink-native generation result.
 
-    This object intentionally stays small and serialization-friendly. It holds
-    the generated solution text(s) plus TreeThink-specific metadata, without
-    inheriting from vLLM request types.
+    Holds the generated solution text(s) plus TreeThink-specific metadata
+    (method, graph stats, verification status).  Designed to be
+    serialization-friendly and independent of vLLM types.
     """
 
     solution_text: str = ""
@@ -138,11 +138,27 @@ class TreeThink:
 
         # Create the final output
         generation_result = TreeThinkOutputs()
+        solution = None
+        _solution_found = False
+
+        # Flush any remaining encountered-termination batch
+        if self.repl_runtime.encountered_config.enabled:
+            logger.trace("Flushing encountered-termination batch...")
+            encountered_solution = self.repl_runtime.flush_encountered_batch(
+                self.method
+            )
+            if encountered_solution:
+                logger.success(
+                    "Encountered-termination batch found a solution!"
+                )
+                _solution_found = True
+                generation_result.checked_and_true = True
+                solution = encountered_solution
 
         # Check all terminated leaves via REPL
-        _solution_found = False
         if (
-            self.repl_runtime.paths_config.enabled
+            not _solution_found
+            and self.repl_runtime.paths_config.enabled
             and self.method.best_answer_reason
             != BestAnswerReason.CHECKED_AND_TRUE
         ):
@@ -240,11 +256,29 @@ class TreeThink:
 
         # Create Output
         generation_result = TreeThinkOutputs()
+        solution = None
+        _solution_found = False
+
+        # Flush any remaining encountered-termination batch
+        if self.repl_runtime.encountered_config.enabled:
+            logger.trace("Flushing async encountered-termination batch...")
+            encountered_solution = (
+                await self.repl_runtime.async_flush_encountered_batch(
+                    self.method
+                )
+            )
+            if encountered_solution:
+                logger.success(
+                    "Async encountered-termination batch found a solution!"
+                )
+                _solution_found = True
+                generation_result.checked_and_true = True
+                solution = encountered_solution
 
         # Check terminated paths with REPL
-        _solution_found = False
         if (
-            self.repl_runtime.paths_config.enabled
+            not _solution_found
+            and self.repl_runtime.paths_config.enabled
             and self.method.best_answer_reason
             != BestAnswerReason.CHECKED_AND_TRUE
         ):

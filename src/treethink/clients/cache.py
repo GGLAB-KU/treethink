@@ -26,7 +26,7 @@ from .base import AsyncProofAssistantClient, ProofAssistantClient
 
 @dataclass
 class CacheEntry:
-    """Result stored for a single proof snippet."""
+    """Result stored for a single proof-snippet verification."""
 
     success: bool
     response: dict[str, Any]
@@ -39,10 +39,13 @@ def _snippet_key(snippet: str) -> str:
 
 
 class ProofCache:
-    """Fixed-size LRU store keyed by ``sha256(proof_snippet)``.
+    """Fixed-size LRU cache for proof-snippet verification results.
 
-    Thread-safety is **not** guaranteed — callers serialise through the
-    same event loop or process.
+    Keyed by ``sha256(proof_snippet)``.  When enabled, previously verified
+    snippets are served from the cache instead of making network calls to
+    the REPL server.
+
+    Not thread-safe — callers should serialise through the same event loop.
     """
 
     def __init__(self, maxsize: int = 4096) -> None:

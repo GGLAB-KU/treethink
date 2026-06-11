@@ -5,8 +5,6 @@ from types import SimpleNamespace
 from typing import Any, List, Optional
 
 from loguru import logger
-from pytanque import PetanqueError
-from rocq_ml_toolbox.inference.client import PytanqueExtended
 
 from ..base import ProofAssistantClient
 
@@ -35,15 +33,17 @@ class RocqBatchClient(ProofAssistantClient):
         self.theorem_name = theorem_name
         self.statement = statement
         self.prelude = prelude
-        self._pet: Optional[PytanqueExtended] = None
+        self._pet: Optional["PytanqueExtended"] = None
 
     def close(self) -> None:
         if self._pet is not None and hasattr(self._pet, "close"):
             self._pet.close()
         self._pet = None
 
-    def _ensure_client(self) -> PytanqueExtended:
+    def _ensure_client(self) -> "PytanqueExtended":
         if self._pet is None:
+            from rocq_ml_toolbox.inference.client import PytanqueExtended
+
             self._pet = PytanqueExtended(self.host, self.port)
             self._pet.connect()
         return self._pet
@@ -119,7 +119,7 @@ class RocqBatchClient(ProofAssistantClient):
 
     def _run_command(
         self,
-        pet: PytanqueExtended,
+        pet: "PytanqueExtended",
         state,
         cmd: str,
         timeout: Optional[float] = None,
@@ -156,6 +156,8 @@ class RocqBatchClient(ProofAssistantClient):
         tmp_path = pet.tmp_file(
             content=self._build_file_text(), root=self.workspace_dir
         )
+
+        from pytanque import PetanqueError
 
         try:
             state = pet.start(file=str(tmp_path), thm=self.theorem_name)

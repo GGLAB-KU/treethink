@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -5,7 +7,6 @@ from typing import List, Optional
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import aiohttp
-from kimina_client import Infotree, KiminaClient, Snippet
 from loguru import logger
 from tenacity import (
     RetryError,
@@ -300,6 +301,8 @@ def batch_verify_proof(
     )
 
     # Use Snippet structure from kimina client
+    from kimina_client import Infotree, Snippet
+
     if isinstance(samples, list) and not isinstance(samples[0], Snippet):
         samples = [
             Snippet(id=str(sample["custom_id"]), code=str(sample["code"]))

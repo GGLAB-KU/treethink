@@ -6,13 +6,22 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "datasets>=4.8.5",
-    "kimina-client",
+    "loguru",
     "mkinit>=1.2.0",
-    "pytanque",
-    "pytest>=9.0.3",
-    "rocq-ml-toolbox",
     "toml>=0.10.2",
+    "typer>=0.12.0",
+    "vllm>=0.8.5.post1",
 ]
+
+[project.optional-dependencies]
+lean = ["kimina-client"]
+rocq = ["rocq-ml-toolbox", "pytanque"]
+isabelle = []
+dev = ["pytest>=9.0.3"]
+full = ["treethink[lean,rocq,isabelle,dev]"]
+
+[project.scripts]
+treethink = "treethink.cli.main:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -22,18 +31,12 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [dependency-groups]
-main = [
-    "vllm>=0.8.5.post1",
-]
 build = [
     "setuptools>=75.8.0",
 ]
-direct = [
-    "vllm>=0.8.5.post1",
-]
 
 [tool.uv]
-default-groups = ["main", "build", "direct"]
+default-groups = ["build"]
 
 [tool.uv.sources]
 kimina-client = { git = "https://github.com/project-numina/kimina-lean-server.git" }

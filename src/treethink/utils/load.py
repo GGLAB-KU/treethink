@@ -1,3 +1,8 @@
+"""Dataset loading utilities for various formats.
+
+Supports HuggingFace datasets, JSON, JSONL, CSV, Parquet, Pickle, Excel, etc.
+"""
+
 import json
 import pickle
 from pathlib import Path
@@ -31,7 +36,6 @@ def load_dataset(
     Returns:
         Loaded dataset (format depends on the loader used)
     """
-
     path = Path(path) if isinstance(path, str) else path
 
     # Auto-detect format if not specified
@@ -42,7 +46,7 @@ def load_dataset(
     format_type = format_type.lower()
 
     try:
-        if format_type == "huggingface" or format_type == "hf":
+        if format_type in ("huggingface", "hf"):
             return _load_huggingface(str(path), hf_config, hf_split, **kwargs)
 
         elif format_type == "huggingface_disk":
@@ -53,7 +57,7 @@ def load_dataset(
         elif format_type == "json":
             return _load_json(path, **kwargs)
 
-        elif format_type == "jsonl" or format_type == "ndjson":
+        elif format_type in ("jsonl", "ndjson"):
             return _load_jsonl(path, **kwargs)
 
         elif format_type == "csv":
@@ -62,10 +66,10 @@ def load_dataset(
         elif format_type == "parquet":
             return _load_parquet(path, **kwargs)
 
-        elif format_type == "pickle" or format_type == "pkl":
+        elif format_type in ("pickle", "pkl"):
             return _load_pickle(path, **kwargs)
 
-        elif format_type in ["excel", "xlsx", "xls"]:
+        elif format_type in ("excel", "xlsx", "xls"):
             return _load_excel(path, **kwargs)
 
         elif format_type == "tsv":
@@ -82,7 +86,6 @@ def load_dataset(
 def _infer_format(path: Path) -> str:
     """Infer format from file extension."""
     if path.exists() and path.is_dir():
-        # Assume it's a HuggingFace dataset name
         return "huggingface_disk"
 
     if str(path).find("/") != -1:
@@ -103,7 +106,7 @@ def _infer_format(path: Path) -> str:
         ".xls": "excel",
     }
 
-    return format_map.get(suffix, "json")  # Default to json
+    return format_map.get(suffix, "json")
 
 
 def _load_huggingface(
@@ -116,7 +119,6 @@ def _load_huggingface(
     if config:
         load_kwargs["name"] = config
 
-    # Add any additional kwargs
     load_kwargs.update(kwargs)
 
     return datasets.load_dataset(**load_kwargs)
@@ -125,14 +127,13 @@ def _load_huggingface(
 def _load_huggingface_disk(
     dataset_path: str, config: Optional[str], split: str, **kwargs
 ) -> Any:
-    """Load HuggingFace dataset."""
+    """Load HuggingFace dataset from disk."""
     logger.info(f"Loading HuggingFace dataset from disk: {dataset_path}")
 
     load_kwargs = {"dataset_path": dataset_path}
     if config:
         load_kwargs["name"] = config
 
-    # Add any additional kwargs
     load_kwargs.update(kwargs)
 
     return (
