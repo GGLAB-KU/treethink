@@ -7,10 +7,11 @@ operations like REPL verification and LLM-as-judge scoring.
 """
 
 import asyncio
+import math
 import os
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import vllm
 from loguru import logger
@@ -24,6 +25,7 @@ except ImportError:
 from treethink.clients.cache import AsyncCachedClient, ProofCache
 from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
+    LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
 )
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
@@ -320,7 +322,10 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
                 )
 
             if infotree:
-                from treethink.clients.lean import extract_data, split_proof_header
+                from treethink.clients.lean import (
+                    extract_data,
+                    split_proof_header,
+                )
 
                 header, body = split_proof_header(snips[i])
                 intervals = extract_data(infotree, body)
@@ -449,10 +454,531 @@ class AsyncNormLenEvaluator(AsyncBaseEvaluator):
         return super()._str_fields() + [("length_norm", self.length_norm)]
 
 
+class AsyncCumulativeLogprobEvaluator(AsyncBaseEvaluator):
+    """Async version of cumulative log-probability evaluator.
+
+    Pure computation — no I/O. Returns cumulative logprobs from
+    ``node.vllm_output.cumulative_logprob`` or computes them via
+    ``calculate_logprobs()`` if unavailable.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            name="async_cumulative_logprob_evaluator", *args, **kwargs
+        )
+
+    async def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, Node):
+            node = [node]
+
+        if all([n.vllm_output for n in node]):
+            if hasattr(node[0].vllm_output, "cumulative_logprob"):
+                return [n.vllm_output.cumulative_logprob for n in node]
+            return calculate_logprobs(node)
+        else:
+            if node[0].parent:
+                logger.warning(f"No vllm_output found in node(s): {node}")
+            return [0.0] * len(node)
+
+    def _str_fields(self):
+        return super()._str_fields()
+
+
+class AsyncNormLenProbEvaluator(AsyncBaseEvaluator):
+    """Async Normalized Lengths evaluator using probabilities.
+
+    Like :class:`AsyncNormLenEvaluator` but uses probabilities
+    (exponentiated logprobs) instead of cumulative logprobs.
+    Pure computation — no I/O.
+    """
+
+    def __init__(self, length_norm: float = 0.5, *args, **kwargs):
+        self.length_norm = length_norm
+        super().__init__(
+            name="async_normalized_lengths_probs_evaluator", *args, **kwargs
+        )
+
+    async def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, list):
+            evaluations = []
+            for n in node:
+                res = await self.__call__(n, method)
+                evaluations.extend(res)
+            return evaluations
+
+        L = node.level
+        whole_path_cumulative_probs = 0.0
+
+        if not node.parent:
+            return [0.0]
+
+        curr = node
+        if hasattr(curr.vllm_output, "cumulative_logprob"):
+            while curr.parent:
+                whole_path_cumulative_probs += math.exp(
+                    curr.vllm_output.cumulative_logprob
+                )
+                curr = curr.parent
+        else:
+            while curr.parent:
+                whole_path_cumulative_probs += math.exp(
+                    calculate_logprobs([curr])[0]
+                )
+                curr = curr.parent
+
+        return [whole_path_cumulative_probs / (L**self.length_norm)]
+
+    def _str_fields(self):
+        return super()._str_fields() + [("length_norm", self.length_norm)]
+
+
+class AsyncTournamentEvaluator(AsyncBaseEvaluator):
+    """Async single-elimination tournament evaluation between sibling nodes.
+
+    Runs a bracket-style tournament where an async LLM judge picks winners
+    pairwise among siblings.  Losers are scored by their elimination round,
+    and the winner receives the highest score.  All scores normalized to [0, 1].
+
+    Uses :class:`AsyncLeanClientAdapter` for parallel Lean REPL checks and
+    :class:`AsyncLLMEngine` for batch judge LLM generation.
+    """
+
+    def __init__(
+        self,
+        llm_as_judge_model: Union["AsyncLLMEngine", ModelArgs],
+        llm_as_judge_sampling: Union[vllm.SamplingParams, SamplingArgs],
+        client_args: Optional[ClientArgs] = None,
+        cache: Optional[ProofCache] = None,
+        llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
+        prompter: Optional[Callable] = None,
+        shuffle_bracket: bool = True,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(
+            name="async_pairwise_tournament_evaluator", *args, **kwargs
+        )
+        if client_args is None:
+            client_args = ClientArgs()
+        self.client_args = client_args
+        self.shuffle_bracket = shuffle_bracket
+        self.system_prompt = llm_as_judge_system_prompt
+
+        # Async Lean Client (optionally cached)
+        from treethink.clients.lean.adapter import AsyncLeanClientAdapter
+
+        raw = AsyncLeanClientAdapter(
+            lean_server_url=(
+                client_args.lean_server_url or "http://localhost:8000"
+            ),
+        )
+        self.async_lean_client = (
+            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
+        )
+
+        # Initialize Model (AsyncLLMEngine)
+        if AsyncLLMEngine is not None and isinstance(
+            llm_as_judge_model, AsyncLLMEngine
+        ):
+            self.model = llm_as_judge_model
+        elif isinstance(llm_as_judge_model, ModelArgs):
+            visible_devices = kwargs.get("llm_as_judge_visible_devices", "1")
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(visible_devices)
+            engine_args = AsyncEngineArgs(**llm_as_judge_model)
+            self.model = AsyncLLMEngine.from_engine_args(engine_args)
+        else:
+            self.model = llm_as_judge_model
+
+        # Sampling
+        if isinstance(llm_as_judge_sampling, SamplingArgs):
+            self.sampling_params = vllm.SamplingParams(**llm_as_judge_sampling)
+        else:
+            self.sampling_params = (
+                llm_as_judge_sampling or vllm.SamplingParams()
+            )
+
+        self.prompter = prompter
+
+    def _prepare_pairwise_judge_messages(
+        self,
+        proof_a: str,
+        proof_b: str,
+        info_a: Optional[dict] = None,
+        info_b: Optional[dict] = None,
+    ):
+        """Create a prompt for LLM to judge between two proofs."""
+        prompt = "You are comparing two proof attempts. Choose which one is better.\n\n"
+
+        prompt += "# Proof A:\n"
+        prompt += f"```lean\n{proof_a}\n```\n"
+        if info_a:
+            if info_a.get("applied_tactic"):
+                prompt += f"Applied Tactic: {info_a['applied_tactic']}\n"
+            if info_a.get("current_goals"):
+                prompt += f"Open Goals: {info_a['current_goals']}\n"
+            if info_a.get("solved_goals"):
+                prompt += f"Solved Goals: {info_a['solved_goals']}\n"
+            if info_a.get("error_message"):
+                prompt += f"Error: {info_a['error_message']}\n"
+
+        prompt += "\n# Proof B:\n"
+        prompt += f"```lean\n{proof_b}\n```\n"
+        if info_b:
+            if info_b.get("applied_tactic"):
+                prompt += f"Applied Tactic: {info_b['applied_tactic']}\n"
+            if info_b.get("current_goals"):
+                prompt += f"Open Goals: {info_b['current_goals']}\n"
+            if info_b.get("solved_goals"):
+                prompt += f"Solved Goals: {info_b['solved_goals']}\n"
+            if info_b.get("error_message"):
+                prompt += f"Error: {info_b['error_message']}\n"
+
+        prompt += "\nWhich proof is better? Answer with either 'A' or 'B' in \\boxed{}."
+
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        if self.prompter:
+            return self.prompter(messages)
+        else:
+            result = "\n".join([m["content"] for m in messages])
+            return result
+
+    def _extract_lean_info(
+        self, snip: str, response, result_idx: int
+    ) -> Optional[dict]:
+        """Extract tactic and goal information from Lean REPL response."""
+        if not response or not getattr(response, "results", None):
+            return None
+
+        result_obj = response.results[result_idx]
+        infotree = (
+            result_obj.response.get("infotree", None)
+            if result_obj.response
+            else None
+        )
+
+        if not infotree:
+            error_message = (
+                result_obj.response.get("error", None)
+                if result_obj.response
+                else None
+            )
+            return {"error_message": error_message} if error_message else None
+
+        try:
+            from treethink.clients.lean import extract_data, split_proof_header
+
+            header, body = split_proof_header(snip)
+            intervals = extract_data(infotree, body)
+            return {
+                "applied_tactic": intervals[-1]["tactic"],
+                "current_goals": intervals[-1]["goalsAfter"],
+                "solved_goals": intervals[-1]["goalsBefore"],
+            }
+        except Exception as e:
+            logger.warning(f"Failed to extract info from infotree: {e}")
+            return None
+
+    def parse_proof(self, proof: str):
+        start = proof.find("import Mathlib")
+        end = proof.find("```", start)
+        if end == -1 and start == -1:
+            return proof
+        elif end == -1:
+            return proof[start:]
+        return proof[start:end]
+
+    async def _batch_compare_pairs(
+        self,
+        pairs: List[Tuple[int, int]],
+        nodes: List[Node],
+        method: BaseMethod,
+        snips: List[str],
+        lean_infos: List[Optional[dict]],
+    ) -> List[int]:
+        """Compare pairs of nodes in batch and return winner indices."""
+        if not pairs:
+            return []
+
+        import time
+        import uuid
+
+        # Prepare messages for all pairs
+        messages = []
+        for idx_a, idx_b in pairs:
+            message = self._prepare_pairwise_judge_messages(
+                snips[idx_a],
+                snips[idx_b],
+                lean_infos[idx_a],
+                lean_infos[idx_b],
+            )
+            messages.append(message)
+
+        # Batch generate
+        results = [None] * len(messages)
+
+        async def generate_one(idx, prompt):
+            request_id = (
+                f"tournament_{idx}_{time.time()}_{uuid.uuid4().hex[:8]}"
+            )
+            final_text = "ERROR: Failed"
+            try:
+                async for output in self.model.generate(
+                    prompt, self.sampling_params, request_id=request_id
+                ):
+                    if output.finished:
+                        final_text = output.outputs[0].text
+                        break
+            except Exception as e:
+                logger.error(
+                    f"Tournament judge generation failed (idx={idx}): {e}"
+                )
+
+            results[idx] = final_text
+
+        tasks = [generate_one(i, p) for i, p in enumerate(messages)]
+        await asyncio.gather(*tasks)
+
+        # Extract winners
+        winners = []
+        for i, (idx_a, idx_b) in enumerate(pairs):
+            answer = results[i] if i < len(results) else "ERROR: Missing"
+            if answer.startswith("ERROR"):
+                logger.warning(
+                    f"Judge error for pair ({idx_a}, {idx_b}), defaulting to A"
+                )
+                winners.append(idx_a)
+                continue
+
+            extracted = extract_result(answer)
+            if extracted == "NO_BOXED_STRING_FOUND":
+                logger.warning(
+                    f"No boxed answer for pair ({idx_a}, {idx_b}), defaulting to A"
+                )
+                winners.append(idx_a)
+            elif extracted.strip().upper() == "A":
+                winners.append(idx_a)
+            elif extracted.strip().upper() == "B":
+                winners.append(idx_b)
+            else:
+                logger.warning(
+                    f"Invalid answer '{extracted}' for pair ({idx_a}, {idx_b}), defaulting to A"
+                )
+                winners.append(idx_a)
+
+        return winners
+
+    async def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, Node):
+            node = [node]
+
+        n = len(node)
+        if n == 1:
+            return [1.0]
+
+        # Prepare all proofs
+        snips = []
+        for i in range(n):
+            proof_so_far = method.traverse_to_root(node[i], include_root=True)
+            proof_so_far = self.parse_proof(proof=proof_so_far)
+            snips.append(proof_so_far)
+
+        # Get Lean info for all proofs in batch
+        try:
+            response = await self.async_lean_client.check(
+                snips=snips,
+                timeout=self.client_args.timeout,
+                show_progress=False,
+            )
+        except Exception as e:
+            logger.error(f"Async Lean check failed: {e}")
+            response = None
+
+        # Extract info for all nodes
+        lean_infos = []
+        for i in range(n):
+            info = self._extract_lean_info(snips[i], response, i)
+            lean_infos.append(info)
+
+        # Initialize bracket
+        bracket_indices = list(range(n))
+        if self.shuffle_bracket:
+            import random
+
+            random.shuffle(bracket_indices)
+            logger.info(f"Shuffled bracket order: {bracket_indices}")
+
+        # Pad to next power of 2 if needed
+        n_padded = 2 ** math.ceil(math.log2(n))
+        while len(bracket_indices) < n_padded:
+            bracket_indices.append(-1)
+
+        scores = [0.0] * n
+        round_num = 1
+        current_bracket = bracket_indices.copy()
+
+        while len(current_bracket) > 1:
+            pairs = []
+            valid_pairs = []
+            pair_to_valid_idx = {}
+
+            for i in range(0, len(current_bracket), 2):
+                idx_a = current_bracket[i]
+                idx_b = current_bracket[i + 1]
+
+                if idx_a == -1 and idx_b == -1:
+                    pairs.append((-1, -1))
+                elif idx_a == -1:
+                    pairs.append((idx_a, idx_b))
+                elif idx_b == -1:
+                    pairs.append((idx_a, idx_b))
+                else:
+                    pair_to_valid_idx[len(pairs)] = len(valid_pairs)
+                    valid_pairs.append((idx_a, idx_b))
+                    pairs.append((idx_a, idx_b))
+
+            if valid_pairs:
+                winners_from_comparison = await self._batch_compare_pairs(
+                    valid_pairs, node, method, snips, lean_infos
+                )
+            else:
+                winners_from_comparison = []
+
+            winners = []
+            comparison_idx = 0
+
+            for pair_idx, (idx_a, idx_b) in enumerate(pairs):
+                if idx_a == -1 and idx_b == -1:
+                    winners.append(-1)
+                elif idx_a == -1:
+                    winners.append(idx_b)
+                elif idx_b == -1:
+                    winners.append(idx_a)
+                else:
+                    winner_idx = winners_from_comparison[comparison_idx]
+                    loser_idx = idx_b if winner_idx == idx_a else idx_a
+                    scores[loser_idx] = float(round_num)
+                    winners.append(winner_idx)
+                    comparison_idx += 1
+
+            current_bracket = winners
+            round_num += 1
+
+        winner_idx = current_bracket[0]
+        if winner_idx != -1:
+            scores[winner_idx] = float(round_num)
+
+        max_score = float(round_num)
+        normalized_scores = [s / max_score for s in scores]
+
+        logger.info(
+            f"Tournament complete. Final scores: {scores} -> normalized: {normalized_scores}"
+        )
+
+        return normalized_scores
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("model", self.model.__class__.__name__),
+            ("sampling_params", self.sampling_params),
+            ("client_args", self.client_args),
+            ("shuffle_bracket", self.shuffle_bracket),
+            ("system_prompt", self.system_prompt),
+        ]
+
+
+class AsyncRocqEvaluator(AsyncBaseEvaluator):
+    """Async evaluation of Rocq proof snippets via rocq-ml-server.
+
+    Wraps the synchronous :class:`RocqBatchClient` using ``asyncio.to_thread``.
+    Returns 1.0 if the proof closes, 0.0 otherwise.
+    """
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 5000,
+        workspace_dir: Optional[str] = ".",
+        timeout: Optional[float] = 5.0,
+        statement: str = "True",
+        theorem_name: str = "__eval",
+        prelude: Optional[str] = None,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.workspace_dir = workspace_dir
+        self.timeout = timeout
+        self.statement = statement
+        self.theorem_name = theorem_name
+        self.prelude = prelude
+
+        from treethink.clients.coq.rocq import RocqBatchClient
+
+        self._client = RocqBatchClient(
+            host=self.host,
+            port=self.port,
+            workspace_dir=self.workspace_dir,
+            theorem_name=self.theorem_name,
+            statement=self.statement,
+            prelude=self.prelude,
+        )
+
+        super().__init__(name="async_rocq_evaluator")
+
+    async def __call__(
+        self, code: Union[str, List[str]]
+    ) -> Union[float, List[float]]:
+        snippets = [code] if isinstance(code, str) else code
+        results: List[float] = []
+
+        for snippet in snippets:
+            response = await asyncio.to_thread(
+                self._client.verify_snippet, snippet
+            )
+            results.append(1.0 if response.get("proof_finished") else 0.0)
+
+        return results[0] if isinstance(code, str) else results
+
+    def close(self) -> None:
+        self._client.close()
+
+    def __enter__(self) -> "AsyncRocqEvaluator":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+    def __del__(self) -> None:
+        self.close()
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("host", self.host),
+            ("port", self.port),
+            ("workspace_dir", self.workspace_dir),
+            ("timeout", self.timeout),
+            ("statement", self.statement),
+            ("theorem_name", self.theorem_name),
+        ]
+
+
 class AsyncEvaluatorType(Enum):
-    ASYNC_REPL = AsyncLeanREPLEvaluator
-    ASYNC_JUDGE = AsyncJudgeEvaluator
+    ASYNC_LEAN_REPL = AsyncLeanREPLEvaluator
+    ASYNC_LLM_AS_JUDGE = AsyncJudgeEvaluator
     ASYNC_NORMALIZED_LENGTHS = AsyncNormLenEvaluator
+    ASYNC_CUMULATIVE_LOGPROB = AsyncCumulativeLogprobEvaluator
+    ASYNC_TOURNAMENT = AsyncTournamentEvaluator
+    ASYNC_NORMALIZED_LENGTHS_PROBS = AsyncNormLenProbEvaluator
+    ASYNC_ROCQ = AsyncRocqEvaluator
 
     @classmethod
     def from_str(cls, name: str) -> "AsyncEvaluatorType":

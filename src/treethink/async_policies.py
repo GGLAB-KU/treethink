@@ -585,10 +585,264 @@ class AsyncVLLMServerPolicy(BasePolicy):
         ]
 
 
+class AsyncDynamicPolicy(BasePolicy):
+    """Async vLLM policy with dynamically adjustable sampling parameters.
+
+    Like :class:`AsyncVLLMPolicy`, but accepts a ``param_modifier`` callback
+    that can adjust sampling parameters (temperature, top_p, etc.)
+    per-node based on tree depth or sibling index.
+
+    The default modifier linearly decreases temperature with depth::
+
+        temperature = max(0.1, 1.1 - node.level * 0.01)
+
+    An experimental modifier (``param_modifier_experimental``) also adjusts
+    ``top_p`` based on depth and child position.
+
+    Typical YAML config::
+
+        policy:
+          func_name: "dynamic_policy"
+          # All other fields same as async_vllm_policy
+    """
+
+    def __init__(
+        self,
+        model: Union[ModelArgs, dict],
+        sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
+        system_prompt: str = "You are a helpful math assistant.",
+        prompter: Optional[Callable] = None,
+        param_modifier: Optional[Callable] = None,
+        lora_path: Optional[str] = None,
+        *args,
+        **kwargs,
+    ):
+        logger.debug("Initializing AsyncDynamicPolicy.")
+        super().__init__(name="async_dynamic_policy")
+
+        if isinstance(model, ModelArgs):
+            engine_args = AsyncEngineArgs(
+                model=model.model,
+                tensor_parallel_size=getattr(model, "tensor_parallel_size", 1),
+                gpu_memory_utilization=getattr(
+                    model, "gpu_memory_utilization", 0.9
+                ),
+                max_model_len=getattr(model, "max_model_len", None),
+                trust_remote_code=getattr(model, "trust_remote_code", True),
+                download_dir=getattr(model, "download_dir", None),
+                enable_prefix_caching=getattr(
+                    model, "enable_prefix_caching", True
+                ),
+            )
+            self.engine = AsyncLLMEngine.from_engine_args(engine_args)
+            logger.info("AsyncLLMEngine initialized for AsyncDynamicPolicy.")
+            self._max_model_len = (
+                model.max_model_len if hasattr(model, "max_model_len") else 4096
+            )
+            self.enable_lora = model.enable_lora
+        else:
+            raise ValueError(
+                "model must be ModelArgs instance for AsyncDynamicPolicy."
+            )
+
+        self.lora_path = lora_path
+        if self.lora_path and not self.enable_lora:
+            logger.warning(
+                "lora_path provided but enable_lora is False. Ignoring lora_path."
+            )
+            self.lora_path = None
+
+        self.sampling_params = (
+            self.set_sampling_params(sampling)
+            if sampling
+            else vllm.SamplingParams(include_stop_str_in_output=True)
+        )
+        self.system_prompt = system_prompt
+        self._tokenizer = None
+        self._init_tokenizer_task = None
+
+        if isinstance(prompter, Callable):
+            logger.debug("Using provided prompter for AsyncDynamicPolicy.")
+            self.prompter = prompter
+        else:
+            self.prompter = self._default_prompter
+
+        if isinstance(param_modifier, Callable):
+            logger.debug("Using custom param_modifier for AsyncDynamicPolicy.")
+            self.param_modifier = param_modifier
+        else:
+            logger.debug("Using default param_modifier for AsyncDynamicPolicy.")
+            self.param_modifier = self._default_param_modifier
+
+        logger.info("AsyncDynamicPolicy initialized.")
+
+    async def _async_init_tokenizer(self):
+        """Initialize tokenizer asynchronously."""
+        try:
+            from transformers import AutoTokenizer
+
+            model_config = await self.engine.get_model_config()
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                model_config.model, trust_remote_code=True
+            )
+            logger.debug("Tokenizer loaded successfully in AsyncDynamicPolicy.")
+        except Exception as e:
+            logger.warning(
+                f"Failed to load tokenizer: {e}. Token counting disabled."
+            )
+            self._tokenizer = None
+
+    def _default_prompter(self, messages):
+        result = ""
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if content:
+                result += f"{role}: {content}\n"
+        return result
+
+    async def _ensure_tokenizer(self):
+        if self._tokenizer is None:
+            if self._init_tokenizer_task is None:
+                logger.debug("Creating tokenizer initialization async task.")
+                self._init_tokenizer_task = asyncio.create_task(
+                    self._async_init_tokenizer()
+                )
+            logger.debug("Awaiting tokenizer initialization.")
+            await self._init_tokenizer_task
+
+    def _default_param_modifier(self, node: Node) -> vllm.SamplingParams:
+        new_params = self.sampling_params.clone()
+        initial = 1.1
+        alpha = 0.01
+        new_params.temperature = max(0.1, initial - node.level * alpha)
+        logger.debug(f"New sampling temperature: {new_params.temperature}")
+        return new_params
+
+    def param_modifier_experimental(self, node: Node) -> vllm.SamplingParams:
+        new_params = self.sampling_params.clone()
+
+        if node.parent:
+            child_num = node.parent.children.index(node)
+        else:
+            child_num = 0
+
+        initial_temperature = 1.1
+        initial_top_p = 0.95
+        alpha = 0.01
+
+        new_params.temperature = max(
+            0.1,
+            initial_temperature
+            - node.level * alpha / 2
+            - child_num * alpha / 2,
+        )
+        new_params.top_p = max(
+            0.5,
+            initial_top_p - node.level * alpha / 4 - child_num * alpha / 2,
+        )
+        logger.debug(
+            f"New sampling temperature: {new_params.temperature}, top_p: {new_params.top_p}"
+        )
+        return new_params
+
+    async def __call__(self, node: Node, method):
+        proof_so_far = method.traverse_to_root(node, include_root=False)
+
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": method.root_node.text},
+            {"role": "assistant", "content": proof_so_far},
+        ]
+
+        prompt = self.prompter(messages)
+
+        try:
+            # Use param_modifier to adjust sampling params for this node
+            sampling_params = self.param_modifier(node)
+
+            n_generations = getattr(sampling_params, "n", 1)
+
+            tasks = []
+            base_seed = getattr(sampling_params, "seed", None)
+
+            await self._ensure_tokenizer()
+
+            for i in range(n_generations):
+                sampling_params_single = sampling_params.clone()
+                sampling_params_single.n = 1
+
+                if base_seed is not None:
+                    sampling_params_single.seed = base_seed + i * 1000
+
+                request_id = f"node_{id(node)}_{i}"
+                task = self._generate_single(
+                    prompt, sampling_params_single, request_id
+                )
+                tasks.append(task)
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            children = []
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"Generation {i} failed: {result}")
+                    continue
+                if result is not None:
+                    logger.trace(f"Model response: {result.text}")
+                    _child_node = Node(
+                        text=result.text,
+                        max_children=node.max_children,
+                        exploration_weight=node.exploration_weight,
+                        parent=node,
+                        vllm_output=result,
+                        termination_str=node.termination_str,
+                    )
+                    children.append(_child_node)
+
+            node.add_children(children=children)
+            logger.debug(f"Added {len(children)} children to node {id(node)}.")
+
+        except Exception as e:
+            logger.error(f"AsyncDynamicPolicy generation failed: {e}")
+            logger.error(f"Current prompt: {prompt}")
+
+    async def _generate_single(self, prompt, sampling_params, request_id):
+        """Generate a single completion asynchronously."""
+        try:
+            results = self.engine.generate(
+                prompt, sampling_params, request_id=request_id
+            )
+            final_output = None
+            async for request_output in results:
+                final_output = request_output
+
+            if final_output and final_output.outputs:
+                return final_output.outputs[0]
+            return None
+        except Exception as e:
+            logger.error(f"Single generation failed for {request_id}: {e}")
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("engine", self.engine.__class__.__name__),
+            ("max_model_len", self._max_model_len),
+            ("enable_lora", self.enable_lora),
+            ("lora_path", self.lora_path),
+            ("sampling_params", self.sampling_params),
+            ("system_prompt", self.system_prompt),
+            (
+                "param_modifier",
+                getattr(self.param_modifier, "__name__", None),
+            ),
+        ]
+
+
 class AsyncPolicyType(Enum):
     ASYNC_BATCH_VLLM = AsyncBatchVLLMPolicy
     ASYNC_VLLM = AsyncVLLMPolicy
     ASYNC_VLLM_SERVER = AsyncVLLMServerPolicy
+    ASYNC_DYNAMIC = AsyncDynamicPolicy
 
     @classmethod
     def from_str(cls, name: str) -> "AsyncPolicyType":
@@ -596,9 +850,12 @@ class AsyncPolicyType(Enum):
         for suffix in ("_policy", "_evaluator"):
             if normalized.endswith(suffix):
                 normalized = normalized[: -len(suffix)]
-        for member in cls:
-            if normalized == member.name.lower():
-                return member
+        # Try both the normalized name and with async_ prefix,
+        # so that "dynamic_policy" resolves to ASYNC_DYNAMIC
+        for candidate in (normalized, "async_" + normalized):
+            for member in cls:
+                if candidate == member.name.lower():
+                    return member
         valid_keys = [member.name.lower() for member in cls]
         raise ValueError(
             f"Unknown async policy '{name}'. Valid options: {valid_keys}"
