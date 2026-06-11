@@ -19,7 +19,7 @@ def setup_logging(
         run_name: Name identifier for the run.
         verbosity: Logging level (e.g. ``"INFO"``, ``"DEBUG"``).
     """
-    logger.remove(0)
+    logger.remove()
     logger.add(sys.stderr, level=verbosity.upper())
 
     log_dir = Path(output_dir) / "logs"
