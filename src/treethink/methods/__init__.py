@@ -3,7 +3,18 @@ from typing import TypeVar
 from loguru import logger
 
 # <AUTOGEN_INIT>
-from treethink.methods import base_method, beam, bfts, mcts, node
+from treethink.methods import (
+    alpha_zero_mcts,
+    base_method,
+    beam,
+    bfts,
+    node,
+    traditional_mcts,
+)
+from treethink.methods.alpha_zero_mcts import (
+    AlphaZeroMCTS,
+    AsyncAlphaZeroMCTS,
+)
 from treethink.methods.base_method import (
     BaseMethod,
 )
@@ -15,22 +26,23 @@ from treethink.methods.bfts import (
     BFTS,
     AsyncBFTS,
 )
-from treethink.methods.mcts import (
-    MCTS,
-    AsyncMCTS,
-)
 from treethink.methods.node import (
     Node,
     get_total_child_num,
+)
+from treethink.methods.traditional_mcts import (
+    AsyncTraditionalMCTS,
+    TraditionalMCTS,
 )
 
 # </AUTOGEN_INIT>
 
 # Import async methods
 try:
-    from .beam import AsyncBeamSearch  # AsyncBeamSearch is in beam.py
-    from .bfts import AsyncBFTS  # AsyncBFTS is in bfts.py
-    from .mcts import AsyncMCTS  # AsyncMCTS is in mcts.py
+    from .alpha_zero_mcts import AsyncAlphaZeroMCTS
+    from .beam import AsyncBeamSearch
+    from .bfts import AsyncBFTS
+    from .traditional_mcts import AsyncTraditionalMCTS
 
     ASYNC_AVAILABLE = True
 except ImportError as e:
@@ -38,9 +50,10 @@ except ImportError as e:
     ASYNC_AVAILABLE = False
 
 IMPLEMENTED_METHODS = {
-    "MCTS": MCTS,
+    "AlphaZeroMCTS": AlphaZeroMCTS,
     "BFTS": BFTS,
     "BeamSearch": BeamSearch,
+    "TraditionalMCTS": TraditionalMCTS,
 }
 
 # Add async methods if available
@@ -49,7 +62,8 @@ if ASYNC_AVAILABLE:
         {
             "AsyncBeamSearch": AsyncBeamSearch,
             "AsyncBFTS": AsyncBFTS,
-            "AsyncMCTS": AsyncMCTS,
+            "AsyncAlphaZeroMCTS": AsyncAlphaZeroMCTS,
+            "AsyncTraditionalMCTS": AsyncTraditionalMCTS,
         }
     )
 
@@ -73,16 +87,20 @@ def get_method(treethink_config, root_node, policy, evaluator):
 
 
 __all__ = [
+    "AlphaZeroMCTS",
+    "AsyncAlphaZeroMCTS",
+    "AsyncTraditionalMCTS",
     "BFTS",
     "BaseMethod",
     "BeamSearch",
-    "MCTS",
     "Node",
+    "TraditionalMCTS",
+    "alpha_zero_mcts",
     "base_method",
     "beam",
     "bfts",
     "get_total_child_num",
-    "mcts",
     "node",
+    "traditional_mcts",
     "get_method",
 ]

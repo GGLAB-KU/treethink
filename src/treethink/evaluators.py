@@ -1159,7 +1159,7 @@ class EvaluatorType(Enum):
     """
 
     CUMULATIVE_LOGPROB = LogprobEvaluator
-    REPL = LeanREPLEvaluator
+    LEAN_REPL = LeanREPLEvaluator
     LLM_AS_JUDGE = JudgeEvaluator
     TOURNAMENT = TournamentEvaluator
     NORMALIZED_LENGTHS = NormLenEvaluator
