@@ -25,7 +25,7 @@ Controls how the best answer is selected from the tree after search:
 
 | Mode | Behaviour |
 |------|-----------|
-| `native` | Method-specific default (e.g. root's best child for MCTS) |
+| `native` | Method-specific default (e.g. root's best child for AlphaZeroMCTS) |
 | `maximize_visits` | Pick the most-visited leaf |
 | `maximize_value` | Pick the highest-valued leaf |
 | `clear_frontier` | Re-score all frontier nodes and pick the best |
@@ -46,11 +46,13 @@ When multiple nodes have equal scores, the tie breaker (`tie_breaker`) decides:
 
 ## Implemented Methods
 
-### MCTS — Monte Carlo Tree Search
+### AlphaZeroMCTS — AlphaZero-Style Monte Carlo Tree Search
 
-**Class:** `MCTS` in `src/treethink/methods/mcts.py`
+**Class:** `AlphaZeroMCTS` in `src/treethink/methods/alpha_zero_mcts.py`
 
-Standard UCB-based MCTS with four phases per iteration:
+AlphaZero-style MCTS with four phases per iteration — **no rollout** phase.
+Evaluation happens directly on expanded children via a learned value function
+(evaluator), mirroring the AlphaZero approach.
 
 1. **Select** — walk from root to a leaf using UCB1:  
    $`\text{UCB} = \frac{w_i}{n_i} + c \sqrt{\frac{\ln N}{n_i}}`$  
@@ -59,13 +61,63 @@ Standard UCB-based MCTS with four phases per iteration:
 3. **Evaluate** — score each child via the evaluator.
 4. **Backpropagate** — propagate scores up to the root.
 
-**Async variant:** `AsyncMCTS` — same logic but with async callbacks.
+**Async variant:** `AsyncAlphaZeroMCTS` — same logic but with async callbacks.
 
 **YAML:**
 ```yaml
 treethink:
-  method_name: "MCTS"
+  method_name: "AlphaZeroMCTS"
   exploration_weight: 1.414  # sqrt(2)
+```
+
+---
+
+### TraditionalMCTS — Traditional Monte Carlo Tree Search with Rollout
+
+**Class:** `TraditionalMCTS` in `src/treethink/methods/traditional_mcts.py`
+
+Traditional MCTS with a **rollout phase** that generates a complete formal
+proof from each child via the LLM, then evaluates the complete proof using
+a formal language REPL (Lean 4 or Rocq).
+
+Five phases per iteration:
+
+1. **Select** — walk from root to a leaf using UCB1 (same UCT formula as
+   `AlphaZeroMCTS`).
+2. **Expand** — generate candidate next-step children via the policy.
+3. **Rollout** (new) — for each child, use the LLM to generate a **complete
+   formal proof** in a single-shot call with high `max_tokens`.
+4. **Evaluate** — score each complete proof via a **separate rollout
+   evaluator** (e.g. `lean_repl_evaluator` for Lean 4, `rocq_evaluator` for
+   Rocq).  This can be different from the main search evaluator — for
+   example, use `cumulative_logprob_evaluator` for fast in-tree decisions
+   and `lean_repl_evaluator` for accurate rollout verification.
+5. **Backpropagate** — propagate scores up to the root.
+
+**Async variant:** `AsyncTraditionalMCTS`
+
+**Key parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `exploration_weight` | 1.414 | UCB exploration constant |
+| `rollout_evaluator` | — | Evaluator for complete proofs (e.g. `"lean_repl_evaluator"`) |
+| `rollout_max_tokens` | 4096 | Max tokens for rollout generation |
+| `rollout_n` | 1 | Number of rollouts per child (scores averaged when > 1) |
+| `rollout_temperature` | 0.8 | Sampling temperature for rollouts |
+
+**YAML:**
+```yaml
+treethink:
+  method_name: "TraditionalMCTS"
+  exploration_weight: 1.414
+  rollout_evaluator:
+    func_name: "lean_repl_evaluator"
+    repl_args:
+      lean_server_url: "http://localhost:12336"
+  rollout_max_tokens: 4096
+  rollout_n: 1
+  rollout_temperature: 0.8
 ```
 
 ---
@@ -116,13 +168,13 @@ These parameters apply to all methods (set under the `treethink:` YAML key):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `method_name` | — | `"MCTS"`, `"BFTS"`, or `"BeamSearch"` |
+| `method_name` | — | `"AlphaZeroMCTS"`, `"TraditionalMCTS"`, `"BFTS"`, or `"BeamSearch"` |
 | `expansion_count` | 128 | Number of tree expansions |
 | `max_children` | 4 | Maximum branching factor |
 | `timeout` | — | Total timeout in seconds |
 | `final_decision_mode` | `"native"` | See above |
 | `tie_breaker` | `"random"` | See above |
-| `exploration_weight` | 1.414 | MCTS UCB exploration constant |
+| `exploration_weight` | 1.414 | UCB exploration constant (AlphaZeroMCTS and TraditionalMCTS) |
 | `store_graph_stats` | true | Enable graph statistics |
 
 ---
@@ -132,7 +184,7 @@ These parameters apply to all methods (set under the `treethink:` YAML key):
 1. Create a new file in `src/treethink/methods/` (e.g. `my_method.py`).
 2. Inherit from `BaseMethod` and implement `simulate()`.
 3. Register the class in `src/treethink/methods/__init__.py` by adding it to
-   `IMPLEMENTED_METHODS`.
+   the `MethodType` enum.
 4. See [extending.md](extending.md) for more detail.
 
 For the full API, refer to the source code at `src/treethink/methods/`.

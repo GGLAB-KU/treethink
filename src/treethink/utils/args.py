@@ -128,9 +128,10 @@ class TreeThinkArgs(BaseArgs):
 
     Args:
         method_name:
-            One of the registered method names — ``"MCTS"``, ``"BFTS"``,
-            ``"BeamSearch"`` (or their ``Async*`` counterparts when using
-            ``--async``).  Defaults to ``"MCTS"``.
+            One of the registered method names — ``"AlphaZeroMCTS"``,
+            ``"TraditionalMCTS"``, ``"BFTS"``, ``"BeamSearch"`` (or their
+            ``Async*`` counterparts when using ``--async``).
+            Defaults to ``"AlphaZeroMCTS"``.
         max_children:
             Maximum branching factor (children per node).  Should match
             ``sampling.n`` in the policy config.  Defaults to 4.
@@ -181,7 +182,8 @@ class TreeThinkArgs(BaseArgs):
             Beam width for the ``BeamSearch`` method.  ``None`` means
             ``max_children`` is used.  Defaults to ``None``.
         exploration_weight:
-            Exploration constant for the MCTS UCB formula.  Typical value
+            Exploration constant for the UCB formula used by
+            ``AlphaZeroMCTS`` and ``TraditionalMCTS``.  Typical value
             is ``sqrt(2) ≈ 1.414``.  ``None`` means the method default
             is used.  Defaults to ``None``.
         final_decision_mode:
@@ -200,7 +202,7 @@ class TreeThinkArgs(BaseArgs):
             Defaults to ``TieBreaker.RANDOM``.
     """
 
-    method_name: str = "MCTS"
+    method_name: str = "AlphaZeroMCTS"
     max_children: int = 4
     expansion_count: int = 128
     timeout: int = None

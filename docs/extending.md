@@ -19,23 +19,24 @@ New methods go in `src/treethink/methods/` and must inherit from `BaseMethod`.
 2. Subclass `BaseMethod` (from `src/treethink/methods/base_method.py`).
 3. Implement the `simulate()` abstract method.
 4. Register the class in `src/treethink/methods/__init__.py` by adding it to
-   the `IMPLEMENTED_METHODS` dictionary.
+   the `MethodType` enum.
 
 ```python
 # src/treethink/methods/__init__.py
-IMPLEMENTED_METHODS = {
-    "MCTS": MCTS,
-    "BFTS": BFTS,
-    "BeamSearch": BeamSearch,
-    "MyMethod": MyMethod,  # ← add yours
-}
+class MethodType(Enum):
+    ALPHA_ZERO_MCTS = "AlphaZeroMCTS"
+    BFTS = "BFTS"
+    BEAM_SEARCH = "BeamSearch"
+    TRADITIONAL_MCTS = "TraditionalMCTS"
+    MY_METHOD = "MyMethod"  # ← add yours
 ```
 
 For async variants, subclass the sync method and override `simulate()` with
-`async def`.  Register them in the same `IMPLEMENTED_METHODS` dict.
+`async def`.  Add an async member to the `MethodType` enum as well
+(e.g. `ASYNC_MY_METHOD = "AsyncMyMethod"`).
 
 **Reference:** `src/treethink/methods/`
-**Example:** `src/treethink/methods/mcts.py`, `bfts.py`, `beam.py`
+**Example:** `src/treethink/methods/alpha_zero_mcts.py`, `traditional_mcts.py`, `bfts.py`, `beam.py`
 
 ---
 

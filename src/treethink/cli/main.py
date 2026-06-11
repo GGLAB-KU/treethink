@@ -26,7 +26,7 @@ app = typer.Typer(
 
 app.command(
     name="run",
-    help="Run tree-search inference (MCTS / BFTS / BeamSearch).",
+    help="Run tree-search inference (AlphaZeroMCTS / TraditionalMCTS / BFTS / BeamSearch).",
     rich_help_panel="Commands",
 )(run)
 

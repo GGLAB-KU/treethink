@@ -28,14 +28,14 @@ evaluator:
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `method_name` | `"MCTS"` | `"MCTS"`, `"BFTS"`, or `"BeamSearch"` |
+| `method_name` | `"AlphaZeroMCTS"` | `"AlphaZeroMCTS"`, `"TraditionalMCTS"`, `"BFTS"`, or `"BeamSearch"` |
 | `max_children` | `4` | Maximum branching factor |
 | `expansion_count` | `128` | Number of tree expansions |
 | `timeout` | — | Total timeout in seconds |
 | `graph_path` | — | Directory to save tree graph files |
 | `termination_str` | — | String marking a terminated proof (e.g. `` ``` ``) |
 | `language` | `"lean4"` | `"lean4"`, `"rocq"`, or `"isabelle"` |
-| `exploration_weight` | `1.414` | $\sqrt{2}$ — MCTS UCB exploration constant |
+| `exploration_weight` | `1.414` | $\sqrt{2}$ — UCB exploration constant (AlphaZeroMCTS and TraditionalMCTS) |
 | `final_decision_mode` | `"native"` | How to pick the best answer |
 | `tie_breaker` | `"random"` | How to break ties |
 | `store_graph_stats` | `true` | Collect graph statistics |
