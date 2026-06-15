@@ -17,6 +17,7 @@ Lean REPL).
 """
 
 import asyncio
+import inspect
 import time
 from typing import Callable, List, Optional
 
@@ -26,6 +27,18 @@ from ..utils.enums import BestAnswerReason, FinalDecisionMode
 from ._uct import best_child_uct
 from .base_method import BaseMethod
 from .node import Node
+
+
+def _is_async_callable(fn) -> bool:
+    """Whether ``fn`` is awaitable when called.
+
+    Unlike :func:`inspect.iscoroutinefunction` alone, this also detects
+    *instances* with an ``async def __call__`` (e.g. ``AsyncVLLMPolicy``),
+    which the bare check reports as sync.
+    """
+    return inspect.iscoroutinefunction(fn) or inspect.iscoroutinefunction(
+        getattr(fn, "__call__", None)
+    )
 
 
 class TraditionalMCTS(BaseMethod):
@@ -201,15 +214,18 @@ class TraditionalMCTS(BaseMethod):
         node: Node,
         remove_duplicate_children: bool = False,
     ) -> None:
-        """Generate children, run rollouts, and evaluate.
+        """Generate children, run rollouts, and evaluate the full proofs.
 
         Steps:
         1. Call ``self.policy`` to generate candidate next-step children.
-        2. For each child, generate a complete proof continuation via
-           a single-shot LLM call (the *rollout*).
-        3. Evaluate the complete proof via ``self._rollout_evaluator``,
-           falling back to ``self.evaluator`` on the children themselves
-           when no rollout evaluator is configured.
+        2. For each child, generate ``rollout_n`` complete proof
+           continuations via the LLM (the *rollout*).
+        3. Score every full candidate proof (proof-so-far + rollout) with
+           ``self._rollout_evaluator`` and aggregate per child.
+
+        When the policy cannot generate raw rollouts, or no rollout
+        evaluator is configured, this falls back to AlphaZero-style direct
+        evaluation of the children themselves.
         """
         self.stats_expansion_count += 1
 
@@ -225,39 +241,99 @@ class TraditionalMCTS(BaseMethod):
         if remove_duplicate_children:
             node.remove_duplicate_children()
 
-        # ---- Step 2: Rollout — generate complete proofs ----
-        if self._has_rollout_policy():
-            for child in node.children:
-                rollout_texts = self._rollout_from_child(child)
-                child.rollout_output = rollout_texts
-        else:
-            # No rollout capability → fall back to AlphaZero-style
+        # No rollout capability or no rollout evaluator → AlphaZero-style.
+        if not self._has_rollout_policy() or self._rollout_evaluator is None:
             logger.debug(
-                "No rollout support in policy, "
-                "falling back to direct child evaluation."
+                "Rollout unavailable (no rollout policy or evaluator); "
+                "evaluating children directly."
             )
-            children_win_values = self.evaluator(node.children, self)
-            for i, win_val in enumerate(children_win_values):
-                if win_val is not None:
-                    node.children[i].win_value = win_val
+            self._evaluate_children_directly(node.children)
             return
 
-        # ---- Step 3: Evaluate rollout results ----
-        if self._rollout_evaluator is not None:
-            scores = self._rollout_evaluator(node.children, self)
-            for i, score in enumerate(scores):
-                if score is not None:
-                    node.children[i].win_value = score
-            logger.trace(f"Rollout scores: {scores}")
-        else:
-            # Fallback: evaluate children directly
-            logger.debug(
-                "No rollout evaluator configured, using main evaluator."
-            )
-            children_win_values = self.evaluator(node.children, self)
-            for i, win_val in enumerate(children_win_values):
-                if win_val is not None:
-                    node.children[i].win_value = win_val
+        # ---- Step 2: Rollout — generate complete proofs per child ----
+        completions_by_child = {
+            id(child): self._rollout_from_child(child)
+            for child in node.children
+        }
+        candidates = self._build_rollout_candidates(
+            node.children, completions_by_child
+        )
+
+        # Children that produced no rollout fall back to direct evaluation.
+        no_rollout = [
+            c for c in node.children if not completions_by_child.get(id(c))
+        ]
+        if no_rollout:
+            self._evaluate_children_directly(no_rollout)
+
+        if not candidates:
+            return
+
+        # ---- Step 3: Evaluate full candidate proofs and aggregate ----
+        temp_nodes = [tmp for (_, _, tmp) in candidates]
+        scores = self._rollout_evaluator(temp_nodes, self)
+        logger.trace(f"Rollout scores: {scores}")
+        self._aggregate_rollout_scores(node.children, candidates, scores)
+
+    # ------------------------------------------------------------------
+    # Rollout evaluation helpers (shared by sync and async)
+    # ------------------------------------------------------------------
+
+    def _evaluate_children_directly(self, children: List[Node]) -> None:
+        """AlphaZero-style fallback: score the children with the main
+        evaluator (no rollout)."""
+        if not children:
+            return
+        win_values = self.evaluator(children, self)
+        for child, win_val in zip(children, win_values):
+            if win_val is not None:
+                child.win_value = win_val
+
+    @staticmethod
+    def _build_rollout_candidates(children, completions_by_child):
+        """Build ``(child, completion, temp_node)`` tuples for scoring.
+
+        Each ``temp_node`` is a throwaway :class:`Node` whose ``parent`` is
+        the child but which is *not* appended to ``child.children`` — so its
+        ``answer`` yields the full candidate proof (proof-so-far + rollout)
+        without polluting the search tree.  ``child.rollout_output`` is
+        provisionally set to the first completion; the best-scoring one is
+        kept later in :meth:`_aggregate_rollout_scores`.
+        """
+        candidates = []
+        for child in children:
+            completions = completions_by_child.get(id(child)) or []
+            if not completions:
+                continue
+            child.rollout_output = completions[0]
+            for completion in completions:
+                temp_node = Node(text=completion, parent=child)
+                candidates.append((child, completion, temp_node))
+        return candidates
+
+    @staticmethod
+    def _aggregate_rollout_scores(children, candidates, scores):
+        """Average rollout scores per child and keep the best completion.
+
+        A child's ``win_value`` becomes the mean score over its rollouts
+        (a success rate when the evaluator returns 0/1), and its
+        ``rollout_output`` is set to the highest-scoring completion.
+        """
+        per_child_scores: dict = {}
+        per_child_best: dict = {}
+        for (child, completion, _), score in zip(candidates, scores):
+            if score is None:
+                continue
+            per_child_scores.setdefault(id(child), []).append(score)
+            best = per_child_best.get(id(child))
+            if best is None or score > best[0]:
+                per_child_best[id(child)] = (score, completion)
+
+        for child in children:
+            child_scores = per_child_scores.get(id(child))
+            if child_scores:
+                child.win_value = sum(child_scores) / len(child_scores)
+                child.rollout_output = per_child_best[id(child)][1]
 
     # ------------------------------------------------------------------
     # Rollout generation
@@ -517,13 +593,11 @@ class AsyncTraditionalMCTS(TraditionalMCTS):
         node: Node,
         remove_duplicate_children: bool = False,
     ) -> None:
-        """Async expansion with rollout generation and evaluation."""
-        import inspect
-
+        """Async equivalent of :meth:`TraditionalMCTS._expand_with_rollout`."""
         self.stats_expansion_count += 1
 
         # Step 1: Generate children (async or sync)
-        if inspect.iscoroutinefunction(self.policy):
+        if _is_async_callable(self.policy):
             await self.policy(node, self)
         else:
             self.policy(node, self)
@@ -535,36 +609,52 @@ class AsyncTraditionalMCTS(TraditionalMCTS):
         if remove_duplicate_children:
             node.remove_duplicate_children()
 
-        # Step 2: Rollout
-        if self._has_rollout_policy():
-            for child in node.children:
-                rollout_texts = await self._async_rollout_from_child(child)
-                child.rollout_output = rollout_texts
-        else:
-            scores = await self.evaluator(node.children, self)
-            for i, win_val in enumerate(scores):
-                if win_val is not None:
-                    node.children[i].win_value = win_val
+        # No rollout capability or no rollout evaluator → AlphaZero-style.
+        if not self._has_rollout_policy() or self._rollout_evaluator is None:
+            await self._async_evaluate_children_directly(node.children)
             return
 
-        # Step 3: Evaluate rollout results
-        if self._rollout_evaluator is not None:
-            if inspect.iscoroutinefunction(self._rollout_evaluator):
-                scores = await self._rollout_evaluator(node.children, self)
-            else:
-                scores = self._rollout_evaluator(node.children, self)
+        # Step 2: Rollout — generate complete proofs per child.
+        completions_by_child = {}
+        for child in node.children:
+            completions_by_child[
+                id(child)
+            ] = await self._async_rollout_from_child(child)
+        candidates = self._build_rollout_candidates(
+            node.children, completions_by_child
+        )
 
-            for i, score in enumerate(scores):
-                if score is not None:
-                    node.children[i].win_value = score
+        no_rollout = [
+            c for c in node.children if not completions_by_child.get(id(c))
+        ]
+        if no_rollout:
+            await self._async_evaluate_children_directly(no_rollout)
+
+        if not candidates:
+            return
+
+        # Step 3: Evaluate full candidate proofs and aggregate.
+        temp_nodes = [tmp for (_, _, tmp) in candidates]
+        if _is_async_callable(self._rollout_evaluator):
+            scores = await self._rollout_evaluator(temp_nodes, self)
         else:
-            if inspect.iscoroutinefunction(self.evaluator):
-                scores = await self.evaluator(node.children, self)
-            else:
-                scores = self.evaluator(node.children, self)
-            for i, win_val in enumerate(scores):
-                if win_val is not None:
-                    node.children[i].win_value = win_val
+            scores = self._rollout_evaluator(temp_nodes, self)
+        self._aggregate_rollout_scores(node.children, candidates, scores)
+
+    async def _async_evaluate_children_directly(
+        self, children: List[Node]
+    ) -> None:
+        """Async AlphaZero-style fallback: score children with the main
+        evaluator (handles both sync and async evaluators)."""
+        if not children:
+            return
+        if _is_async_callable(self.evaluator):
+            win_values = await self.evaluator(children, self)
+        else:
+            win_values = self.evaluator(children, self)
+        for child, win_val in zip(children, win_values):
+            if win_val is not None:
+                child.win_value = win_val
 
     async def _async_rollout_from_child(self, child: Node) -> List[str]:
         """Async rollout generation using the policy's model."""
