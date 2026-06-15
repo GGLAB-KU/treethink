@@ -151,7 +151,7 @@ class PreferTerminationChildPolicy(BasePolicy):
 
 
 class RandomNodeEvaluator(BaseEvaluator):
-    def __init__(self, min_val=-20.0, max_val=0.0, *args, **kwargs):
+    def __init__(self, min_val=-20, max_val=0, *args, **kwargs):
         self.min_val = min_val
         self.max_val = max_val
 

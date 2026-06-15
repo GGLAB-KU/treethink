@@ -39,6 +39,8 @@ class LeanClientAdapter(ProofAssistantClient):
         )
 
     def is_success_response(self, response: dict) -> bool:
+        if response is None:
+            return False
         return not has_error_response(response, accept_sorry=False)
 
     def close(self) -> None:

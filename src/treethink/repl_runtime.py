@@ -257,6 +257,7 @@ class ReplRuntime:
                 # Legacy path — send on every call.
                 return partial(
                     check_termination_encountered,
+                    method=method,
                     client=self._sync_client(),
                     timeout=self.client_args.timeout,
                     num_proc=self.client_args.num_proc,
