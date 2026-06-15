@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "datasets>=4.8.5",
+    "lazy-loader>=0.5",
     "loguru",
     "mkinit>=1.2.0",
     "toml>=0.10.2",
