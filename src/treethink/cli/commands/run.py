@@ -89,7 +89,8 @@ def run(
         "--async",
         help="Enable fully asynchronous tree search. "
         "Automatically converts method/policy/evaluator to their async variants "
-        "(e.g. MCTS → AsyncMCTS, vllm_policy → async_vllm_policy). "
+        "(e.g. AlphaZeroMCTS → AsyncAlphaZeroMCTS, "
+        "vllm_policy → async_vllm_policy). "
         "Requires compatible async components.",
     ),
     max_concurrent: int = typer.Option(
@@ -117,7 +118,7 @@ def run(
         help="Logging level (debug, info, warning, error, critical).",
     ),
 ):
-    """Run tree-search inference (MCTS / BFTS / BeamSearch).
+    """Run tree-search inference (AlphaZeroMCTS / TraditionalMCTS / BFTS / BeamSearch).
 
     Example::
 

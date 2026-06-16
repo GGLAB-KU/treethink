@@ -224,7 +224,7 @@ class TreeThink:
         )
 
         # Async Simulate
-        # Check for async_simulate method first (preferred for MCTS)
+        # Check for async_simulate method first (preferred for MCTS-based methods)
         if hasattr(self.method, "async_simulate"):
             logger.debug("Using async_simulate method")
             await self.method.async_simulate(

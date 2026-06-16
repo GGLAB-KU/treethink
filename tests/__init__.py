@@ -6,13 +6,13 @@ from tests.common import (
     SimpleChildPolicy,
 )
 from tests.methods import (
+    TestAlphaZeroMCTS,
     TestBeamSearch,
     TestBFTS,
-    TestMCTS,
     TestNode,
+    test_alpha_zero_mcts,
     test_beam,
     test_bfts,
-    test_mcts,
     test_node,
 )
 from tests.test_repl_integration import (
@@ -24,16 +24,16 @@ __all__ = [
     "RandomNodeEvaluator",
     "SetStrChildPolicy",
     "SimpleChildPolicy",
+    "TestAlphaZeroMCTS",
     "TestBFTS",
     "TestBeamSearch",
-    "TestMCTS",
     "TestNode",
     "TestREPLIntegration",
     "common",
     "methods",
+    "test_alpha_zero_mcts",
     "test_beam",
     "test_bfts",
-    "test_mcts",
     "test_node",
     "test_repl_integration",
 ]
