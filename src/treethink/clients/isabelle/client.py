@@ -14,31 +14,17 @@ successful when its theory finishes with no ``error`` messages.
 import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from typing import Any, List, Optional, Tuple
 
 from loguru import logger
 
-from ..base import ProofAssistantClient
+from ..base import CheckResponse, ProofAssistantClient, SnippetResult
 
-
-@dataclass
-class IsabelleSnippetResult:
-    """Per-snippet verification outcome.
-
-    ``response`` is a dict ``{"ok": bool, "errors": List[str],
-    "theory": Optional[str]}`` — consumed by
-    :meth:`IsabelleClient.is_success_response`.
-    """
-
-    response: dict
-
-
-@dataclass
-class IsabelleCheckResponse:
-    """Container with a ``results`` list (mirrors the Lean client's shape)."""
-
-    results: List[IsabelleSnippetResult] = field(default_factory=list)
+# Back-compat aliases — Isabelle now returns the shared client result types.
+# Each ``SnippetResult.response`` is a dict
+# ``{"ok": bool, "errors": List[str], "theory": Optional[str]}``.
+IsabelleSnippetResult = SnippetResult
+IsabelleCheckResponse = CheckResponse
 
 
 class IsabelleClient(ProofAssistantClient):
@@ -170,11 +156,11 @@ class IsabelleClient(ProofAssistantClient):
         show_progress: bool = False,  # accepted for interface parity
         batch_size: int = 8,
         max_workers: int = 4,
-    ) -> IsabelleCheckResponse:
+    ) -> CheckResponse:
         """Batch-verify proof snippets, preserving input order."""
         indexed = list(enumerate(snips))
         if not indexed:
-            return IsabelleCheckResponse(results=[])
+            return CheckResponse(results=[])
 
         batches = [
             indexed[i : i + max(1, batch_size)]
@@ -190,10 +176,9 @@ class IsabelleClient(ProofAssistantClient):
                     collected[idx] = resp
 
         results = [
-            IsabelleSnippetResult(response=collected[i])
-            for i in range(len(snips))
+            SnippetResult(response=collected[i]) for i in range(len(snips))
         ]
-        return IsabelleCheckResponse(results=results)
+        return CheckResponse(results=results)
 
     def is_success_response(self, response: Any) -> bool:
         """``True`` when the snippet's theory closed with no errors."""

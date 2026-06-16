@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Any, List, Optional
 
 from loguru import logger
 
-from ..base import ProofAssistantClient
+from ..base import CheckResponse, ProofAssistantClient, SnippetResult
 
-
-@dataclass
-class RocqSnippetResult:
-    response: dict[str, Any]
+# Back-compat alias — Rocq now returns the shared client result types.
+RocqSnippetResult = SnippetResult
 
 
 class RocqBatchClient(ProofAssistantClient):
@@ -202,12 +198,10 @@ class RocqBatchClient(ProofAssistantClient):
         max_workers: int = 4,
     ):
         results = [
-            RocqSnippetResult(
-                response=self.verify_snippet(snip, timeout=timeout)
-            )
+            SnippetResult(response=self.verify_snippet(snip, timeout=timeout))
             for snip in snips
         ]
-        return SimpleNamespace(results=results)
+        return CheckResponse(results=results)
 
     def is_success_response(self, response: dict[str, Any]) -> bool:
         return bool(response.get("proof_finished")) and not response.get(
