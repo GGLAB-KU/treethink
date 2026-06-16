@@ -34,7 +34,7 @@ class SimpleChildPolicy(BasePolicy):
         return _policy(node, method)
 
 
-class SetStrChildPolicy(BasePolicy):
+class SetStrPolicy(BasePolicy):
     def __init__(
         self, text: str, num_child: int = 5, sep="\n", *args, **kwargs
     ):
@@ -170,7 +170,7 @@ class RandomNodeEvaluator(BaseEvaluator):
         return _evaluator(node, method)
 
 
-class FirstPosOthersNegNodeEvaluator(BaseEvaluator):
+class FirstPosOthersNegEvaluator(BaseEvaluator):
     """Score nodes in decreasing order from 0 to max_children, setting the first
     element to be the highest among all other children by making it positive."""
 

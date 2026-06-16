@@ -160,11 +160,8 @@ class TestMCTS(unittest.TestCase):
         parent_with_child = root._test_refs["parent"]
         gc = root._test_refs["gc"]
 
-        # After evaluation: DUP had 3 duplicates -> win_value should be 5 * 3 = 15
-        self.assertEqual(dup1.win_value, 15)
-        # The other duplicates weren't the evaluated representative, so they should stay unchanged
-        self.assertEqual(dup2.win_value, 0)
-        self.assertEqual(dup3.win_value, 0)
+        # After evaluation: DUP had 3 duplicates, remove two of them, preserve the win_value
+        self.assertEqual(dup1.win_value, 5)
         # Unique child should have received its own score
         self.assertEqual(uniq.win_value, 3)
         # Parent node (with a grandchild) should have received its own score
@@ -172,8 +169,8 @@ class TestMCTS(unittest.TestCase):
         # Grandchild shouldn't have been evaluated directly
         self.assertEqual(gc.win_value, 0)
 
-        # Root should have received all aggregated updates: 15 + 3 + 2 = 20
-        self.assertEqual(root.win_value, 15 + 3 + 2)
+        # No backpropagation because MCTS starts evaluating from parent
+        self.assertEqual(root.win_value, 0)
 
         solution = mcts.best_answer
 

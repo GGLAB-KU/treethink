@@ -1,13 +1,14 @@
-import sys
+import os
 import tempfile
 import unittest
 
+import pytest
 from loguru import logger
 
 from tests.common import (
-    FirstPosOthersNegNodeEvaluator,
+    FirstPosOthersNegEvaluator,
     PreferTerminationChildPolicy,
-    SetStrChildPolicy,
+    SetStrPolicy,
 )
 from treethink import (  # noqa
     ClientArgs,
@@ -20,7 +21,12 @@ from treethink.graph import (  # noqa
     save_tree_to_txt,
 )
 from treethink.methods import BFTS, MCTS, Node  # noqa
-from treethink.utils.enums import FinalDecisionMode
+from treethink.utils.enums import FinalDecisionMode, FormalLanguage
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RUN_LEAN_TESTS", "0") == "0",
+    reason="RUN_LEAN_TESTS not set. Lean tests require a running kimina-lean-server.",
+)
 
 
 class TestREPLIntegration(unittest.TestCase):
@@ -39,6 +45,7 @@ class TestREPLIntegration(unittest.TestCase):
             timeout=60,
             graph_path=None,
             termination_str="```\n",
+            language=FormalLanguage.LEAN4,
             store_method_class=False,
             store_graph_stats=True,
             remove_duplicate_children=True,
@@ -65,8 +72,8 @@ class TestREPLIntegration(unittest.TestCase):
             root_node=Node(
                 "root", termination_str=self.treethink_args.termination_str
             ),
-            policy=SetStrChildPolicy(text=proof_cont, num_child=5),
-            evaluator=FirstPosOthersNegNodeEvaluator(),
+            policy=SetStrPolicy(text=proof_cont, num_child=5),
+            evaluator=FirstPosOthersNegEvaluator(),
         )
         treethink = TreeThink(method=method, treethink_args=self.treethink_args)
 
@@ -88,18 +95,9 @@ class TestREPLIntegration(unittest.TestCase):
         method = BFTS(
             root_node=Node("root"),
             policy=PreferTerminationChildPolicy(),
-            evaluator=FirstPosOthersNegNodeEvaluator(),
+            evaluator=FirstPosOthersNegEvaluator(),
         )
         treethink = TreeThink(method=method, treethink_args=self.treethink_args)
         output = treethink.generate(proof_begin)
         logger.debug(f"treethink output: {output}")
         self.assertFalse(output.checked_and_true)
-
-
-if __name__ == "__main__":
-    # Also to run with pytest:
-    # pytest -s tests/test_repl_integration.py::TestREPLIntegration::test_repl_encountered_termination
-
-    logger.remove(0)
-    logger.add(sys.stderr, level="TRACE")
-    unittest.main()

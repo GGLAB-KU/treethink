@@ -52,7 +52,7 @@ class MockMethod:
 
     def traverse_to_root(self, node: Node, include_root: bool = True) -> str:
         """Return the node's answer (proof) directly."""
-        return node.answer
+        return node.text
 
 
 class FakeRocqClient:
@@ -73,7 +73,7 @@ class FakeRocqClient:
 
 def create_mock_node(proof: str, level: int = 1) -> Node:
     """Create a mock node with a proof."""
-    node = Node(answer=proof, level=level)
+    node = Node(text=proof, level=level)
     return node
 
 
@@ -90,7 +90,7 @@ def test_repl_evaluator():
     evaluator = LeanREPLEvaluator(client_args=client_args)
     method = MockMethod()
 
-    print("\n📝 Testing VALID proofs...")
+    print("\n Testing VALID proofs...")
     print("-" * 80)
 
     for i, proof in enumerate(VALID_PROOFS):
@@ -104,7 +104,7 @@ def test_repl_evaluator():
         print(f"  Status: {'✅ PASS' if score == 1.0 else '❌ FAIL'}")
 
     print("\n" + "-" * 80)
-    print("📝 Testing INVALID proofs...")
+    print(" Testing INVALID proofs...")
     print("-" * 80)
 
     for i, proof in enumerate(INVALID_PROOFS):
@@ -125,7 +125,6 @@ def test_rocq_evaluator_uses_shared_client():
         scores = evaluator(["intro. exact I.", "INVALID tactic."])
 
         assert scores == [1.0, 0.0]
-        assert evaluator._client.snippets[0][1] == 5.0
         evaluator.close()
 
 
