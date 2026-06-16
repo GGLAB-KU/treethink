@@ -2,7 +2,7 @@ from tests import common, methods, test_repl_integration
 from tests.common import (
     PreferTerminationChildPolicy,
     RandomNodeEvaluator,
-    SetStrChildPolicy,
+    SetStrPolicy,
     SimpleChildPolicy,
 )
 from tests.methods import (
@@ -22,7 +22,7 @@ from tests.test_repl_integration import (
 __all__ = [
     "PreferTerminationChildPolicy",
     "RandomNodeEvaluator",
-    "SetStrChildPolicy",
+    "SetStrPolicy",
     "SimpleChildPolicy",
     "TestAlphaZeroMCTS",
     "TestBFTS",

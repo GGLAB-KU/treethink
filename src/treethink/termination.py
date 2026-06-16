@@ -14,8 +14,8 @@ from .methods import Node
 
 
 def check_termination_encountered(
-    method,
     node: Node,
+    method,
     client: ProofAssistantClient,
     timeout: int = 400,
     num_proc: int = 4,
