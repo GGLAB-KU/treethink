@@ -17,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 lean = ["kimina-client"]
 rocq = ["rocq-ml-toolbox", "pytanque"]
-isabelle = []
+isabelle = ["isabelle-client"]
 dev = ["pytest>=9.0.3"]
 full = ["treethink[lean,rocq,isabelle,dev]"]
 

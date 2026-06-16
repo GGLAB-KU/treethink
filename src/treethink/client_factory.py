@@ -39,7 +39,11 @@ def _create_raw_client(
         case FormalLanguage.ISABELLE:
             from .clients.isabelle.client import IsabelleClient
 
-            return IsabelleClient()
+            return IsabelleClient(
+                session=client_args.isabelle_session or "HOL",
+                imports=client_args.isabelle_imports or "Main",
+                server_log=client_args.isabelle_server_log,
+            )
         case _:
             raise ValueError(f"Unsupported formal language: {language}")
 

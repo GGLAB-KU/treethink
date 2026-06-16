@@ -57,6 +57,13 @@ class ClientArgs(BaseArgs):
         theorem_name (str): Wrapper theorem name. Default ``"__eval"``.
         statement (str): Theorem statement. Default ``"True"``.
         prelude (str | None): Optional prelude code.
+
+    Isabelle:
+        isabelle_session (str): Isabelle session/logic to start.
+            Default ``"HOL"``.
+        isabelle_imports (str): Imports clause for each generated theory.
+            Default ``"Main"``.
+        isabelle_server_log (str | None): Optional Isabelle server log path.
     """
 
     # Common
@@ -78,6 +85,11 @@ class ClientArgs(BaseArgs):
     theorem_name: str | None = None
     statement: str | None = None
     prelude: str | None = None
+
+    # Isabelle
+    isabelle_session: str | None = None
+    isabelle_imports: str | None = None
+    isabelle_server_log: str | None = None
 
 
 # ---------------------------------------------------------------------------
