@@ -1148,16 +1148,6 @@ class RocqEvaluator(BaseEvaluator):
         return "\n".join(parts) + "\n"
 
 
-def _default_rmax_state_fn(node: Node, method: BaseMethod) -> str:
-    """Default novelty key: the full proof text from the root to ``node``.
-
-    This yields *path/text-level* novelty (any new partial proof counts as
-    new).  For faithful *tactic-state* novelty, pass a ``state_fn`` that
-    returns the prover's goal state from a REPL instead.
-    """
-    return method.traverse_to_root(node, include_root=True)
-
-
 class _RMaxNoveltyTracker:
     """Shared novelty bookkeeping for the sync/async RMaxTS evaluators.
 
@@ -1168,13 +1158,23 @@ class _RMaxNoveltyTracker:
     ``BaseMethod.reset`` does not reset evaluators.
     """
 
+    @classmethod
+    def default_state_fn(cls, node: Node, method: BaseMethod) -> str:
+        """Default novelty key: the full proof text from the root to ``node``.
+
+        This yields *path/text-level* novelty (any new partial proof counts
+        as new).  For faithful *tactic-state* novelty, pass a ``state_fn``
+        that returns the prover's goal state from a REPL instead.
+        """
+        return method.traverse_to_root(node, include_root=True)
+
     def __init__(
         self,
         state_fn: Optional[Callable[[Node, BaseMethod], str]] = None,
         novel_reward: float = 1.0,
         seen_reward: float = 0.0,
     ):
-        self.state_fn = state_fn or _default_rmax_state_fn
+        self.state_fn = state_fn or self.default_state_fn
         self.novel_reward = novel_reward
         self.seen_reward = seen_reward
         self._seen: set = set()
