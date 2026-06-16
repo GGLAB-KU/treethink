@@ -22,6 +22,7 @@ from treethink.async_evaluators import (
     AsyncJudgeEvaluator,
     AsyncLeanREPLEvaluator,
     AsyncNormLenEvaluator,
+    AsyncRMaxTSEvaluator,
     get_async_evaluator_from_config,
 )
 from treethink.async_policies import (
@@ -110,6 +111,7 @@ from treethink.evaluators import (
     NormLenEvaluator,
     NormLenProbEvaluator,
     ProbEvaluator,
+    RMaxTSEvaluator,
     RocqEvaluator,
     TournamentEvaluator,
     get_evaluator,
@@ -208,6 +210,7 @@ __all__ = [
     "AsyncLeanClientAdapter",
     "AsyncLeanREPLEvaluator",
     "AsyncNormLenEvaluator",
+    "AsyncRMaxTSEvaluator",
     "AsyncPolicyType",
     "AsyncProofAssistantClient",
     "AsyncVLLMPolicy",
@@ -253,6 +256,7 @@ __all__ = [
     "ProbEvaluator",
     "ProofAssistantClient",
     "ProofCache",
+    "RMaxTSEvaluator",
     "ReplRuntime",
     "RocqBatchClient",
     "RocqEvaluator",

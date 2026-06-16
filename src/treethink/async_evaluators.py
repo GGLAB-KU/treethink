@@ -26,6 +26,7 @@ from treethink.clients.cache import AsyncCachedClient, ProofCache
 from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
     LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
+    _RMaxNoveltyTracker,
 )
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
@@ -971,6 +972,48 @@ class AsyncRocqEvaluator(AsyncBaseEvaluator):
         ]
 
 
+class AsyncRMaxTSEvaluator(AsyncBaseEvaluator):
+    """Async twin of :class:`~treethink.evaluators.RMaxTSEvaluator`.
+
+    Awards the RMax intrinsic-reward novelty signal (``1[new node]``).  The
+    novelty bookkeeping is CPU-only set membership, so this simply shares the
+    same :class:`_RMaxNoveltyTracker` behind an ``async __call__``.
+    """
+
+    def __init__(
+        self,
+        state_fn: Optional[Callable[[Node, BaseMethod], str]] = None,
+        novel_reward: float = 1.0,
+        seen_reward: float = 0.0,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(name="async_rmaxts_evaluator", *args, **kwargs)
+        self._tracker = _RMaxNoveltyTracker(
+            state_fn=state_fn,
+            novel_reward=novel_reward,
+            seen_reward=seen_reward,
+        )
+
+    def reset(self) -> None:
+        """Clear the seen-state set (call between proof attempts)."""
+        self._tracker.reset()
+
+    async def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, Node):
+            node = [node]
+        return self._tracker.rewards(node, method)
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("novel_reward", self._tracker.novel_reward),
+            ("seen_reward", self._tracker.seen_reward),
+            ("state_fn", self._tracker.state_fn),
+        ]
+
+
 class AsyncEvaluatorType(Enum):
     ASYNC_LEAN_REPL = AsyncLeanREPLEvaluator
     ASYNC_LLM_AS_JUDGE = AsyncJudgeEvaluator
@@ -979,6 +1022,7 @@ class AsyncEvaluatorType(Enum):
     ASYNC_TOURNAMENT = AsyncTournamentEvaluator
     ASYNC_NORMALIZED_LENGTHS_PROBS = AsyncNormLenProbEvaluator
     ASYNC_ROCQ = AsyncRocqEvaluator
+    ASYNC_RMAXTS = AsyncRMaxTSEvaluator
 
     @classmethod
     def from_str(cls, name: str) -> "AsyncEvaluatorType":
