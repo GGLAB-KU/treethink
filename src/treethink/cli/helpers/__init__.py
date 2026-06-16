@@ -12,9 +12,6 @@ __getattr__, __dir__, __all__ = lazy_loader.attach(
     },
     submod_attrs={
         "config": [
-            "ASYNC_EVALUATOR_MAP",
-            "ASYNC_METHOD_MAP",
-            "ASYNC_POLICY_MAP",
             "convert_to_async",
             "parse_inference_arguments",
             "setup_model",
@@ -36,9 +33,6 @@ __getattr__, __dir__, __all__ = lazy_loader.attach(
 )
 
 __all__ = [
-    "ASYNC_EVALUATOR_MAP",
-    "ASYNC_METHOD_MAP",
-    "ASYNC_POLICY_MAP",
     "build_graph_stats_payload",
     "config",
     "convert_to_async",
