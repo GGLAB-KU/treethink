@@ -26,6 +26,8 @@ from treethink.clients.cache import AsyncCachedClient, ProofCache
 from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
     LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
+    ProofLevelRewardEvaluator,
+    StateLevelRewardEvaluator,
     _RMaxNoveltyTracker,
 )
 from treethink.methods import BaseMethod, Node
@@ -1014,6 +1016,49 @@ class AsyncRMaxTSEvaluator(AsyncBaseEvaluator):
         ]
 
 
+class _AsyncRewardModelEvaluator(AsyncBaseEvaluator):
+    """Async wrapper around a sync reward-model evaluator.
+
+    vLLM's pooling ``encode`` is synchronous, so the sync evaluator is run
+    in a worker thread (``asyncio.to_thread``); the main benefit is not
+    blocking the event loop while the reward model scores a batch.
+    """
+
+    _sync_cls = None  # set by subclasses
+
+    def __init__(self, model, name: str, *args, **kwargs):
+        super().__init__(name=name)
+        self._sync = self._sync_cls(model, *args, **kwargs)
+
+    async def __call__(self, node, method) -> List[float]:
+        return await asyncio.to_thread(self._sync, node, method)
+
+    def _str_fields(self):
+        return self._sync._str_fields()
+
+
+class AsyncProofLevelRewardEvaluator(_AsyncRewardModelEvaluator):
+    """Async twin of :class:`~treethink.evaluators.ProofLevelRewardEvaluator`."""
+
+    _sync_cls = ProofLevelRewardEvaluator
+
+    def __init__(self, model, *args, **kwargs):
+        super().__init__(
+            model, name="async_proof_level_reward_evaluator", *args, **kwargs
+        )
+
+
+class AsyncStateLevelRewardEvaluator(_AsyncRewardModelEvaluator):
+    """Async twin of :class:`~treethink.evaluators.StateLevelRewardEvaluator`."""
+
+    _sync_cls = StateLevelRewardEvaluator
+
+    def __init__(self, model, *args, **kwargs):
+        super().__init__(
+            model, name="async_state_level_reward_evaluator", *args, **kwargs
+        )
+
+
 class AsyncEvaluatorType(Enum):
     ASYNC_LEAN_REPL = AsyncLeanREPLEvaluator
     ASYNC_LLM_AS_JUDGE = AsyncJudgeEvaluator
@@ -1023,6 +1068,8 @@ class AsyncEvaluatorType(Enum):
     ASYNC_NORMALIZED_LENGTHS_PROBS = AsyncNormLenProbEvaluator
     ASYNC_ROCQ = AsyncRocqEvaluator
     ASYNC_RMAXTS = AsyncRMaxTSEvaluator
+    ASYNC_PROOF_LEVEL_REWARD = AsyncProofLevelRewardEvaluator
+    ASYNC_STATE_LEVEL_REWARD = AsyncStateLevelRewardEvaluator
 
     @classmethod
     def from_str(cls, name: str) -> "AsyncEvaluatorType":
