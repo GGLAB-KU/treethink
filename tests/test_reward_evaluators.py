@@ -107,7 +107,7 @@ class TestStateLevelRewardEvaluator(unittest.TestCase):
         root, b = _tree()
         model = FakeRewardModel(scorer=lambda p: 1.0)
         ev = StateLevelRewardEvaluator(
-            model, prompter=_prompter, system_prompt="SYS"
+            model, prompter=_prompter, reward_system_prompt="SYS"
         )
         ev([b], _FakeMethod(root))
         assert model.calls[-1][0][0] == "SYS|THM |s2 "
@@ -118,7 +118,7 @@ class TestScoreExtraction(unittest.TestCase):
         root, b = _tree()
         model = FakeRewardModel(scorer=lambda p: data)
         ev = StateLevelRewardEvaluator(
-            model, prompter=_prompter, score_reduction=reduction
+            model, prompter=_prompter, reward_score_reduction=reduction
         )
         return ev([b], _FakeMethod(root))[0]
 
@@ -171,6 +171,43 @@ class TestAsyncRewardEvaluators(unittest.TestCase):
         # state-level excludes earlier steps -> scorer sees no "s1"
         assert result == [0.0]
         assert model.calls[-1][0][0] == "THM |s2 "
+
+
+class TestConfigWiring(unittest.TestCase):
+    """The reward_* EvaluatorArgs fields must wire through the config path."""
+
+    def test_get_evaluator_from_config_proof_level(self):
+        from treethink.evaluators import get_evaluator_from_config
+        from treethink.utils import EvaluatorArgs
+
+        root, b = _tree()
+        model = FakeRewardModel(scorer=lambda p: 1.0 if "s1" in p else 0.0)
+        cfg = EvaluatorArgs(
+            func_name="proof_level_reward_evaluator",
+            reward_model=model,
+            reward_score_reduction="last",
+        )
+        ev = get_evaluator_from_config(cfg, prompter=_prompter)
+
+        assert isinstance(ev, ProofLevelRewardEvaluator)
+        assert ev.score_reduction == "last"
+        assert ev([b], _FakeMethod(root)) == [1.0]
+
+    def test_get_async_evaluator_from_config_state_level(self):
+        from treethink.async_evaluators import get_async_evaluator_from_config
+        from treethink.utils import EvaluatorArgs
+
+        root, b = _tree()
+        model = FakeRewardModel(scorer=lambda p: 1.0 if "s1" in p else 0.0)
+        cfg = EvaluatorArgs(
+            func_name="async_state_level_reward_evaluator",
+            reward_model=model,
+        )
+        ev = get_async_evaluator_from_config(cfg, prompter=_prompter)
+
+        assert isinstance(ev, AsyncStateLevelRewardEvaluator)
+        # state-level excludes earlier steps -> scorer sees no "s1"
+        assert asyncio.run(ev([b], _FakeMethod(root))) == [0.0]
 
 
 if __name__ == "__main__":
