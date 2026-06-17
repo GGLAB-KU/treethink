@@ -544,6 +544,11 @@ class AsyncVLLMServerPolicy(BasePolicy):
         # Remove top_k if it exists, as OpenAI API does not support it
         self.sampling_dict.pop("top_k", None)
 
+        # Parity with VLLMServerPolicy / set_sampling_params: stop at the
+        # derived closing tag when a non-newline parse_tag is configured.
+        if self.parse_tag != "\n":
+            self.sampling_dict["stop"] = [self._derive_closing_tag()]
+
         self.system_prompt = system_prompt
         logger.info("AsyncVLLMServerPolicy initialized.")
 
