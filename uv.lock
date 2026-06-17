@@ -1362,6 +1362,18 @@ wheels = [
 ]
 
 [[package]]
+name = "isabelle-client"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/40/41857b1737d490559033f7f505602ef847bec3183c9683bcf649087a0edc/isabelle_client-1.1.1.tar.gz", hash = "sha256:c7da5853e1f45e55e5b71d1515fefcfcc2d8cbdbb0a1a3e92bb704d80a646bf9", size = 20751, upload-time = "2026-05-03T19:08:04.005Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/02/a6/cec6723076d3fcb7e14f79d12139cce0a8fe42f2d9d20fa4e629640bef8f/isabelle_client-1.1.1-py3-none-any.whl", hash = "sha256:3cecf0bb902795bfc07c6991efba14e42ccac7ca6ad7438bf8d5bd85636c3a8c", size = 30581, upload-time = "2026-05-03T19:08:02.271Z" },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -4265,10 +4277,14 @@ dev = [
     { name = "pytest" },
 ]
 full = [
+    { name = "isabelle-client" },
     { name = "kimina-client" },
     { name = "pytanque" },
     { name = "pytest" },
     { name = "rocq-ml-toolbox" },
+]
+isabelle = [
+    { name = "isabelle-client" },
 ]
 lean = [
     { name = "kimina-client" },
@@ -4286,6 +4302,7 @@ build = [
 [package.metadata]
 requires-dist = [
     { name = "datasets", specifier = ">=4.8.5" },
+    { name = "isabelle-client", marker = "extra == 'isabelle'" },
     { name = "kimina-client", marker = "extra == 'lean'", git = "https://github.com/project-numina/kimina-lean-server.git" },
     { name = "lazy-loader", specifier = ">=0.5" },
     { name = "loguru" },
