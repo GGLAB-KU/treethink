@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "datasets>=4.8.5",
+    "lazy-loader>=0.5",
     "loguru",
     "mkinit>=1.2.0",
     "toml>=0.10.2",
@@ -16,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 lean = ["kimina-client"]
 rocq = ["rocq-ml-toolbox", "pytanque"]
-isabelle = []
+isabelle = ["isabelle-client"]
 dev = ["pytest>=9.0.3"]
 full = ["treethink[lean,rocq,isabelle,dev]"]
 

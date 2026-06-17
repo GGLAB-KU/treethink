@@ -108,5 +108,3 @@ for i, result in enumerate(response.results):
         print(f"\n❌ Error: {analysis.status.value}")
 
 print(f"\n{'=' * 80}\n")
-
-breakpoint()

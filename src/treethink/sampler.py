@@ -247,6 +247,7 @@ class TreeThinkSampler(SamplerBase):
             self.policy_args,
             prompter=self.prompter,
             lora_path=self.lora_path,
+            parse_tag=self.treethink_args.parse_tag,
         )
         self.evaluator = get_evaluator_from_config(
             self.evaluator_args,
@@ -327,7 +328,9 @@ class AsyncTreeThinkSampler:
         )
 
         self.shared_policy = get_async_policy_from_config(
-            policy_args, prompter=self.prompter
+            policy_args,
+            prompter=self.prompter,
+            parse_tag=self.treethink_args.parse_tag,
         )
 
         self.shared_evaluator = get_async_evaluator_from_config(

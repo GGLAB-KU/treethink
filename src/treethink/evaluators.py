@@ -1,3 +1,4 @@
+import hashlib
 import math
 import os
 from abc import ABC, abstractmethod
@@ -25,6 +26,7 @@ from treethink.utils import (
     calculate_logprobs,
     extract_result,
 )
+from treethink.utils.enums import PoolingTask, ScoreReduction, coerce_enum
 
 LLM_AS_JUDGE_SYSTEM_PROMPT = """
 You are a LLM judge who assesses a student's solution. The given solution is not complete,
@@ -1147,6 +1149,289 @@ class RocqEvaluator(BaseEvaluator):
         return "\n".join(parts) + "\n"
 
 
+class _RMaxNoveltyTracker:
+    """Shared novelty bookkeeping for the sync/async RMaxTS evaluators.
+
+    Tracks the set of states seen within a single search tree and awards a
+    binary intrinsic reward — ``novel_reward`` the first time a state is
+    seen, ``seen_reward`` afterwards.  The seen-set auto-resets when the
+    method's ``root_node`` changes (i.e. a new proof attempt), since
+    ``BaseMethod.reset`` does not reset evaluators.
+    """
+
+    @classmethod
+    def default_state_fn(cls, node: Node, method: BaseMethod) -> str:
+        """Default novelty key: the full proof text from the root to ``node``.
+
+        This yields *path/text-level* novelty (any new partial proof counts
+        as new).  For faithful *tactic-state* novelty, pass a ``state_fn``
+        that returns the prover's goal state from a REPL instead.
+        """
+        return method.traverse_to_root(node, include_root=True)
+
+    def __init__(
+        self,
+        state_fn: Optional[Callable[[Node, BaseMethod], str]] = None,
+        novel_reward: float = 1.0,
+        seen_reward: float = 0.0,
+    ):
+        self.state_fn = state_fn or self.default_state_fn
+        self.novel_reward = novel_reward
+        self.seen_reward = seen_reward
+        self._seen: set = set()
+        self._current_root_id: Optional[int] = None
+
+    def reset(self) -> None:
+        """Clear the seen-state set (call between proof attempts)."""
+        self._seen = set()
+        self._current_root_id = None
+
+    def _maybe_reset_for_tree(self, method: BaseMethod) -> None:
+        root_id = id(method.root_node) if method.root_node is not None else None
+        if root_id != self._current_root_id:
+            self._seen = set()
+            self._current_root_id = root_id
+
+    def rewards(self, nodes: List[Node], method: BaseMethod) -> List[float]:
+        self._maybe_reset_for_tree(method)
+        out: List[float] = []
+        for node in nodes:
+            state = self.state_fn(node, method)
+            key = hashlib.sha256(state.encode("utf-8")).hexdigest()
+            if key in self._seen:
+                out.append(self.seen_reward)
+            else:
+                self._seen.add(key)
+                out.append(self.novel_reward)
+        return out
+
+
+class RMaxTSEvaluator(BaseEvaluator):
+    """RMax-style intrinsic-reward evaluator (DeepSeek-Prover-V1.5, RMaxTS).
+
+    Implements the intrinsic-reward signal ``R_intrinsic = 1[new node]``:
+    a node receives ``novel_reward`` (default 1.0) the first time its state
+    is encountered during the current search and ``seen_reward`` (default
+    0.0) thereafter.  This drives exploration toward novel proof states when
+    extrinsic (verification) rewards are sparse.
+
+    Adapted to the node-evaluator interface so it plugs into the existing
+    MCTS methods: the paper's per-trajectory signal becomes a per-node
+    novelty check over the evaluated children.
+
+    Parameters
+    ----------
+    state_fn : Callable[[Node, BaseMethod], str], optional
+        Maps a node to the string used for novelty.  Defaults to the full
+        proof text (path novelty).  Pass a REPL tactic-state extractor for
+        state-level novelty.
+    novel_reward, seen_reward : float
+        Rewards for novel vs. already-seen states.
+
+    The set of seen states is scoped to a single search tree and resets
+    automatically on a new ``root_node`` (or manually via :meth:`reset`).
+    """
+
+    def __init__(
+        self,
+        state_fn: Optional[Callable[[Node, BaseMethod], str]] = None,
+        novel_reward: float = 1.0,
+        seen_reward: float = 0.0,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(name="rmaxts_evaluator", *args, **kwargs)
+        self._tracker = _RMaxNoveltyTracker(
+            state_fn=state_fn,
+            novel_reward=novel_reward,
+            seen_reward=seen_reward,
+        )
+
+    def reset(self) -> None:
+        """Clear the seen-state set (call between proof attempts)."""
+        self._tracker.reset()
+
+    def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, Node):
+            node = [node]
+        return self._tracker.rewards(node, method)
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("novel_reward", self._tracker.novel_reward),
+            ("seen_reward", self._tracker.seen_reward),
+            ("state_fn", self._tracker.state_fn),
+        ]
+
+
+class _RewardModelEvaluator(BaseEvaluator):
+    """Base for reward-model value-function evaluators.
+
+    Scores a (problem, response) pair through a vLLM **reward / pooling**
+    model (``runner="pooling"``, ``llm.encode(..., pooling_task="classify")``).
+    The problem is always ``method.root_node.text``; subclasses choose the
+    *response* via :meth:`_response_for` — the whole proof (proof-level) or
+    just the current step (state-level).
+
+    Parameters (``reward_*`` names match the :class:`EvaluatorArgs` fields so
+    they wire through ``get_evaluator_from_config``)
+    ----------
+    reward_model : vllm.LLM | ModelArgs
+        A prebuilt pooling ``LLM`` (or a test double exposing ``encode``),
+        or :class:`ModelArgs` to construct one with ``runner="pooling"``.
+    prompter : Callable, optional
+        Formats a list of chat messages into a single string.  Defaults to
+        the model tokenizer's ``apply_chat_template`` (so a real model is
+        needed for the default; tests pass an explicit prompter).
+    reward_system_prompt : str, optional
+        Optional system message prepended to the conversation.
+    reward_pooling_task : PoolingTask | str
+        vLLM pooling task — :class:`~treethink.utils.enums.PoolingTask`
+        (``CLASSIFY`` for sequence reward models (default),
+        ``TOKEN_CLASSIFY`` for token/process reward models).  Strings are
+        coerced.
+    reward_score_reduction : ScoreReduction | str
+        How to reduce a multi-valued reward vector to a scalar —
+        :class:`~treethink.utils.enums.ScoreReduction` (``LAST`` (default),
+        ``MEAN``, ``FIRST``).  A scalar reward is returned as-is.  Strings
+        are coerced.
+    reward_visible_devices : str
+        ``CUDA_VISIBLE_DEVICES`` for the reward model (separate GPU from the
+        policy model).  Defaults to ``"1"``.
+    """
+
+    def __init__(
+        self,
+        reward_model: Union[vllm.LLM, ModelArgs],
+        name: str,
+        prompter: Optional[Callable] = None,
+        reward_system_prompt: Optional[str] = None,
+        reward_pooling_task: Union[str, PoolingTask] = PoolingTask.CLASSIFY,
+        reward_score_reduction: Union[
+            str, ScoreReduction
+        ] = ScoreReduction.LAST,
+        reward_visible_devices: str = "1",
+        *args,
+        **kwargs,
+    ):
+        super().__init__(name=name, *args, **kwargs)
+        if isinstance(reward_model, ModelArgs):
+            self.model = self.init_model(reward_model, reward_visible_devices)
+        else:
+            self.model = reward_model
+        self.system_prompt = reward_system_prompt
+        self.pooling_task = coerce_enum(reward_pooling_task, PoolingTask)
+        self.score_reduction = coerce_enum(
+            reward_score_reduction, ScoreReduction
+        )
+
+        if isinstance(prompter, Callable):
+            self.prompter = prompter
+        else:
+            self.prompter = partial(
+                self.model.get_tokenizer().apply_chat_template,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+    def init_model(self, model_args: ModelArgs, visible_devices: str = "1"):
+        logger.info(
+            f"Instantiating reward model:{model_args.model} for {self.name}."
+        )
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(visible_devices)
+        return vllm.LLM(**model_args, runner="pooling")
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        """The text scored as the *response* for ``node`` (subclass hook)."""
+        raise NotImplementedError
+
+    def _build_prompt(self, node: Node, method: BaseMethod) -> str:
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": method.root_node.text})
+        messages.append(
+            {"role": "assistant", "content": self._response_for(node, method)}
+        )
+        return self.prompter(messages)
+
+    @staticmethod
+    def _to_floats(data) -> List[float]:
+        """Flatten a reward payload (tensor / list / scalar) to floats."""
+        if hasattr(data, "tolist"):
+            data = data.tolist()
+        if isinstance(data, (int, float)):
+            return [float(data)]
+        flat: List[float] = []
+
+        def _walk(x):
+            if isinstance(x, (list, tuple)):
+                for item in x:
+                    _walk(item)
+            else:
+                flat.append(float(x))
+
+        _walk(data)
+        return flat
+
+    def _extract_score(self, output) -> float:
+        values = self._to_floats(output.outputs.data)
+        if not values:
+            return 0.0
+        if self.score_reduction == ScoreReduction.MEAN:
+            return sum(values) / len(values)
+        if self.score_reduction == ScoreReduction.FIRST:
+            return values[0]
+        return values[-1]
+
+    def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, Node):
+            node = [node]
+        prompts = [self._build_prompt(n, method) for n in node]
+        outputs = self.model.encode(
+            prompts, pooling_task=self.pooling_task.value
+        )
+        return [self._extract_score(out) for out in outputs]
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("pooling_task", self.pooling_task),
+            ("score_reduction", self.score_reduction),
+        ]
+
+
+class ProofLevelRewardEvaluator(_RewardModelEvaluator):
+    """Reward-model value function over the **whole proof** (root → node)."""
+
+    def __init__(
+        self, reward_model: Union[vllm.LLM, ModelArgs], *args, **kwargs
+    ):
+        super().__init__(
+            reward_model, name="proof_level_reward_evaluator", *args, **kwargs
+        )
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        return method.traverse_to_root(node, include_root=True)
+
+
+class StateLevelRewardEvaluator(_RewardModelEvaluator):
+    """Reward-model value function over a **single state** (the node step)."""
+
+    def __init__(
+        self, reward_model: Union[vllm.LLM, ModelArgs], *args, **kwargs
+    ):
+        super().__init__(
+            reward_model, name="state_level_reward_evaluator", *args, **kwargs
+        )
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        return node.text or ""
+
+
 class EvaluatorType(Enum):
     """Enum mapping evaluator config names to their implementation classes.
 
@@ -1159,12 +1444,15 @@ class EvaluatorType(Enum):
     """
 
     CUMULATIVE_LOGPROB = LogprobEvaluator
-    REPL = LeanREPLEvaluator
+    LEAN_REPL = LeanREPLEvaluator
     LLM_AS_JUDGE = JudgeEvaluator
     TOURNAMENT = TournamentEvaluator
     NORMALIZED_LENGTHS = NormLenEvaluator
     NORMALIZED_LENGTHS_PROBS = NormLenProbEvaluator
     ROCQ = RocqEvaluator
+    RMAXTS = RMaxTSEvaluator
+    PROOF_LEVEL_REWARD = ProofLevelRewardEvaluator
+    STATE_LEVEL_REWARD = StateLevelRewardEvaluator
 
     @classmethod
     def from_str(cls, name: str) -> "EvaluatorType":

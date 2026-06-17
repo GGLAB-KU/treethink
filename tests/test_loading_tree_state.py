@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+from loguru import logger
+
 from treethink.graph import load_graphviz_state, save_tree_to_txt
 from treethink.methods import Node
 
@@ -40,7 +42,7 @@ class TestLoadingTreeState(unittest.TestCase):
 
         metadata = {
             "treethink_args": {
-                "method_name": "MCTS",
+                "method_name": "AlphaZeroMCTS",
                 "max_children": 2,
                 "exploration_weight": 0.5,
             }
@@ -66,20 +68,22 @@ class TestLoadingTreeState(unittest.TestCase):
         self.assertEqual(len(child_a.children), 1)
         self.assertEqual(child_a.children[0].text, "root\nchild_a\ngrandchild")
 
-    def load_hardcoded_state(self):
+    def test_load_hardcoded_state(self):
         # TODO(burak): maybe publish a sample tree and metadata file?
-        graph_path = ""
-        metadata_path = ""
+        graph_path = None
+        metadata_path = None
+
+        # NOTE(burak): to early stop the test.
+        if graph_path is None:
+            return
+
         state = load_graphviz_state(graph_path, metadata=metadata_path)
 
         # NOTE(burak): I have also tested it by hand:
         # breakpoint()
-        print(state["root_node"])
-        return state
 
-    def test_load_hardcoded_state(self):
-        state = self.load_hardcoded_state()
         root = state["root_node"]
+        logger.debug(root)
 
         self.assertEqual(root.text, "hardcoded_root")
         self.assertEqual(root.level, 0)

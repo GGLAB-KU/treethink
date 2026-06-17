@@ -1,32 +1,47 @@
+"""AlphaZero-style Monte Carlo Tree Search with UCB1 selection.
+
+No rollout phase — evaluation happens directly on expanded children
+via a learned value function (evaluator).  Identical to the standard
+AlphaZero approach.
+
+Four phases per iteration:
+1. **Select** — walk from root to a leaf using UCB1:
+   UCB = win_value/visits + exploration_weight * sqrt(ln(N) / n_i)
+2. **Expand** — call the policy on the selected leaf
+3. **Evaluate** — score each child via the evaluator
+4. **Backpropagate** — propagate scores up to the root
+
+Attributes:
+    root_node (Node): The root node of the search tree.
+    policy: Function to generate child nodes.
+    evaluator: Function to evaluate node quality.
+
+Async variant: :class:`AsyncAlphaZeroMCTS`
+"""
+
 import asyncio
 import time
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
-import numpy as np
 from loguru import logger
 
 from ..utils.enums import BestAnswerReason, FinalDecisionMode
+from ._uct import best_child_uct
 from .base_method import BaseMethod
 from .node import Node
 
 
-class MCTS(BaseMethod):
-    """Monte Carlo Tree Search with UCB1 selection.
+class AlphaZeroMCTS(BaseMethod):
+    """AlphaZero-style Monte Carlo Tree Search — no rollout, direct evaluation.
 
     Four phases per iteration:
-    1. **Select** — walk from root to a leaf using UCB1:
-       UCB = win_value/visits + exploration_weight * sqrt(ln(N) / n_i)
+    1. **Select** — walk from root to a leaf using UCB1
     2. **Expand** — call the policy on the selected leaf
     3. **Evaluate** — score each child via the evaluator
     4. **Backpropagate** — propagate scores up to the root
 
-    Attributes:
-        root_node (Node): The root node of the search tree.
-        policy: Function to generate child nodes.
-
-        evaluator: Function to evaluate node quality.
-
-    Async variant: :class:`AsyncMCTS`
+    For traditional MCTS (with rollout + REPL evaluation), see
+    :class:`~treethink.methods.traditional_mcts.TraditionalMCTS`.
     """
 
     def __init__(
@@ -63,15 +78,14 @@ class MCTS(BaseMethod):
             )
 
     def make_choice(self, node: Optional[Node] = None):
-        """
-        Selects a node to expand or simulate based on UCT algorithm.
+        """Select a node to expand using the UCT algorithm.
 
         Args:
-            node (Node): The node from which to begin selection. Default to
-            self.root_node
+            node: The node from which to begin selection. Defaults to
+                self.root_node.
 
         Returns:
-            Node: The selected node for expansion or simulation.
+            Node: The selected node for expansion.
         """
         node = self.root_node if node is None else node
 
@@ -80,7 +94,7 @@ class MCTS(BaseMethod):
             return node
 
         while not node.is_expandable and node.children:
-            node = self._best_child_uct(node)
+            node = best_child_uct(node, self.exploration_weight)
 
         return node
 
@@ -95,20 +109,20 @@ class MCTS(BaseMethod):
         remove_duplicate_children: bool = False,
         termination_encountered_fn: Optional[Callable[[Node], str]] = None,
     ) -> None:
-        """
-        Simulates the MCTS process for a given number of iterations.
+        """Run the AlphaZero MCTS search for ``expansion_count`` iterations.
 
         Args:
-            expansion_count (int): Number of expansion iterations to perform.
-
+            expansion_count: Number of expansion iterations to perform.
+            timeout: Maximum seconds before stopping early.
+            remove_duplicate_children: Whether to deduplicate by text.
+            termination_encountered_fn: Callback for termination nodes.
         """
-
         i = 0
         start_time = time.time()
 
         termination_checked_nodes = []
 
-        logger.debug("Simulation started.")
+        logger.debug("AlphaZero MCTS simulation started.")
         while expansion_count is None or i < expansion_count:
             logger.debug(f"Expansion: {i}")
             i += 1
@@ -126,6 +140,7 @@ class MCTS(BaseMethod):
             # Select node for expansion
             current_node = self.make_choice(self.root_node)
             logger.trace(f"Current node: {current_node}")
+
             # Check if termination node is encountered and run termination fn
             if (
                 termination_encountered_fn is not None
@@ -140,15 +155,11 @@ class MCTS(BaseMethod):
                     self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
-                # If the proof is wrong, set nodes's win_value to -inf to avoid
+                # If the proof is wrong, set node's win_value to -inf to avoid
                 # selecting it again.
-                # NOTE(burak): I previously thought about punishing the entire
-                # path to the root, but that would be too harsh. Let's just
-                # punish the node itself for now.
                 current_node.win_value = float("-inf")
 
-            # Expansion logic based on preferences on duplicate children
-            # handling and backpropagation strategy
+            # Expansion logic
             if current_node.is_expandable:
                 if remove_duplicate_children:
                     self.expand_rm_dupes(current_node)
@@ -161,68 +172,41 @@ class MCTS(BaseMethod):
             else:
                 logger.debug(f"Node not expandable: {current_node}")
 
-    def _best_child_uct(self, node: Node) -> Node:
-        """
-        Selects the best child of the given node based on the UCT.
-
-        Returns:
-            Node: The child node with the highest computed weight.
-        """
-        choices_weights: List[float] = []
-        for child in node.children:
-            if child.visits == 0:
-                weight: float = float("inf")  # explore unvisited nodes first
-            else:
-                exploitation_term: float = child.win_value / child.visits
-                exploration_term: float = self.exploration_weight * np.sqrt(
-                    np.log(node.visits) / child.visits
-                )
-                weight = exploitation_term + exploration_term
-
-            choices_weights.append(weight)
-
-        logger.trace(
-            f"UCT weights for children of node {id(node)}: {choices_weights}"
-        )
-        return node.children[np.argmax(choices_weights)]
-
     def _best_answer_maximize_value(self):
         """Select best answer by following max win_value / visits.
-        Overriding BaseMethod's best_answer to discard exploration_term in the
-        UCT score.
+
+        Temporarily sets exploration_weight to 0.0 so that the UCT
+        selection greedily follows the highest expected value.
         """
         if not self.root_node.children:
             logger.warning("Root is not expanded, did you call simulate()?")
             return self.root_node
 
-        # Briefly modify exploration_weight to be 0.0
         old_exploration_weight = self.exploration_weight
         self.exploration_weight = 0.0
 
-        # best_answer calls self.make_choice which uses exploration_weight
         _best_answer = super()._compute_native_best_answer()
         self.exploration_weight = old_exploration_weight
 
         return _best_answer
 
     def _best_answer_maximize_visits(self):
-        """Select best answer by following max visits."""
+        """Select best answer by following max visits at each level.
 
+        Tie-breaks on win_value when visits are equal.
+        """
         if not self.root_node.children:
             logger.warning("Root is not expanded, did you call simulate()?")
             return self.root_node
 
-        # Start from top
         node = self.root_node
-
-        # Always select max visits, if there is equality look win_value for
-        # tie-breaking. TODO(burak): could there be a better approach?
         while node.children:
             node = max(node.children, key=lambda n: (n.visits, n.win_value))
 
         return self.traverse_to_root(node, include_root=True)
 
     def _backpropagate_node_win_value(self, node: Node):
+        """Propagate win_value and visits from *parent* of ``node`` to root."""
         val = node.win_value
 
         while node.parent is not None:
@@ -237,23 +221,15 @@ class MCTS(BaseMethod):
         ]
 
 
-class AsyncMCTS(MCTS):
-    """
-    Async version of :class:`MCTS` that supports asynchronous node expansion.
+class AsyncAlphaZeroMCTS(AlphaZeroMCTS):
+    """Async variant of :class:`AlphaZeroMCTS`.
 
-    This implementation leverages async_expand and async_expand_rm_dupes from
-    BaseMethod to enable asynchronous evaluation of children nodes during MCTS
-    tree search.
+    Uses asynchronous node expansion (``async_expand`` and
+    ``async_expand_rm_dupes`` from :class:`BaseMethod`) for concurrent
+    evaluation of children during the expansion phase.
 
-    Key features:
-    - Asynchronous expansion of selected nodes in MCTS iterations
-    - Async node evaluation for I/O-bound operations (REPL, LLM-as-judge)
-    - Compatible with both sync and async node evaluators
-    - Maintains the same UCT selection and backpropagation semantics as MCTS
-
-    Note: MCTS is inherently sequential (select -> expand -> backpropagate), so
-    the main benefit of async comes from concurrent evaluation of multiple children
-    during the expansion phase, not from parallelizing MCTS iterations themselves.
+    Maintains the same UCT selection and backpropagation semantics as
+    :class:`AlphaZeroMCTS`.
     """
 
     def __init__(
@@ -266,17 +242,6 @@ class AsyncMCTS(MCTS):
         *args,
         **kwargs,
     ):
-        """
-        Initialize AsyncMCTS.
-
-        Args:
-            root_node: The root node of the search tree
-            policy: Function to generate child nodes
-            evaluator: Async function to evaluate nodes
-            exploration_weight: Weight for exploration term in UCT
-            final_decision_mode: How to compute the final answer
-            *args, **kwargs: Additional arguments passed to MCTS
-        """
         super().__init__(
             root_node=root_node,
             policy=policy,
@@ -294,34 +259,22 @@ class AsyncMCTS(MCTS):
         remove_duplicate_children: bool = False,
         termination_encountered_fn: Optional[Callable[[Node], str]] = None,
     ) -> None:
-        """
-        Async version of simulate method that expands nodes asynchronously.
+        """Async version of simulate — concurrent child evaluation.
 
-        This method follows the standard MCTS loop (select -> expand -> backpropagate)
-        but uses async expansion for I/O-bound operations like node evaluation.
-
-        Note: The MCTS iterations themselves remain sequential as each iteration
-        depends on the backpropagated values from the previous iteration. The
-        async benefit comes from concurrent evaluation of multiple children during
-        each expansion.
-
-        Args:
-            expansion_count: Number of MCTS iterations to perform
-            timeout: Maximum time in seconds for the search
-            remove_duplicate_children: Whether to remove duplicate children
-            termination_encountered_fn: Optional callback when termination node is found
+        Each iteration selects via UCT, expands asynchronously, and
+        backpropagates.  The main benefit comes from concurrent evaluation
+        of multiple children during expansion, not from parallel iterations.
         """
         i = 0
         start_time = time.time()
 
         termination_checked_nodes = []
 
-        logger.debug("Async MCTS simulation started.")
+        logger.debug("Async AlphaZero MCTS simulation started.")
         while expansion_count is None or i < expansion_count:
-            logger.debug(f"Async MCTS expansion: {i}")
+            logger.debug(f"Async AlphaZero MCTS expansion: {i}")
             i += 1
 
-            # Check timeout
             if timeout is not None:
                 curr_time = time.time()
                 duration = curr_time - start_time
@@ -331,11 +284,9 @@ class AsyncMCTS(MCTS):
                     )
                     return
 
-            # Select node for expansion using UCT
             current_node = self.make_choice(self.root_node)
             logger.trace(f"Current node selected: {current_node}")
 
-            # Check if termination node is encountered and run termination fn
             if (
                 termination_encountered_fn is not None
                 and current_node.is_termination_node
@@ -343,7 +294,6 @@ class AsyncMCTS(MCTS):
             ):
                 logger.trace(f"Termination node encountered: {current_node}")
 
-                # Check if async or sync termination function
                 if asyncio.iscoroutinefunction(termination_encountered_fn):
                     answer = await termination_encountered_fn(current_node)
                 else:
@@ -356,11 +306,8 @@ class AsyncMCTS(MCTS):
                     self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
-                # If the proof is wrong, set node's win_value to -inf to avoid
-                # selecting it again.
                 current_node.win_value = float("-inf")
 
-            # Expansion logic with async node evaluation
             if current_node.is_expandable:
                 try:
                     if remove_duplicate_children:
@@ -368,7 +315,6 @@ class AsyncMCTS(MCTS):
                     else:
                         await self.async_expand(current_node)
 
-                    # Backpropagate parent's win_value if we expanded
                     logger.trace("Backpropagating node win value...")
                     self._backpropagate_node_win_value(current_node)
 
@@ -379,20 +325,12 @@ class AsyncMCTS(MCTS):
                 logger.warning(f"Node not expandable: {current_node}")
 
     async def async_expand(self, node):
-        """Async version of expand that uses async node evaluation.
-
-        Uses the BaseMethod.async_expand for async node evaluation with
-        concurrent evaluation of multiple children.
-        """
-        await super(MCTS, self).async_expand(node)
+        """Async expand using ``BaseMethod.async_expand``."""
+        await super(AlphaZeroMCTS, self).async_expand(node)
 
     async def async_expand_rm_dupes(self, node):
-        """Async version of expand_rm_dupes with async node evaluation.
-
-        Uses the BaseMethod.async_expand_rm_dupes for async node evaluation
-        with duplicate removal and concurrent evaluation of children.
-        """
-        await super(MCTS, self).async_expand_rm_dupes(node)
+        """Async expand with dedup using ``BaseMethod.async_expand_rm_dupes``."""
+        await super(AlphaZeroMCTS, self).async_expand_rm_dupes(node)
 
     def simulate(
         self,
@@ -401,25 +339,12 @@ class AsyncMCTS(MCTS):
         remove_duplicate_children: bool = False,
         termination_encountered_fn: Optional[Callable[[Node], str]] = None,
     ) -> None:
-        """
-        Synchronous wrapper for async simulate.
-
-        This allows AsyncMCTS to be used with existing sync code by
-        automatically running the async version in an event loop.
-
-        Args:
-            expansion_count: Number of MCTS iterations to perform
-            timeout: Maximum time in seconds for the search
-            remove_duplicate_children: Whether to remove duplicate children
-            termination_encountered_fn: Optional callback when termination node is found
-        """
-        # Try to get running event loop
+        """Synchronous wrapper that delegates to ``async_simulate``."""
         try:
             loop = asyncio.get_running_loop()
-            # If we're already in an async context, create a task
             logger.warning(
-                "AsyncMCTS.simulate() called from within async context. "
-                "Consider using async_simulate() directly."
+                "AsyncAlphaZeroMCTS.simulate() called from within async "
+                "context. Consider using async_simulate() directly."
             )
             return loop.create_task(
                 self.async_simulate(
@@ -430,7 +355,6 @@ class AsyncMCTS(MCTS):
                 )
             )
         except RuntimeError:  # pragma: no cover
-            # No event loop running, create new one
             asyncio.run(
                 self.async_simulate(
                     expansion_count=expansion_count,

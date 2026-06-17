@@ -7,6 +7,7 @@ import typer
 from loguru import logger
 
 from treethink.cli.helpers.config import setup_model
+from treethink.cli.helpers.dry_run import _perform_dry_run
 from treethink.cli.helpers.iteration import run_inference_loop
 from treethink.cli.helpers.logging_setup import setup_logging
 from treethink.dataset_prep import ConfigRegistry, prepare_datapoints
@@ -88,7 +89,8 @@ def run(
         "--async",
         help="Enable fully asynchronous tree search. "
         "Automatically converts method/policy/evaluator to their async variants "
-        "(e.g. MCTS → AsyncMCTS, vllm_policy → async_vllm_policy). "
+        "(e.g. AlphaZeroMCTS → AsyncAlphaZeroMCTS, "
+        "vllm_policy → async_vllm_policy). "
         "Requires compatible async components.",
     ),
     max_concurrent: int = typer.Option(
@@ -103,6 +105,12 @@ def run(
         help="Process all problems even if a tree file already exists. "
         "By default, already-processed problems are skipped (resume capability).",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Parse configs and print a summary of what would run, "
+        "without executing any inference. Exits with code 85.",
+    ),
     verbosity: str = typer.Option(
         "info",
         "-v",
@@ -110,7 +118,7 @@ def run(
         help="Logging level (debug, info, warning, error, critical).",
     ),
 ):
-    """Run tree-search inference (MCTS / BFTS / BeamSearch).
+    """Run tree-search inference (AlphaZeroMCTS / TraditionalMCTS / BFTS / BeamSearch).
 
     Example::
 
@@ -136,6 +144,23 @@ def run(
         run_name=run_name,
         verbosity=verbosity,
     )
+
+    # ── Dry run ─────────────────────────────────────────────────────────
+    if dry_run:
+        _perform_dry_run(
+            data_config_path=data_config_path,
+            data_config_name=data_config_name,
+            gen_config_path=gen_config_path,
+            output_dir=output_dir,
+            run_name=run_name,
+            skip_data_num=skip_data_num,
+            continue_from_prev=continue_from_prev,
+            debug=debug,
+            use_async=use_async,
+            num_iterations=num_iterations,
+            no_skip_existing=no_skip_existing,
+        )
+        # _perform_dry_run raises SystemExit(85) — this line is unreachable
 
     # ── Load dataset ────────────────────────────────────────────────────
     data_registry = ConfigRegistry()

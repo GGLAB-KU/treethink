@@ -1,13 +1,14 @@
-import sys
+import os
 import tempfile
 import unittest
 
+import pytest
 from loguru import logger
 
 from tests.common import (
-    FirstPosOthersNegNodeEvaluator,
+    FirstPosOthersNegEvaluator,
     PreferTerminationChildPolicy,
-    SetStrChildPolicy,
+    SetStrPolicy,
 )
 from treethink import (  # noqa
     ClientArgs,
@@ -19,8 +20,13 @@ from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
     save_tree_to_txt,
 )
-from treethink.methods import BFTS, MCTS, Node  # noqa
-from treethink.utils.enums import FinalDecisionMode
+from treethink.methods import BFTS, AlphaZeroMCTS, Node  # noqa
+from treethink.utils.enums import FinalDecisionMode, FormalLanguage
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("RUN_LEAN_TESTS", "0") == "0",
+    reason="RUN_LEAN_TESTS not set. Lean tests require a running kimina-lean-server.",
+)
 
 
 class TestREPLIntegration(unittest.TestCase):
@@ -39,6 +45,7 @@ class TestREPLIntegration(unittest.TestCase):
             timeout=60,
             graph_path=None,
             termination_str="```\n",
+            language=FormalLanguage.LEAN4,
             store_method_class=False,
             store_graph_stats=True,
             remove_duplicate_children=True,
@@ -61,12 +68,12 @@ class TestREPLIntegration(unittest.TestCase):
         proof_begin = "Complete the following lean code:\n```\nimport Mathlib\nimport Aesop\n\n\nopen BigOperators\nopen Real\nopen Nat\nopen Topology\ntheorem mathd_algebra_478\n  (b h v : \u211d)\n  (h\u2080 : 0 < b \u2227 0 < h \u2227 0 < v)\n  (h\u2081 : v = 1 / 3 * (b * h))\n  (h\u2082 : b = 30)\n  (h\u2083 : h = 13 / 2) :\n  v = 65 := by\n"
         proof_cont = "  rw [h\u2081]\n  norm_num [h\u2082, h\u2083]\n  <;> ring\n  <;> norm_num\n  <;> linarith\n```\n"
 
-        method = MCTS(
+        method = AlphaZeroMCTS(
             root_node=Node(
                 "root", termination_str=self.treethink_args.termination_str
             ),
-            policy=SetStrChildPolicy(text=proof_cont, num_child=5),
-            evaluator=FirstPosOthersNegNodeEvaluator(),
+            policy=SetStrPolicy(text=proof_cont, num_child=5),
+            evaluator=FirstPosOthersNegEvaluator(),
         )
         treethink = TreeThink(method=method, treethink_args=self.treethink_args)
 
@@ -88,18 +95,9 @@ class TestREPLIntegration(unittest.TestCase):
         method = BFTS(
             root_node=Node("root"),
             policy=PreferTerminationChildPolicy(),
-            evaluator=FirstPosOthersNegNodeEvaluator(),
+            evaluator=FirstPosOthersNegEvaluator(),
         )
         treethink = TreeThink(method=method, treethink_args=self.treethink_args)
         output = treethink.generate(proof_begin)
         logger.debug(f"treethink output: {output}")
         self.assertFalse(output.checked_and_true)
-
-
-if __name__ == "__main__":
-    # Also to run with pytest:
-    # pytest -s tests/test_repl_integration.py::TestREPLIntegration::test_repl_encountered_termination
-
-    logger.remove(0)
-    logger.add(sys.stderr, level="TRACE")
-    unittest.main()

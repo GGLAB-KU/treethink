@@ -116,9 +116,9 @@ treethink:
 
 | Language | Enum Value | Status |
 |----------|------------|--------|
-| Lean 4 | `FormalLanguage.LEAN4` | ✅ Stable |
-| Rocq | `FormalLanguage.ROCQ` | ✅ Stable (sync) |
-| Isabelle | `FormalLanguage.ISABELLE` | 🧪 Experimental |
+| Lean 4 | `FormalLanguage.LEAN4` | Stable |
+| Rocq | `FormalLanguage.ROCQ` | Stable (sync) |
+| Isabelle | `FormalLanguage.ISABELLE` | not supported |
 
 ---
 

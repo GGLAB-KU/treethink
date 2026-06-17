@@ -10,7 +10,8 @@ auto-converted to their async equivalents.
 
 | Component | Sync → Async |
 |-----------|-------------|
-| **Method** | `MCTS` → `AsyncMCTS` |
+| **Method** | `AlphaZeroMCTS` → `AsyncAlphaZeroMCTS` |
+| | `TraditionalMCTS` → `AsyncTraditionalMCTS` |
 | | `BFTS` → `AsyncBFTS` |
 | | `BeamSearch` → `AsyncBeamSearch` |
 | **Policy** | `vllm_policy` → `async_vllm_policy` |
@@ -23,7 +24,9 @@ auto-converted to their async equivalents.
 | **Sampler** | `TreeThinkSampler` → `AsyncTreeThinkSampler` |
 
 The conversion is handled by `convert_to_async()` in
-`src/treethink/cli/helpers/config.py`.
+`src/treethink/cli/helpers/config.py` using a simple prefix convention
+(prepending `"Async"` to method names and `"async_"` to policy/evaluator
+function names).
 
 ---
 
@@ -32,7 +35,7 @@ The conversion is handled by `convert_to_async()` in
 1. **AsyncLLMEngine** — instead of `vllm.LLM`, async policies use
    `vllm.AsyncLLMEngine`, which can serve multiple generation requests
    concurrently without blocking.
-2. **Async methods** — `AsyncMCTS.simulate()`, `AsyncBFTS.simulate()`, etc.
+2. **Async methods** — `AsyncAlphaZeroMCTS.simulate()`, `AsyncTraditionalMCTS.simulate()`, `AsyncBFTS.simulate()`, etc.
    use `asyncio` for non-blocking tree expansion and evaluation.
 3. **Async evaluators** — I/O-bound operations (REPL verification,
    LLM-as-judge scoring) run concurrently via `asyncio`.
@@ -82,11 +85,12 @@ Async variants follow a simple pattern:
 2. **Evaluators:** subclass `AsyncBaseEvaluator` (in
    `src/treethink/async_evaluators.py`) and implement `__call__` with
    `async def`.
-3. **Methods:** subclass the sync method (e.g. `MCTS`) and override
+3. **Methods:** subclass the sync method (e.g. `AlphaZeroMCTS`) and override
    `simulate()` to use `async def` with async callbacks.
 
-Register async variants in their respective `*Type` enums and add the
-conversion mapping in `src/treethink/cli/helpers/config.py`.
+Register async variants in their respective `*Type` enums.  The async
+conversion uses a simple prefix convention (see
+`src/treethink/cli/helpers/config.py`).
 
 For the full API, refer to the source at `src/treethink/async_policies.py`
 and `src/treethink/async_evaluators.py`.

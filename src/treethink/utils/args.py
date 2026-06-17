@@ -1,7 +1,13 @@
 from dataclasses import dataclass, field, fields
 from typing import List
 
-from .enums import FinalDecisionMode, FormalLanguage, TieBreaker
+from .enums import (
+    FinalDecisionMode,
+    FormalLanguage,
+    PoolingTask,
+    ScoreReduction,
+    TieBreaker,
+)
 
 
 class BaseArgs:
@@ -57,6 +63,13 @@ class ClientArgs(BaseArgs):
         theorem_name (str): Wrapper theorem name. Default ``"__eval"``.
         statement (str): Theorem statement. Default ``"True"``.
         prelude (str | None): Optional prelude code.
+
+    Isabelle:
+        isabelle_session (str): Isabelle session/logic to start.
+            Default ``"HOL"``.
+        isabelle_imports (str): Imports clause for each generated theory.
+            Default ``"Main"``.
+        isabelle_server_log (str | None): Optional Isabelle server log path.
     """
 
     # Common
@@ -78,6 +91,11 @@ class ClientArgs(BaseArgs):
     theorem_name: str | None = None
     statement: str | None = None
     prelude: str | None = None
+
+    # Isabelle
+    isabelle_session: str | None = None
+    isabelle_imports: str | None = None
+    isabelle_server_log: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +146,10 @@ class TreeThinkArgs(BaseArgs):
 
     Args:
         method_name:
-            One of the registered method names — ``"MCTS"``, ``"BFTS"``,
-            ``"BeamSearch"`` (or their ``Async*`` counterparts when using
-            ``--async``).  Defaults to ``"MCTS"``.
+            One of the registered method names — ``"AlphaZeroMCTS"``,
+            ``"TraditionalMCTS"``, ``"BFTS"``, ``"BeamSearch"`` (or their
+            ``Async*`` counterparts when using ``--async``).
+            Defaults to ``"AlphaZeroMCTS"``.
         max_children:
             Maximum branching factor (children per node).  Should match
             ``sampling.n`` in the policy config.  Defaults to 4.
@@ -163,6 +182,24 @@ class TreeThinkArgs(BaseArgs):
         remove_duplicate_children:
             If ``True``, deduplicate child nodes by their text content
             after each expansion.  Defaults to ``False``.
+        parse_tag:
+            XML opening tag used to delimit generated content (e.g.
+            ``"<reasoning>"``).  When set to something other than ``"\\n"``,
+            the system:
+            - Replaces the stop tokens with the derived closing tag
+              (e.g. ``"</reasoning>"``), so generation stops at the
+              closing tag.
+            - Strips both the opening and closing tags from
+              :attr:`Node.text` so that downstream code sees only the
+              content between the tags.
+            
+            Defaults to ``"\\n"`` (no XML parsing — the newline character
+            is kept in the text).
+            
+            Note that when using this feature, give your model a proper system
+            prompt as the generation relies entirely on the model emitting the
+            closing tag. In other words, newline character is not kept when you
+            provide a `parse_tag`.
         language:
             The formal proof language to use for REPL verification.
             One of :class:`~treethink.utils.enums.FormalLanguage`.
@@ -181,7 +218,8 @@ class TreeThinkArgs(BaseArgs):
             Beam width for the ``BeamSearch`` method.  ``None`` means
             ``max_children`` is used.  Defaults to ``None``.
         exploration_weight:
-            Exploration constant for the MCTS UCB formula.  Typical value
+            Exploration constant for the UCB formula used by
+            ``AlphaZeroMCTS`` and ``TraditionalMCTS``.  Typical value
             is ``sqrt(2) ≈ 1.414``.  ``None`` means the method default
             is used.  Defaults to ``None``.
         final_decision_mode:
@@ -200,7 +238,7 @@ class TreeThinkArgs(BaseArgs):
             Defaults to ``TieBreaker.RANDOM``.
     """
 
-    method_name: str = "MCTS"
+    method_name: str = "AlphaZeroMCTS"
     max_children: int = 4
     expansion_count: int = 128
     timeout: int = None
@@ -209,6 +247,7 @@ class TreeThinkArgs(BaseArgs):
     store_method_class: bool = False
     store_graph_stats: bool = True
     remove_duplicate_children: bool = False
+    parse_tag: str = "\n"
 
     # REPL / termination
     language: FormalLanguage = FormalLanguage.LEAN4
@@ -423,6 +462,21 @@ class EvaluatorArgs(BaseArgs):
         llm_as_judge_visible_devices:
             CUDA_VISIBLE_DEVICES for the judge model (separate GPU from
             the policy model).  Defaults to ``"1"``.
+        reward_model:
+            Model configuration for the reward (pooling) model.  Required
+            when *func_name* is ``"proof_level_reward_evaluator"`` or
+            ``"state_level_reward_evaluator"``.  See :class:`ModelArgs`.
+        reward_pooling_task:
+            vLLM pooling task — see :class:`PoolingTask`
+            (``CLASSIFY`` (default) for sequence reward models,
+            ``TOKEN_CLASSIFY`` for process reward models).
+        reward_score_reduction:
+            Reduce a reward vector to a scalar — see
+            :class:`ScoreReduction` (``LAST`` (default), ``MEAN``, ``FIRST``).
+        reward_system_prompt:
+            Optional system prompt prepended to the scored conversation.
+        reward_visible_devices:
+            CUDA_VISIBLE_DEVICES for the reward model.  Defaults to ``"1"``.
     """
 
     func_name: str = None
@@ -432,3 +486,10 @@ class EvaluatorArgs(BaseArgs):
     llm_as_judge_sampling: SamplingArgs = None
     llm_as_judge_system_prompt: str = "You are a helpful math assistant who judges the given problem and score it out of 20."
     llm_as_judge_visible_devices: str = "1"
+
+    # Reward-model value functions (proof_level_reward / state_level_reward)
+    reward_model: ModelArgs = None
+    reward_pooling_task: PoolingTask = PoolingTask.CLASSIFY
+    reward_score_reduction: ScoreReduction = ScoreReduction.LAST
+    reward_system_prompt: str = None
+    reward_visible_devices: str = "1"
