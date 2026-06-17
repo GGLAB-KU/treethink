@@ -69,17 +69,17 @@ class BasePolicy(ABC):
         When ``parse_tag == "\n"`` (the default), the text is returned
         unchanged so that newlines are preserved in ``Node.text``.
 
-        Otherwise, leading/trailing occurrences of the opening and
-        closing tags are removed.
+        Otherwise, a leading opening tag and trailing closing tag are
+        removed, tolerating surrounding whitespace.
         """
         if self.parse_tag == "\n":
             return text
         closing_tag = self._derive_closing_tag()
-        cleaned = text
+        cleaned = text.strip()
         if cleaned.startswith(self.parse_tag):
-            cleaned = cleaned[len(self.parse_tag) :]
+            cleaned = cleaned[len(self.parse_tag) :].lstrip()
         if cleaned.endswith(closing_tag):
-            cleaned = cleaned[: -len(closing_tag)]
+            cleaned = cleaned[: -len(closing_tag)].rstrip()
         return cleaned
 
     def set_sampling_params(
