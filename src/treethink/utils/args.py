@@ -186,8 +186,14 @@ class TreeThinkArgs(BaseArgs):
             - Strips both the opening and closing tags from
               :attr:`Node.text` so that downstream code sees only the
               content between the tags.
+            
             Defaults to ``"\\n"`` (no XML parsing — the newline character
-            is kept in the text, matching current behaviour).
+            is kept in the text).
+            
+            Note that when using this feature, give your model a proper system
+            prompt as the generation relies entirely on the model emitting the
+            closing tag. In other words, newline character is not kept when you
+            provide a `parse_tag`.
         language:
             The formal proof language to use for REPL verification.
             One of :class:`~treethink.utils.enums.FormalLanguage`.
