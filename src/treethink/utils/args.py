@@ -1,7 +1,13 @@
 from dataclasses import dataclass, field, fields
 from typing import List
 
-from .enums import FinalDecisionMode, FormalLanguage, TieBreaker
+from .enums import (
+    FinalDecisionMode,
+    FormalLanguage,
+    PoolingTask,
+    ScoreReduction,
+    TieBreaker,
+)
 
 
 class BaseArgs:
@@ -456,6 +462,21 @@ class EvaluatorArgs(BaseArgs):
         llm_as_judge_visible_devices:
             CUDA_VISIBLE_DEVICES for the judge model (separate GPU from
             the policy model).  Defaults to ``"1"``.
+        reward_model:
+            Model configuration for the reward (pooling) model.  Required
+            when *func_name* is ``"proof_level_reward_evaluator"`` or
+            ``"state_level_reward_evaluator"``.  See :class:`ModelArgs`.
+        reward_pooling_task:
+            vLLM pooling task — see :class:`PoolingTask`
+            (``CLASSIFY`` (default) for sequence reward models,
+            ``TOKEN_CLASSIFY`` for process reward models).
+        reward_score_reduction:
+            Reduce a reward vector to a scalar — see
+            :class:`ScoreReduction` (``LAST`` (default), ``MEAN``, ``FIRST``).
+        reward_system_prompt:
+            Optional system prompt prepended to the scored conversation.
+        reward_visible_devices:
+            CUDA_VISIBLE_DEVICES for the reward model.  Defaults to ``"1"``.
     """
 
     func_name: str = None
@@ -465,3 +486,10 @@ class EvaluatorArgs(BaseArgs):
     llm_as_judge_sampling: SamplingArgs = None
     llm_as_judge_system_prompt: str = "You are a helpful math assistant who judges the given problem and score it out of 20."
     llm_as_judge_visible_devices: str = "1"
+
+    # Reward-model value functions (proof_level_reward / state_level_reward)
+    reward_model: ModelArgs = None
+    reward_pooling_task: PoolingTask = PoolingTask.CLASSIFY
+    reward_score_reduction: ScoreReduction = ScoreReduction.LAST
+    reward_system_prompt: str = None
+    reward_visible_devices: str = "1"

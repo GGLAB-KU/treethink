@@ -26,6 +26,7 @@ from treethink.utils import (
     calculate_logprobs,
     extract_result,
 )
+from treethink.utils.enums import PoolingTask, ScoreReduction, coerce_enum
 
 LLM_AS_JUDGE_SYSTEM_PROMPT = """
 You are a LLM judge who assesses a student's solution. The given solution is not complete,
@@ -1265,6 +1266,172 @@ class RMaxTSEvaluator(BaseEvaluator):
         ]
 
 
+class _RewardModelEvaluator(BaseEvaluator):
+    """Base for reward-model value-function evaluators.
+
+    Scores a (problem, response) pair through a vLLM **reward / pooling**
+    model (``runner="pooling"``, ``llm.encode(..., pooling_task="classify")``).
+    The problem is always ``method.root_node.text``; subclasses choose the
+    *response* via :meth:`_response_for` — the whole proof (proof-level) or
+    just the current step (state-level).
+
+    Parameters (``reward_*`` names match the :class:`EvaluatorArgs` fields so
+    they wire through ``get_evaluator_from_config``)
+    ----------
+    reward_model : vllm.LLM | ModelArgs
+        A prebuilt pooling ``LLM`` (or a test double exposing ``encode``),
+        or :class:`ModelArgs` to construct one with ``runner="pooling"``.
+    prompter : Callable, optional
+        Formats a list of chat messages into a single string.  Defaults to
+        the model tokenizer's ``apply_chat_template`` (so a real model is
+        needed for the default; tests pass an explicit prompter).
+    reward_system_prompt : str, optional
+        Optional system message prepended to the conversation.
+    reward_pooling_task : PoolingTask | str
+        vLLM pooling task — :class:`~treethink.utils.enums.PoolingTask`
+        (``CLASSIFY`` for sequence reward models (default),
+        ``TOKEN_CLASSIFY`` for token/process reward models).  Strings are
+        coerced.
+    reward_score_reduction : ScoreReduction | str
+        How to reduce a multi-valued reward vector to a scalar —
+        :class:`~treethink.utils.enums.ScoreReduction` (``LAST`` (default),
+        ``MEAN``, ``FIRST``).  A scalar reward is returned as-is.  Strings
+        are coerced.
+    reward_visible_devices : str
+        ``CUDA_VISIBLE_DEVICES`` for the reward model (separate GPU from the
+        policy model).  Defaults to ``"1"``.
+    """
+
+    def __init__(
+        self,
+        reward_model: Union[vllm.LLM, ModelArgs],
+        name: str,
+        prompter: Optional[Callable] = None,
+        reward_system_prompt: Optional[str] = None,
+        reward_pooling_task: Union[str, PoolingTask] = PoolingTask.CLASSIFY,
+        reward_score_reduction: Union[
+            str, ScoreReduction
+        ] = ScoreReduction.LAST,
+        reward_visible_devices: str = "1",
+        *args,
+        **kwargs,
+    ):
+        super().__init__(name=name, *args, **kwargs)
+        if isinstance(reward_model, ModelArgs):
+            self.model = self.init_model(reward_model, reward_visible_devices)
+        else:
+            self.model = reward_model
+        self.system_prompt = reward_system_prompt
+        self.pooling_task = coerce_enum(reward_pooling_task, PoolingTask)
+        self.score_reduction = coerce_enum(
+            reward_score_reduction, ScoreReduction
+        )
+
+        if isinstance(prompter, Callable):
+            self.prompter = prompter
+        else:
+            self.prompter = partial(
+                self.model.get_tokenizer().apply_chat_template,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+    def init_model(self, model_args: ModelArgs, visible_devices: str = "1"):
+        logger.info(
+            f"Instantiating reward model:{model_args.model} for {self.name}."
+        )
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(visible_devices)
+        return vllm.LLM(**model_args, runner="pooling")
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        """The text scored as the *response* for ``node`` (subclass hook)."""
+        raise NotImplementedError
+
+    def _build_prompt(self, node: Node, method: BaseMethod) -> str:
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": method.root_node.text})
+        messages.append(
+            {"role": "assistant", "content": self._response_for(node, method)}
+        )
+        return self.prompter(messages)
+
+    @staticmethod
+    def _to_floats(data) -> List[float]:
+        """Flatten a reward payload (tensor / list / scalar) to floats."""
+        if hasattr(data, "tolist"):
+            data = data.tolist()
+        if isinstance(data, (int, float)):
+            return [float(data)]
+        flat: List[float] = []
+
+        def _walk(x):
+            if isinstance(x, (list, tuple)):
+                for item in x:
+                    _walk(item)
+            else:
+                flat.append(float(x))
+
+        _walk(data)
+        return flat
+
+    def _extract_score(self, output) -> float:
+        values = self._to_floats(output.outputs.data)
+        if not values:
+            return 0.0
+        if self.score_reduction == ScoreReduction.MEAN:
+            return sum(values) / len(values)
+        if self.score_reduction == ScoreReduction.FIRST:
+            return values[0]
+        return values[-1]
+
+    def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, Node):
+            node = [node]
+        prompts = [self._build_prompt(n, method) for n in node]
+        outputs = self.model.encode(
+            prompts, pooling_task=self.pooling_task.value
+        )
+        return [self._extract_score(out) for out in outputs]
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("pooling_task", self.pooling_task),
+            ("score_reduction", self.score_reduction),
+        ]
+
+
+class ProofLevelRewardEvaluator(_RewardModelEvaluator):
+    """Reward-model value function over the **whole proof** (root → node)."""
+
+    def __init__(
+        self, reward_model: Union[vllm.LLM, ModelArgs], *args, **kwargs
+    ):
+        super().__init__(
+            reward_model, name="proof_level_reward_evaluator", *args, **kwargs
+        )
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        return method.traverse_to_root(node, include_root=True)
+
+
+class StateLevelRewardEvaluator(_RewardModelEvaluator):
+    """Reward-model value function over a **single state** (the node step)."""
+
+    def __init__(
+        self, reward_model: Union[vllm.LLM, ModelArgs], *args, **kwargs
+    ):
+        super().__init__(
+            reward_model, name="state_level_reward_evaluator", *args, **kwargs
+        )
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        return node.text or ""
+
+
 class EvaluatorType(Enum):
     """Enum mapping evaluator config names to their implementation classes.
 
@@ -1284,6 +1451,8 @@ class EvaluatorType(Enum):
     NORMALIZED_LENGTHS_PROBS = NormLenProbEvaluator
     ROCQ = RocqEvaluator
     RMAXTS = RMaxTSEvaluator
+    PROOF_LEVEL_REWARD = ProofLevelRewardEvaluator
+    STATE_LEVEL_REWARD = StateLevelRewardEvaluator
 
     @classmethod
     def from_str(cls, name: str) -> "EvaluatorType":
