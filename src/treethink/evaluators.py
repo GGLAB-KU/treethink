@@ -1265,6 +1265,154 @@ class RMaxTSEvaluator(BaseEvaluator):
         ]
 
 
+class _RewardModelEvaluator(BaseEvaluator):
+    """Base for reward-model value-function evaluators.
+
+    Scores a (problem, response) pair through a vLLM **reward / pooling**
+    model (``runner="pooling"``, ``llm.encode(..., pooling_task="classify")``).
+    The problem is always ``method.root_node.text``; subclasses choose the
+    *response* via :meth:`_response_for` — the whole proof (proof-level) or
+    just the current step (state-level).
+
+    Parameters
+    ----------
+    model : vllm.LLM | ModelArgs
+        A prebuilt pooling ``LLM`` (or a test double exposing ``encode``),
+        or :class:`ModelArgs` to construct one with ``runner="pooling"``.
+    prompter : Callable, optional
+        Formats a list of chat messages into a single string.  Defaults to
+        the model tokenizer's ``apply_chat_template`` (so a real model is
+        needed for the default; tests pass an explicit prompter).
+    system_prompt : str, optional
+        Optional system message prepended to the conversation.
+    pooling_task : str
+        vLLM pooling task — ``"classify"`` for sequence reward models
+        (default), ``"token_classify"`` for token/process reward models.
+    score_reduction : str
+        How to reduce a multi-valued reward vector to a scalar —
+        ``"last"`` (default), ``"mean"``, or ``"first"``.  A scalar reward
+        is returned as-is.
+    """
+
+    def __init__(
+        self,
+        model: Union[vllm.LLM, ModelArgs],
+        name: str,
+        prompter: Optional[Callable] = None,
+        system_prompt: Optional[str] = None,
+        pooling_task: str = "classify",
+        score_reduction: str = "last",
+        *args,
+        **kwargs,
+    ):
+        super().__init__(name=name, *args, **kwargs)
+        if isinstance(model, ModelArgs):
+            self.model = self.init_model(model)
+        else:
+            self.model = model
+        self.system_prompt = system_prompt
+        self.pooling_task = pooling_task
+        self.score_reduction = score_reduction
+
+        if isinstance(prompter, Callable):
+            self.prompter = prompter
+        else:
+            self.prompter = partial(
+                self.model.get_tokenizer().apply_chat_template,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+    def init_model(self, model_args: ModelArgs, visible_devices: str = "1"):
+        logger.info(
+            f"Instantiating reward model:{model_args.model} for {self.name}."
+        )
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(visible_devices)
+        return vllm.LLM(**model_args, runner="pooling")
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        """The text scored as the *response* for ``node`` (subclass hook)."""
+        raise NotImplementedError
+
+    def _build_prompt(self, node: Node, method: BaseMethod) -> str:
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": method.root_node.text})
+        messages.append(
+            {"role": "assistant", "content": self._response_for(node, method)}
+        )
+        return self.prompter(messages)
+
+    @staticmethod
+    def _to_floats(data) -> List[float]:
+        """Flatten a reward payload (tensor / list / scalar) to floats."""
+        if hasattr(data, "tolist"):
+            data = data.tolist()
+        if isinstance(data, (int, float)):
+            return [float(data)]
+        flat: List[float] = []
+
+        def _walk(x):
+            if isinstance(x, (list, tuple)):
+                for item in x:
+                    _walk(item)
+            else:
+                flat.append(float(x))
+
+        _walk(data)
+        return flat
+
+    def _extract_score(self, output) -> float:
+        values = self._to_floats(output.outputs.data)
+        if not values:
+            return 0.0
+        if self.score_reduction == "mean":
+            return sum(values) / len(values)
+        if self.score_reduction == "first":
+            return values[0]
+        return values[-1]
+
+    def __call__(
+        self, node: Union[Node, List[Node]], method: BaseMethod
+    ) -> List[float]:
+        if isinstance(node, Node):
+            node = [node]
+        prompts = [self._build_prompt(n, method) for n in node]
+        outputs = self.model.encode(prompts, pooling_task=self.pooling_task)
+        return [self._extract_score(out) for out in outputs]
+
+    def _str_fields(self):
+        return super()._str_fields() + [
+            ("pooling_task", self.pooling_task),
+            ("score_reduction", self.score_reduction),
+        ]
+
+
+class ProofLevelRewardEvaluator(_RewardModelEvaluator):
+    """Reward-model value function over the **whole proof** (root → node)."""
+
+    def __init__(self, model: Union[vllm.LLM, ModelArgs], *args, **kwargs):
+        super().__init__(
+            model, name="proof_level_reward_evaluator", *args, **kwargs
+        )
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        return method.traverse_to_root(node, include_root=True)
+
+
+class StateLevelRewardEvaluator(_RewardModelEvaluator):
+    """Reward-model value function over a **single state** (the node step)."""
+
+    def __init__(self, model: Union[vllm.LLM, ModelArgs], *args, **kwargs):
+        super().__init__(
+            model, name="state_level_reward_evaluator", *args, **kwargs
+        )
+
+    def _response_for(self, node: Node, method: BaseMethod) -> str:
+        return node.text or ""
+
+
 class EvaluatorType(Enum):
     """Enum mapping evaluator config names to their implementation classes.
 
@@ -1284,6 +1432,8 @@ class EvaluatorType(Enum):
     NORMALIZED_LENGTHS_PROBS = NormLenProbEvaluator
     ROCQ = RocqEvaluator
     RMAXTS = RMaxTSEvaluator
+    PROOF_LEVEL_REWARD = ProofLevelRewardEvaluator
+    STATE_LEVEL_REWARD = StateLevelRewardEvaluator
 
     @classmethod
     def from_str(cls, name: str) -> "EvaluatorType":
