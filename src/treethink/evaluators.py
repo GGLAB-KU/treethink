@@ -1274,45 +1274,50 @@ class _RewardModelEvaluator(BaseEvaluator):
     *response* via :meth:`_response_for` — the whole proof (proof-level) or
     just the current step (state-level).
 
-    Parameters
+    Parameters (``reward_*`` names match the :class:`EvaluatorArgs` fields so
+    they wire through ``get_evaluator_from_config``)
     ----------
-    model : vllm.LLM | ModelArgs
+    reward_model : vllm.LLM | ModelArgs
         A prebuilt pooling ``LLM`` (or a test double exposing ``encode``),
         or :class:`ModelArgs` to construct one with ``runner="pooling"``.
     prompter : Callable, optional
         Formats a list of chat messages into a single string.  Defaults to
         the model tokenizer's ``apply_chat_template`` (so a real model is
         needed for the default; tests pass an explicit prompter).
-    system_prompt : str, optional
+    reward_system_prompt : str, optional
         Optional system message prepended to the conversation.
-    pooling_task : str
+    reward_pooling_task : str
         vLLM pooling task — ``"classify"`` for sequence reward models
         (default), ``"token_classify"`` for token/process reward models.
-    score_reduction : str
+    reward_score_reduction : str
         How to reduce a multi-valued reward vector to a scalar —
         ``"last"`` (default), ``"mean"``, or ``"first"``.  A scalar reward
         is returned as-is.
+    reward_visible_devices : str
+        ``CUDA_VISIBLE_DEVICES`` for the reward model (separate GPU from the
+        policy model).  Defaults to ``"1"``.
     """
 
     def __init__(
         self,
-        model: Union[vllm.LLM, ModelArgs],
+        reward_model: Union[vllm.LLM, ModelArgs],
         name: str,
         prompter: Optional[Callable] = None,
-        system_prompt: Optional[str] = None,
-        pooling_task: str = "classify",
-        score_reduction: str = "last",
+        reward_system_prompt: Optional[str] = None,
+        reward_pooling_task: str = "classify",
+        reward_score_reduction: str = "last",
+        reward_visible_devices: str = "1",
         *args,
         **kwargs,
     ):
         super().__init__(name=name, *args, **kwargs)
-        if isinstance(model, ModelArgs):
-            self.model = self.init_model(model)
+        if isinstance(reward_model, ModelArgs):
+            self.model = self.init_model(reward_model, reward_visible_devices)
         else:
-            self.model = model
-        self.system_prompt = system_prompt
-        self.pooling_task = pooling_task
-        self.score_reduction = score_reduction
+            self.model = reward_model
+        self.system_prompt = reward_system_prompt
+        self.pooling_task = reward_pooling_task
+        self.score_reduction = reward_score_reduction
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -1392,9 +1397,11 @@ class _RewardModelEvaluator(BaseEvaluator):
 class ProofLevelRewardEvaluator(_RewardModelEvaluator):
     """Reward-model value function over the **whole proof** (root → node)."""
 
-    def __init__(self, model: Union[vllm.LLM, ModelArgs], *args, **kwargs):
+    def __init__(
+        self, reward_model: Union[vllm.LLM, ModelArgs], *args, **kwargs
+    ):
         super().__init__(
-            model, name="proof_level_reward_evaluator", *args, **kwargs
+            reward_model, name="proof_level_reward_evaluator", *args, **kwargs
         )
 
     def _response_for(self, node: Node, method: BaseMethod) -> str:
@@ -1404,9 +1411,11 @@ class ProofLevelRewardEvaluator(_RewardModelEvaluator):
 class StateLevelRewardEvaluator(_RewardModelEvaluator):
     """Reward-model value function over a **single state** (the node step)."""
 
-    def __init__(self, model: Union[vllm.LLM, ModelArgs], *args, **kwargs):
+    def __init__(
+        self, reward_model: Union[vllm.LLM, ModelArgs], *args, **kwargs
+    ):
         super().__init__(
-            model, name="state_level_reward_evaluator", *args, **kwargs
+            reward_model, name="state_level_reward_evaluator", *args, **kwargs
         )
 
     def _response_for(self, node: Node, method: BaseMethod) -> str:

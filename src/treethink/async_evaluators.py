@@ -1026,9 +1026,9 @@ class _AsyncRewardModelEvaluator(AsyncBaseEvaluator):
 
     _sync_cls = None  # set by subclasses
 
-    def __init__(self, model, name: str, *args, **kwargs):
+    def __init__(self, reward_model, name: str, *args, **kwargs):
         super().__init__(name=name)
-        self._sync = self._sync_cls(model, *args, **kwargs)
+        self._sync = self._sync_cls(reward_model, *args, **kwargs)
 
     async def __call__(self, node, method) -> List[float]:
         return await asyncio.to_thread(self._sync, node, method)
@@ -1042,9 +1042,12 @@ class AsyncProofLevelRewardEvaluator(_AsyncRewardModelEvaluator):
 
     _sync_cls = ProofLevelRewardEvaluator
 
-    def __init__(self, model, *args, **kwargs):
+    def __init__(self, reward_model, *args, **kwargs):
         super().__init__(
-            model, name="async_proof_level_reward_evaluator", *args, **kwargs
+            reward_model,
+            name="async_proof_level_reward_evaluator",
+            *args,
+            **kwargs,
         )
 
 
@@ -1053,9 +1056,12 @@ class AsyncStateLevelRewardEvaluator(_AsyncRewardModelEvaluator):
 
     _sync_cls = StateLevelRewardEvaluator
 
-    def __init__(self, model, *args, **kwargs):
+    def __init__(self, reward_model, *args, **kwargs):
         super().__init__(
-            model, name="async_state_level_reward_evaluator", *args, **kwargs
+            reward_model,
+            name="async_state_level_reward_evaluator",
+            *args,
+            **kwargs,
         )
 
 
