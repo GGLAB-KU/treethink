@@ -21,11 +21,12 @@ class AsyncVLLMPolicy(BasePolicy):
         sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
         system_prompt: str = "You are a helpful math assistant.",
         prompter: Optional[Callable] = None,
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         logger.debug("Initializing AsyncVLLMPolicy.")
-        super().__init__(name="async_vllm_policy")
+        super().__init__(name="async_vllm_policy", parse_tag=parse_tag)
 
         if isinstance(model, ModelArgs):
             engine_args = AsyncEngineArgs(
@@ -147,9 +148,10 @@ class AsyncVLLMPolicy(BasePolicy):
                     logger.error(f"Generation {i} failed: {result}")
                     continue
                 if result is not None:
-                    logger.trace(f"Model response: {result.text}")
+                    raw_text = result.text
+                    logger.trace(f"Model response: {raw_text}")
                     _child_node = Node(
-                        text=result.text,
+                        text=self._clean_text(raw_text),
                         max_children=node.max_children,
                         parent=node,
                         vllm_output=result,
@@ -204,11 +206,12 @@ class AsyncBatchVLLMPolicy(BasePolicy):
         system_prompt: str = "You are a helpful math assistant.",
         prompter: Optional[Callable] = None,
         max_batch_size: int = 8,
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         logger.debug("Initializing AsyncBatchVLLMPolicy.")
-        super().__init__(name="async_batch_vllm_policy")
+        super().__init__(name="async_batch_vllm_policy", parse_tag=parse_tag)
 
         if isinstance(model, ModelArgs):
             engine_args = AsyncEngineArgs(
@@ -350,9 +353,10 @@ class AsyncBatchVLLMPolicy(BasePolicy):
                     logger.error(f"Generation {i} failed: {result}")
                     continue
                 if result is not None:
-                    logger.trace(f"Model response: {result.text}")
+                    raw_text = result.text
+                    logger.trace(f"Model response: {raw_text}")
                     _child_node = Node(
-                        text=result.text,
+                        text=self._clean_text(raw_text),
                         max_children=node.max_children,
                         parent=node,
                         vllm_output=result,
@@ -464,9 +468,10 @@ class AsyncBatchVLLMPolicy(BasePolicy):
 
             children = []
             for output in final_output.outputs:
-                logger.trace(f"Model response for {request_id}: {output.text}")
+                raw_text = output.text
+                logger.trace(f"Model response for {request_id}: {raw_text}")
                 _child_node = Node(
-                    text=output.text,
+                    text=self._clean_text(raw_text),
                     max_children=node.max_children,
                     parent=node,
                     vllm_output=output,
@@ -502,11 +507,12 @@ class AsyncVLLMServerPolicy(BasePolicy):
         sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
         server: Optional[ServerArgs] = None,
         system_prompt: str = "You are a helpful math assistant.",
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         logger.debug("Initializing AsyncVLLMServerPolicy.")
-        super().__init__(name="async_vllm_server_policy")
+        super().__init__(name="async_vllm_server_policy", parse_tag=parse_tag)
 
         self.server_args = server if server else ServerArgs()
         self.client = openai.AsyncOpenAI(
@@ -560,10 +566,10 @@ class AsyncVLLMServerPolicy(BasePolicy):
 
             children = []
             for choice in response.choices:
-                text = choice.message.content
-                logger.trace(f"Model response: {text}")
+                raw_text = choice.message.content
+                logger.trace(f"Model response: {raw_text}")
                 _child_node = Node(
-                    text=text,
+                    text=self._clean_text(raw_text),
                     max_children=node.max_children,
                     parent=node,
                     vllm_output=choice,
@@ -614,11 +620,12 @@ class AsyncDynamicPolicy(BasePolicy):
         prompter: Optional[Callable] = None,
         param_modifier: Optional[Callable] = None,
         lora_path: Optional[str] = None,
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         logger.debug("Initializing AsyncDynamicPolicy.")
-        super().__init__(name="async_dynamic_policy")
+        super().__init__(name="async_dynamic_policy", parse_tag=parse_tag)
 
         if isinstance(model, ModelArgs):
             engine_args = AsyncEngineArgs(
@@ -789,9 +796,10 @@ class AsyncDynamicPolicy(BasePolicy):
                     logger.error(f"Generation {i} failed: {result}")
                     continue
                 if result is not None:
-                    logger.trace(f"Model response: {result.text}")
+                    raw_text = result.text
+                    logger.trace(f"Model response: {raw_text}")
                     _child_node = Node(
-                        text=result.text,
+                        text=self._clean_text(raw_text),
                         max_children=node.max_children,
                         exploration_weight=node.exploration_weight,
                         parent=node,

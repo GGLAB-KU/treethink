@@ -28,10 +28,12 @@ class BasePolicy(ABC):
     def __init__(
         self,
         name: str,
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         self.name = name
+        self.parse_tag = parse_tag
 
     def _format_str_value(self, value):
         if callable(value):
@@ -54,6 +56,32 @@ class BasePolicy(ABC):
     def __call__(self, node, method):
         pass
 
+    def _derive_closing_tag(self) -> str:
+        """Derive the closing XML tag from the opening tag.
+
+        For example, ``"<reasoning>"`` → ``"</reasoning>"``.
+        """
+        return f"</{self.parse_tag[1:]}"
+
+    def _clean_text(self, text: str) -> str:
+        """Strip the opening and closing tags from generated text.
+
+        When ``parse_tag == "\n"`` (the default), the text is returned
+        unchanged so that newlines are preserved in ``Node.text``.
+
+        Otherwise, leading/trailing occurrences of the opening and
+        closing tags are removed.
+        """
+        if self.parse_tag == "\n":
+            return text
+        closing_tag = self._derive_closing_tag()
+        cleaned = text
+        if cleaned.startswith(self.parse_tag):
+            cleaned = cleaned[len(self.parse_tag) :]
+        if cleaned.endswith(closing_tag):
+            cleaned = cleaned[: -len(closing_tag)]
+        return cleaned
+
     def set_sampling_params(
         self, sampling_params: Union[SamplingArgs, vllm.SamplingParams]
     ):
@@ -61,6 +89,13 @@ class BasePolicy(ABC):
             sampling_params = vllm.SamplingParams(**sampling_params)
             logger.trace("Converted SamplingArgs to vllm.SamplingParams.")
         sampling_params.include_stop_str_in_output = True
+
+        # When a non-newline parse_tag is configured, replace the stop
+        # tokens with the derived closing tag so generation halts at the
+        # expected delimiter.
+        if self.parse_tag != "\n":
+            sampling_params.stop = [self._derive_closing_tag()]
+
         self.sampling_params = sampling_params
         return self.sampling_params
 
@@ -100,11 +135,12 @@ class VLLMPolicy(BasePolicy):
         system_prompt: str = "You are a helpful math assistant.",
         prompter: Optional[Callable] = None,
         lora_path: Optional[str] = None,
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         logger.debug("Initializing VLLMPolicy.")
-        super().__init__(name="vllm_policy")
+        super().__init__(name="vllm_policy", parse_tag=parse_tag)
         if isinstance(model, ModelArgs):
             logger.trace("ModelArgs is given, using init_model()")
             self.model = self.init_model(
@@ -212,9 +248,10 @@ class VLLMPolicy(BasePolicy):
 
         for response in output:
             for i in range(len(response.outputs)):
-                logger.trace(f"Model response: {response.outputs[i].text}")
+                raw_text = response.outputs[i].text
+                logger.trace(f"Model response: {raw_text}")
                 _child_node = Node(
-                    text=response.outputs[i].text,
+                    text=self._clean_text(raw_text),
                     max_children=node.max_children,
                     parent=node,
                     vllm_output=response.outputs[i],
@@ -255,11 +292,12 @@ class DynamicPolicy(BasePolicy):
         prompter: Optional[Callable] = None,
         param_modifier: Optional[Callable] = None,
         lora_path: Optional[str] = None,
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         logger.debug("Initializing DynamicPolicy.")
-        super().__init__(name="dynamic_policy")
+        super().__init__(name="dynamic_policy", parse_tag=parse_tag)
         if isinstance(model, ModelArgs):
             logger.trace("Model is ModelArgs, using init_model()")
             self.model = self.init_model(
@@ -393,9 +431,10 @@ class DynamicPolicy(BasePolicy):
         children = []
         for response in output:
             for i in range(len(response.outputs)):
-                logger.trace(f"Model response: {response.outputs[i].text}")
+                raw_text = response.outputs[i].text
+                logger.trace(f"Model response: {raw_text}")
                 _child_node = Node(
-                    text=response.outputs[i].text,
+                    text=self._clean_text(raw_text),
                     max_children=node.max_children,
                     exploration_weight=node.exploration_weight,
                     parent=node,
@@ -439,11 +478,12 @@ class VLLMServerPolicy(BasePolicy):
         sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
         server: Optional[ServerArgs] = None,
         system_prompt: str = "You are a helpful math assistant.",
+        parse_tag: str = "\n",
         *args,
         **kwargs,
     ):
         logger.debug("Initializing VLLMServerPolicy.")
-        super().__init__(name="vllm_server_policy")
+        super().__init__(name="vllm_server_policy", parse_tag=parse_tag)
 
         self.server_args = server if server else ServerArgs()
         self.client = openai.OpenAI(
@@ -495,10 +535,10 @@ class VLLMServerPolicy(BasePolicy):
 
             children = []
             for choice in response.choices:
-                text = choice.message.content
-                logger.trace(f"Model response: {text}")
+                raw_text = choice.message.content
+                logger.trace(f"Model response: {raw_text}")
                 _child_node = Node(
-                    text=text,
+                    text=self._clean_text(raw_text),
                     max_children=node.max_children,
                     parent=node,
                     vllm_output=choice,
