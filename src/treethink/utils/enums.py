@@ -54,6 +54,32 @@ class FormalLanguage(Enum):
     ISABELLE = "isabelle"
 
 
+class PoolingTask(Enum):
+    """vLLM pooling task for reward-model evaluators.
+
+    Options:
+        CLASSIFY: Sequence reward models (one score per sequence).
+        TOKEN_CLASSIFY: Token / process reward models (per-token scores).
+    """
+
+    CLASSIFY = "classify"
+    TOKEN_CLASSIFY = "token_classify"
+
+
+class ScoreReduction(Enum):
+    """How to reduce a reward vector to a single scalar score.
+
+    Options:
+        LAST: Use the last value (default for value-head rewards).
+        MEAN: Average all values.
+        FIRST: Use the first value.
+    """
+
+    LAST = "last"
+    MEAN = "mean"
+    FIRST = "first"
+
+
 EnumType = TypeVar("EnumType", bound=Enum)
 
 

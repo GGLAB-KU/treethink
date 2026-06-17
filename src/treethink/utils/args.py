@@ -1,7 +1,13 @@
 from dataclasses import dataclass, field, fields
 from typing import List
 
-from .enums import FinalDecisionMode, FormalLanguage, TieBreaker
+from .enums import (
+    FinalDecisionMode,
+    FormalLanguage,
+    PoolingTask,
+    ScoreReduction,
+    TieBreaker,
+)
 
 
 class BaseArgs:
@@ -442,11 +448,12 @@ class EvaluatorArgs(BaseArgs):
             when *func_name* is ``"proof_level_reward_evaluator"`` or
             ``"state_level_reward_evaluator"``.  See :class:`ModelArgs`.
         reward_pooling_task:
-            vLLM pooling task — ``"classify"`` (default) for sequence
-            reward models, ``"token_classify"`` for process reward models.
+            vLLM pooling task — see :class:`PoolingTask`
+            (``CLASSIFY`` (default) for sequence reward models,
+            ``TOKEN_CLASSIFY`` for process reward models).
         reward_score_reduction:
-            Reduce a reward vector to a scalar — ``"last"`` (default),
-            ``"mean"``, or ``"first"``.
+            Reduce a reward vector to a scalar — see
+            :class:`ScoreReduction` (``LAST`` (default), ``MEAN``, ``FIRST``).
         reward_system_prompt:
             Optional system prompt prepended to the scored conversation.
         reward_visible_devices:
@@ -463,7 +470,7 @@ class EvaluatorArgs(BaseArgs):
 
     # Reward-model value functions (proof_level_reward / state_level_reward)
     reward_model: ModelArgs = None
-    reward_pooling_task: str = "classify"
-    reward_score_reduction: str = "last"
+    reward_pooling_task: PoolingTask = PoolingTask.CLASSIFY
+    reward_score_reduction: ScoreReduction = ScoreReduction.LAST
     reward_system_prompt: str = None
     reward_visible_devices: str = "1"

@@ -179,18 +179,19 @@ class TestConfigWiring(unittest.TestCase):
     def test_get_evaluator_from_config_proof_level(self):
         from treethink.evaluators import get_evaluator_from_config
         from treethink.utils import EvaluatorArgs
+        from treethink.utils.enums import ScoreReduction
 
         root, b = _tree()
         model = FakeRewardModel(scorer=lambda p: 1.0 if "s1" in p else 0.0)
         cfg = EvaluatorArgs(
             func_name="proof_level_reward_evaluator",
             reward_model=model,
-            reward_score_reduction="last",
+            reward_score_reduction="last",  # coerced to enum
         )
         ev = get_evaluator_from_config(cfg, prompter=_prompter)
 
         assert isinstance(ev, ProofLevelRewardEvaluator)
-        assert ev.score_reduction == "last"
+        assert ev.score_reduction is ScoreReduction.LAST
         assert ev([b], _FakeMethod(root)) == [1.0]
 
     def test_get_async_evaluator_from_config_state_level(self):

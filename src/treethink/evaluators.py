@@ -26,6 +26,7 @@ from treethink.utils import (
     calculate_logprobs,
     extract_result,
 )
+from treethink.utils.enums import PoolingTask, ScoreReduction, coerce_enum
 
 LLM_AS_JUDGE_SYSTEM_PROMPT = """
 You are a LLM judge who assesses a student's solution. The given solution is not complete,
@@ -1286,13 +1287,16 @@ class _RewardModelEvaluator(BaseEvaluator):
         needed for the default; tests pass an explicit prompter).
     reward_system_prompt : str, optional
         Optional system message prepended to the conversation.
-    reward_pooling_task : str
-        vLLM pooling task — ``"classify"`` for sequence reward models
-        (default), ``"token_classify"`` for token/process reward models.
-    reward_score_reduction : str
+    reward_pooling_task : PoolingTask | str
+        vLLM pooling task — :class:`~treethink.utils.enums.PoolingTask`
+        (``CLASSIFY`` for sequence reward models (default),
+        ``TOKEN_CLASSIFY`` for token/process reward models).  Strings are
+        coerced.
+    reward_score_reduction : ScoreReduction | str
         How to reduce a multi-valued reward vector to a scalar —
-        ``"last"`` (default), ``"mean"``, or ``"first"``.  A scalar reward
-        is returned as-is.
+        :class:`~treethink.utils.enums.ScoreReduction` (``LAST`` (default),
+        ``MEAN``, ``FIRST``).  A scalar reward is returned as-is.  Strings
+        are coerced.
     reward_visible_devices : str
         ``CUDA_VISIBLE_DEVICES`` for the reward model (separate GPU from the
         policy model).  Defaults to ``"1"``.
@@ -1304,8 +1308,10 @@ class _RewardModelEvaluator(BaseEvaluator):
         name: str,
         prompter: Optional[Callable] = None,
         reward_system_prompt: Optional[str] = None,
-        reward_pooling_task: str = "classify",
-        reward_score_reduction: str = "last",
+        reward_pooling_task: Union[str, PoolingTask] = PoolingTask.CLASSIFY,
+        reward_score_reduction: Union[
+            str, ScoreReduction
+        ] = ScoreReduction.LAST,
         reward_visible_devices: str = "1",
         *args,
         **kwargs,
@@ -1316,8 +1322,10 @@ class _RewardModelEvaluator(BaseEvaluator):
         else:
             self.model = reward_model
         self.system_prompt = reward_system_prompt
-        self.pooling_task = reward_pooling_task
-        self.score_reduction = reward_score_reduction
+        self.pooling_task = coerce_enum(reward_pooling_task, PoolingTask)
+        self.score_reduction = coerce_enum(
+            reward_score_reduction, ScoreReduction
+        )
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -1372,9 +1380,9 @@ class _RewardModelEvaluator(BaseEvaluator):
         values = self._to_floats(output.outputs.data)
         if not values:
             return 0.0
-        if self.score_reduction == "mean":
+        if self.score_reduction == ScoreReduction.MEAN:
             return sum(values) / len(values)
-        if self.score_reduction == "first":
+        if self.score_reduction == ScoreReduction.FIRST:
             return values[0]
         return values[-1]
 
@@ -1384,7 +1392,9 @@ class _RewardModelEvaluator(BaseEvaluator):
         if isinstance(node, Node):
             node = [node]
         prompts = [self._build_prompt(n, method) for n in node]
-        outputs = self.model.encode(prompts, pooling_task=self.pooling_task)
+        outputs = self.model.encode(
+            prompts, pooling_task=self.pooling_task.value
+        )
         return [self._extract_score(out) for out in outputs]
 
     def _str_fields(self):
