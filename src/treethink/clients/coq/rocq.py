@@ -10,25 +10,18 @@ from ..base import CheckResponse, ProofAssistantClient, SnippetResult
 RocqSnippetResult = SnippetResult
 
 
-class RocqBatchClient(ProofAssistantClient):
+class RocqClient(ProofAssistantClient):
     backend_name = "rocq"
 
     def __init__(
         self,
         host: str,
         port: int,
-        *,
-        workspace_dir: Optional[str] = None,
-        theorem_name: str = "__eval",
-        statement: str = "True",
-        prelude: Optional[str] = None,
     ) -> None:
+        from rocq_ml_toolbox.inference.client import PytanqueExtended
+
         self.host = host
         self.port = port
-        self.workspace_dir = workspace_dir
-        self.theorem_name = theorem_name
-        self.statement = statement
-        self.prelude = prelude
         self._pet: Optional["PytanqueExtended"] = None
 
     def close(self) -> None:
@@ -43,13 +36,6 @@ class RocqBatchClient(ProofAssistantClient):
             self._pet = PytanqueExtended(self.host, self.port)
             self._pet.connect()
         return self._pet
-
-    def _build_file_text(self) -> str:
-        parts: List[str] = []
-        if self.prelude:
-            parts.append(self.prelude.rstrip())
-        parts.append(f"Theorem {self.theorem_name} : {self.statement}.")
-        return "\n".join(parts) + "\n"
 
     def _split_commands(self, code: str) -> List[str]:
         commands: List[str] = []
@@ -126,6 +112,48 @@ class RocqBatchClient(ProofAssistantClient):
             use_timeout = None
         return pet.run(state, cmd, timeout=use_timeout)
 
+    def _parse_theorem_name(self, proof_string: str) -> str:
+        """Extract the theorem name from a whole Rocq proof string."""
+        import re
+
+        match = re.search(
+            r"(?:Theorem|Lemma|Proposition|Corollary|Example|Fact|Remark)\s+(\w+)",
+            proof_string,
+        )
+        if not match:
+            logger.error(
+                "Could not find a theorem name in the proof string. "
+                "Expected one of: Theorem, Lemma, Proposition, Corollary, "
+                "Example, Fact, Remark."
+            )
+            return ""
+        return match.group(1)
+
+    def _extract_proof_commands(self, code: str) -> List[str]:
+        """Extract proof-body commands (Proof. through Qed./Admitted./Defined./Abort.)."""
+        commands = self._split_commands(code)
+        proof_start = None
+        terminator = None
+
+        for i, cmd in enumerate(commands):
+            stripped = cmd.strip()
+            if stripped == "Proof.":
+                proof_start = i
+                break
+
+        if proof_start is None:
+            raise ValueError("Could not find 'Proof.' in the proof string")
+
+        for i in range(proof_start + 1, len(commands)):
+            stripped = commands[i].strip()
+            if stripped in ("Qed.", "Admitted.", "Defined.", "Abort."):
+                terminator = i
+                break
+
+        if terminator is not None:
+            return commands[proof_start : terminator + 1]
+        return commands[proof_start:]
+
     def _extract_error_message(self, state) -> Optional[str]:
         feedback = getattr(state, "feedback", None)
         if not feedback:
@@ -142,22 +170,22 @@ class RocqBatchClient(ProofAssistantClient):
                 messages.append(str(item))
         return "\n".join(messages) if messages else None
 
-    def verify_snippet(
+    def verify_whole_proof(
         self,
-        snippet: str,
+        proof: str,
         *,
         timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         pet = self._ensure_client()
-        tmp_path = pet.tmp_file(
-            content=self._build_file_text(), root=self.workspace_dir
-        )
+        theorem_name = self._parse_theorem_name(proof)
+        tmp_path = pet.tmp_file(content=proof, root=None)
 
         from pytanque import PetanqueError
 
         try:
-            state = pet.start(file=str(tmp_path), thm=self.theorem_name)
-            for cmd in self._split_commands(snippet):
+            state = pet.start(file=str(tmp_path), thm=theorem_name)
+            proof_commands = self._extract_proof_commands(proof)
+            for cmd in proof_commands:
                 state = self._run_command(pet, state, cmd, timeout=timeout)
             if not getattr(state, "proof_finished", False):
                 state = self._run_command(pet, state, "Qed.", timeout=timeout)
@@ -172,7 +200,7 @@ class RocqBatchClient(ProofAssistantClient):
                 "messages": list(getattr(state, "feedback", []) or []),
             }
         except PetanqueError as exc:
-            logger.error("Rocq evaluation error: %s", exc)
+            logger.error(f"Rocq evaluation | PetanqueError: {exc}")
             return {
                 "backend": self.backend_name,
                 "proof_finished": False,
@@ -180,7 +208,7 @@ class RocqBatchClient(ProofAssistantClient):
                 "messages": [],
             }
         except Exception as exc:
-            logger.error("Unexpected Rocq evaluation error: %s", exc)
+            logger.error(f"Unexpected Rocq evaluation: {exc}")
             return {
                 "backend": self.backend_name,
                 "proof_finished": False,
@@ -196,9 +224,11 @@ class RocqBatchClient(ProofAssistantClient):
         show_progress: bool = False,
         batch_size: int = 8,
         max_workers: int = 4,
-    ):
+    ) -> CheckResponse:
         results = [
-            SnippetResult(response=self.verify_snippet(snip, timeout=timeout))
+            SnippetResult(
+                response=self.verify_whole_proof(snip, timeout=timeout)
+            )
             for snip in snips
         ]
         return CheckResponse(results=results)
