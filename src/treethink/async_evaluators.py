@@ -900,9 +900,9 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
 
 
 class AsyncRocqEvaluator(AsyncBaseEvaluator):
-    """Async evaluation of Rocq proof snippets via rocq-ml-server.
+    """Async evaluation of whole Rocq proofs via rocq-ml-server.
 
-    Wraps the synchronous :class:`RocqBatchClient` using ``asyncio.to_thread``.
+    Wraps the synchronous :class:`RocqClient` using ``asyncio.to_thread``.
     Returns 1.0 if the proof closes, 0.0 otherwise.
     """
 
@@ -910,29 +910,17 @@ class AsyncRocqEvaluator(AsyncBaseEvaluator):
         self,
         host: str = "127.0.0.1",
         port: int = 5000,
-        workspace_dir: Optional[str] = ".",
         timeout: Optional[float] = 5.0,
-        statement: str = "True",
-        theorem_name: str = "__eval",
-        prelude: Optional[str] = None,
     ) -> None:
         self.host = host
         self.port = port
-        self.workspace_dir = workspace_dir
         self.timeout = timeout
-        self.statement = statement
-        self.theorem_name = theorem_name
-        self.prelude = prelude
 
-        from treethink.clients.coq.rocq import RocqBatchClient
+        from treethink.clients.coq.rocq import RocqClient
 
-        self._client = RocqBatchClient(
+        self._client = RocqClient(
             host=self.host,
             port=self.port,
-            workspace_dir=self.workspace_dir,
-            theorem_name=self.theorem_name,
-            statement=self.statement,
-            prelude=self.prelude,
         )
 
         super().__init__(name="async_rocq_evaluator")
@@ -945,7 +933,7 @@ class AsyncRocqEvaluator(AsyncBaseEvaluator):
 
         for snippet in snippets:
             response = await asyncio.to_thread(
-                self._client.verify_snippet, snippet
+                self._client.verify_whole_proof, snippet
             )
             results.append(1.0 if response.get("proof_finished") else 0.0)
 
@@ -967,10 +955,7 @@ class AsyncRocqEvaluator(AsyncBaseEvaluator):
         return super()._str_fields() + [
             ("host", self.host),
             ("port", self.port),
-            ("workspace_dir", self.workspace_dir),
             ("timeout", self.timeout),
-            ("statement", self.statement),
-            ("theorem_name", self.theorem_name),
         ]
 
 

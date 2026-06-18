@@ -26,15 +26,11 @@ def _create_raw_client(
                 or "http://localhost:8000",
             )
         case FormalLanguage.ROCQ:
-            from .clients.coq.rocq import RocqBatchClient
+            from .clients.coq.rocq import RocqClient
 
-            return RocqBatchClient(
+            return RocqClient(
                 host=client_args.host or "127.0.0.1",
                 port=client_args.port or 5000,
-                workspace_dir=client_args.workspace_dir or ".",
-                theorem_name=client_args.theorem_name or "__eval",
-                statement=client_args.statement or "True",
-                prelude=client_args.prelude,
             )
         case FormalLanguage.ISABELLE:
             from .clients.isabelle.client import IsabelleClient
