@@ -25,8 +25,6 @@ class RocqClient(ProofAssistantClient):
         host: str,
         port: int,
     ) -> None:
-        from rocq_ml_toolbox.inference.client import PytanqueExtended
-
         self.host = host
         self.port = port
         self._pet: Optional["PytanqueExtended"] = None
