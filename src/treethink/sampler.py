@@ -186,6 +186,9 @@ class SamplerBase:
                         if hasattr(resp, "graph_stats"):
                             datapoint["graph_stats"] = resp.graph_stats
 
+                    if hasattr(resp, "check_and_true"):
+                        datapoint["check_and_true"] = resp.check_and_true
+
                     processed_data.append(datapoint)
 
                 if (
