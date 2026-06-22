@@ -139,11 +139,17 @@ class BaseMethod(ABC):
         return counts
 
     def get_values_and_visits(self):
-        values = [self.root_node.win_value]
-        visits = [self.root_node.visits]
-        expected_values = [
-            self.root_node.win_value / (self.root_node.visits or 1)
-        ]
+        values = []
+        visits = []
+        expected_values = []
+
+        if self.root_node.win_value != float("-inf"):
+            values.append(self.root_node.win_value)
+            visits.append(self.root_node.visits)
+            expected_values.append(
+                self.root_node.win_value / (self.root_node.visits or 1)
+            )
+
         nodes = [self.root_node]
         while any([len(n.children) > 0 for n in nodes]):
             new_nodes = []
@@ -151,11 +157,11 @@ class BaseMethod(ABC):
                 for child in node.children:
                     new_nodes.append(child)
             nodes = new_nodes
-            values.extend([n.win_value for n in nodes])
-            visits.extend([n.visits for n in nodes])
-            expected_values.extend(
-                [n.win_value / (n.visits or 1) for n in nodes]
-            )
+            for n in nodes:
+                if n.win_value != float("-inf"):
+                    values.append(n.win_value)
+                    visits.append(n.visits)
+                    expected_values.append(n.win_value / (n.visits or 1))
         return values, visits, expected_values
 
     def get_widen_count(self):

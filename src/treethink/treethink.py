@@ -122,6 +122,7 @@ class TreeThink:
             return all_request_outputs
 
         # Set the root node based on settings
+        self.method.reset()
         self._set_root_node(prompts)
 
         _termination_fn = self.repl_runtime.build_termination_callback(
@@ -215,6 +216,7 @@ class TreeThink:
             return all_request_outputs
 
         # Set root
+        self.method.reset()
         self._set_root_node(prompts)
 
         # Termination function for early stopping when solution is found

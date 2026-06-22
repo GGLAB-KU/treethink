@@ -57,9 +57,7 @@ class TestReplRuntime(unittest.TestCase):
         args = TreeThinkArgs(
             termination_str="```",
             language=FormalLanguage.ROCQ,
-            client_args=ClientArgs(
-                host="127.0.0.1", port=5000, workspace_dir="/tmp/test"
-            ),
+            client_args=ClientArgs(host="127.0.0.1", port=5000),
         )
 
         runtime = args.build_repl_runtime()
