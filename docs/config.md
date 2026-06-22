@@ -59,10 +59,6 @@ evaluator:
 | `cache_maxsize` | `4096` | Cache size |
 | `host` | `"127.0.0.1"` | Rocq server host |
 | `port` | `5000` | Rocq server port |
-| `workspace_dir` | `"."` | Rocq workspace directory |
-| `theorem_name` | `"__eval"` | Rocq wrapper theorem name |
-| `statement` | `"True"` | Rocq theorem statement |
-| `prelude` | — | Rocq prelude code |
 
 ---
 

@@ -80,7 +80,7 @@ treethink:
 
 ### Rocq (Coq 8.20)
 
-**Client:** `RocqBatchClient` in `src/treethink/clients/coq/rocq.py`
+**Client:** `RocqClient` in `src/treethink/clients/coq/rocq.py`
 
 - Communicates with a **`rocq-ml-server`** (typically `localhost:5000`).
 - Sync-only — async Rocq client is **not yet implemented**.
@@ -91,9 +91,6 @@ treethink:
   repl_args:
     host: "127.0.0.1"
     port: 5000
-    workspace_dir: "."
-    theorem_name: "__eval"
-    statement: "True"
 ```
 
 ---
