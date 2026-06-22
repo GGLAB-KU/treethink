@@ -4,7 +4,14 @@ from typing import Any, List, Optional
 
 from loguru import logger
 
+from typing import TYPE_CHECKING, Any, List, Optional
+
+from loguru import logger
+
 from ..base import CheckResponse, ProofAssistantClient, SnippetResult
+
+if TYPE_CHECKING:
+    from rocq_ml_toolbox.inference.client import PytanqueExtended
 
 # Back-compat alias — Rocq now returns the shared client result types.
 RocqSnippetResult = SnippetResult
