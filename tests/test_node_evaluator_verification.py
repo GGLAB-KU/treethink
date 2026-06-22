@@ -56,16 +56,39 @@ class MockMethod:
 
 
 class FakeRocqClient:
-    def __init__(self, host, port, **kwargs):
+    def __init__(self, host="127.0.0.1", port=5000):
         self.host = host
         self.port = port
-        self.kwargs = kwargs
         self.snippets = []
 
-    def verify_snippet(self, snippet, timeout=None):
-        self.snippets.append((snippet, timeout))
-        success = "INVALID" not in snippet
+    def verify_whole_proof(self, proof, timeout=None):
+        self.snippets.append((proof, timeout))
+        success = "INVALID" not in proof
         return {"proof_finished": success, "error": None if success else "boom"}
+
+    def check(
+        self,
+        *,
+        snips,
+        timeout=None,
+        show_progress=False,
+        batch_size=8,
+        max_workers=4,
+    ):
+        from treethink.clients.base import CheckResponse, SnippetResult
+
+        results = [
+            SnippetResult(
+                response=self.verify_whole_proof(snip, timeout=timeout)
+            )
+            for snip in snips
+        ]
+        return CheckResponse(results=results)
+
+    def is_success_response(self, response):
+        return bool(response.get("proof_finished")) and not response.get(
+            "error"
+        )
 
     def close(self):
         return None
@@ -119,10 +142,15 @@ def test_repl_evaluator():
 
 
 def test_rocq_evaluator_uses_shared_client():
-    with patch("treethink.evaluators.RocqBatchClient", FakeRocqClient):
-        evaluator = RocqEvaluator(statement="True")
+    with patch("treethink.evaluators.RocqClient", FakeRocqClient):
+        evaluator = RocqEvaluator()
 
-        scores = evaluator(["intro. exact I.", "INVALID tactic."])
+        valid_proof = """Theorem test : True.
+Proof. exact I. Qed."""
+        invalid_proof = """Theorem test : True.
+Proof. INVALID tactic. Qed."""
+
+        scores = evaluator([valid_proof, invalid_proof])
 
         assert scores == [1.0, 0.0]
         evaluator.close()

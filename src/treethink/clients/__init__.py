@@ -69,7 +69,7 @@ def __getattr__(name):
 
         return getattr(lean_module, name)
 
-    if name in ("RocqBatchClient", "RocqSnippetResult", "rocq", "coq"):
+    if name in ("RocqClient", "RocqSnippetResult", "rocq", "coq"):
         import treethink.clients.coq as coq_module
 
         return getattr(coq_module, name)

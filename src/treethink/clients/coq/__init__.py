@@ -8,10 +8,10 @@ __getattr__, __dir__, __all__ = lazy_loader.attach(
     },
     submod_attrs={
         "rocq": [
-            "RocqBatchClient",
+            "RocqClient",
             "RocqSnippetResult",
         ],
     },
 )
 
-__all__ = ["RocqBatchClient", "RocqSnippetResult", "rocq"]
+__all__ = ["RocqClient", "RocqSnippetResult", "rocq"]

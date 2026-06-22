@@ -59,10 +59,6 @@ class ClientArgs(BaseArgs):
     Rocq:
         host (str): Rocq ML server host. Default ``"127.0.0.1"``.
         port (int): Rocq ML server port. Default 5000.
-        workspace_dir (str): Temporary file workspace. Default ``"."``.
-        theorem_name (str): Wrapper theorem name. Default ``"__eval"``.
-        statement (str): Theorem statement. Default ``"True"``.
-        prelude (str | None): Optional prelude code.
 
     Isabelle:
         isabelle_session (str): Isabelle session/logic to start.
@@ -87,10 +83,6 @@ class ClientArgs(BaseArgs):
     # Rocq
     host: str | None = None
     port: int | None = None
-    workspace_dir: str | None = None
-    theorem_name: str | None = None
-    statement: str | None = None
-    prelude: str | None = None
 
     # Isabelle
     isabelle_session: str | None = None
@@ -192,10 +184,10 @@ class TreeThinkArgs(BaseArgs):
             - Strips both the opening and closing tags from
               :attr:`Node.text` so that downstream code sees only the
               content between the tags.
-            
+
             Defaults to ``"\\n"`` (no XML parsing — the newline character
             is kept in the text).
-            
+
             Note that when using this feature, give your model a proper system
             prompt as the generation relies entirely on the model emitting the
             closing tag. In other words, newline character is not kept when you
