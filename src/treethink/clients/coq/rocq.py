@@ -121,18 +121,18 @@ class RocqClient(ProofAssistantClient):
         """Extract the theorem name from a whole Rocq proof string."""
         import re
 
-        match = re.search(
-            r"(?:Theorem|Lemma|Proposition|Corollary|Example|Fact|Remark)\s+(\w+)",
+        matches = re.findall(
+            r"(?:Theorem|Lemma|Proposition|Corollary|Example|Fact|Remark)\s+([\w']+)",
             proof_string,
         )
-        if not match:
+        if not matches:
             logger.error(
                 "Could not find a theorem name in the proof string. "
                 "Expected one of: Theorem, Lemma, Proposition, Corollary, "
                 "Example, Fact, Remark."
             )
             return ""
-        return match.group(1)
+        return matches[-1]
 
     def _extract_proof_commands(self, code: str) -> List[str]:
         """Extract proof-body commands (Proof. through Qed./Admitted./Defined./Abort.)."""
