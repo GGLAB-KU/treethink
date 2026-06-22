@@ -142,7 +142,7 @@ class RocqClient(ProofAssistantClient):
 
         for i, cmd in enumerate(commands):
             stripped = cmd.strip()
-            if stripped == "Proof.":
+            if stripped == "Proof." or stripped.startswith("Proof "):
                 proof_start = i
                 break
 
