@@ -1,6 +1,5 @@
 import lazy_loader
 
-
 __getattr__, __dir__, __all__ = lazy_loader.attach(
     __name__,
     submodules={
@@ -8,10 +7,11 @@ __getattr__, __dir__, __all__ = lazy_loader.attach(
     },
     submod_attrs={
         "rocq": [
+            "AsyncRocqClient",
             "RocqClient",
             "RocqSnippetResult",
         ],
     },
 )
 
-__all__ = ["RocqClient", "RocqSnippetResult", "rocq"]
+__all__ = ["AsyncRocqClient", "RocqClient", "RocqSnippetResult", "rocq"]
