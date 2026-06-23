@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
-
-from loguru import logger
-
+import asyncio
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from loguru import logger
 
-from ..base import CheckResponse, ProofAssistantClient, SnippetResult
+from ..base import (
+    AsyncProofAssistantClient,
+    CheckResponse,
+    ProofAssistantClient,
+    SnippetResult,
+)
 
 if TYPE_CHECKING:
     from rocq_ml_toolbox.inference.client import PytanqueExtended
@@ -192,7 +194,7 @@ class RocqClient(ProofAssistantClient):
             proof_commands = self._extract_proof_commands(proof)
             for cmd in proof_commands:
                 state = self._run_command(pet, state, cmd, timeout=timeout)
-            
+
             # We expect the model to put "Qed." or end the proof, no need to force it.
             # if not getattr(state, "proof_finished", False):
             #     state = self._run_command(pet, state, "Qed.", timeout=timeout)
@@ -244,3 +246,47 @@ class RocqClient(ProofAssistantClient):
         return bool(response.get("proof_finished")) and not response.get(
             "error"
         )
+
+
+class AsyncRocqClient(AsyncProofAssistantClient):
+    """Async wrapper around the synchronous :class:`RocqClient`.
+
+    Delegates proof verification to a sync ``RocqClient`` via
+    ``asyncio.to_thread`` so that the rest of TreeThink can treat Rocq
+    identically to Lean (which has a native async client).
+    Multiple snippets are verified concurrently with ``asyncio.gather``.
+    """
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 5000,
+    ) -> None:
+        self._sync_client = RocqClient(host=host, port=port)
+
+    async def check(
+        self,
+        *,
+        snips: List[str],
+        timeout: Optional[float] = None,
+        show_progress: bool = False,
+        batch_size: int = 8,
+        max_workers: int = 4,
+    ) -> CheckResponse:
+        """Async batch-verify proof snippets via ``asyncio.gather``."""
+        coros = [
+            asyncio.to_thread(self._sync_client.verify_whole_proof, snip)
+            for snip in snips
+        ]
+        responses = await asyncio.gather(*coros)
+        return CheckResponse(
+            results=[SnippetResult(response=r) for r in responses]
+        )
+
+    def is_success_response(self, response: dict[str, Any]) -> bool:
+        return bool(response.get("proof_finished")) and not response.get(
+            "error"
+        )
+
+    async def close(self) -> None:
+        self._sync_client.close()
