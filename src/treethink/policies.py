@@ -8,6 +8,7 @@ import openai
 import vllm
 from loguru import logger
 from vllm.lora.request import LoRARequest
+from vllm.sampling_params import RepetitionDetectionParams
 
 from .methods import Node
 from .utils import ModelArgs, PolicyArgs, SamplingArgs, ServerArgs
@@ -89,6 +90,15 @@ class BasePolicy(ABC):
             sampling_params = vllm.SamplingParams(**sampling_params)
             logger.trace("Converted SamplingArgs to vllm.SamplingParams.")
         sampling_params.include_stop_str_in_output = True
+
+        # NOTE(burak): hardcoding repetition_detection to finish of nonsensical
+        # outputs early. I believe this will help working with small LMs.
+        # Parameters here are out of intuition, and I think it'll suffice.
+        sampling_params.repetition_detection = RepetitionDetectionParams(
+            max_pattern_size=12,
+            min_pattern_size=6,
+            min_count=3,
+        )
 
         # When a non-newline parse_tag is configured, replace the stop
         # tokens with the derived closing tag so generation halts at the
