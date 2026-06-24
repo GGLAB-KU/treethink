@@ -154,72 +154,101 @@ class Node:
         def _escape(x):
             return json.dumps(x).strip('"')
 
-        if self.parent is None:
-            text_content = self.text
-        else:
-            diff = "\n".join(
-                [
-                    x
-                    for x in self.text.split("\n")
-                    if x not in self.parent.text.split("\n")
-                ]
-            )
-            text_content = diff
+        # Explicit stack of frames for iterative DFS traversal.
+        # Each frame is a tuple:
+        #   ("node", node, i, st, solution, prev_colored)  → write node definition
+        #   ("edge", i, parent_st, child_st)               → write edge from parent to child
+        stack = [("node", self, i, st, solution, prev_colored)]
 
-        # Change special symbols to those that HTML like:
-        text_content = (
-            text_content.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-        )
+        while stack:
+            kind = stack.pop()
 
-        # Create HTML-like table with win value, visits and level of the node
-        label = (
-            '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'
-            f'<TR><TD ROWSPAN="3">{_escape(text_content)}</TD>'
-            f'<TD ALIGN="RIGHT"><FONT POINT-SIZE="10">W:{round(self.win_value, 3)}</FONT></TD></TR>'
-            f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">V:{self.visits}</FONT></TD></TR>'
-            f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">L:{self.level}</FONT></TD></TR>'
-            "</TABLE>>"
-        )
+            if kind[0] == "edge":
+                _, edge_i, parent_st, child_st = kind
+                f.write(" " * edge_i + parent_st + " -- " + child_st + "\n")
+                continue
 
-        # NOTE(burak): I have tried different colorings but single red color
-        # seems to be sufficient. If we change it to something else, we need
-        # to update default identifier arguments functions in graph.py
-        color = "red"
-        attr = "penwidth=2"
+            # ── "node" frame ──────────────────────────────────────────────
+            _, node, node_i, node_st, node_solution, node_prev_colored = kind
 
-        # Here we check if the solution is provided, no solution means we are not coloring the path at all
-        if (
-            solution is not None
-            and solution[: len(self.text)] == self.text
-            and prev_colored
-        ):
-            attr += f",color={color}"
-            prev_colored = True
-        else:
-            prev_colored = False
+            # Compute diff text for non-root nodes
+            if node.parent is None:
+                text_content = node.text
+            else:
+                diff = "\n".join(
+                    [
+                        x
+                        for x in node.text.split("\n")
+                        if x not in node.parent.text.split("\n")
+                    ]
+                )
+                text_content = diff
 
-        f.write((" " * i) + f"{st} [label={label},shape=box,{attr}]\n")
-
-        num = 0
-        for child in self.children:
-            new_st = st + "_" + str(num)
-
-            child.print_node(
-                f,
-                i + 2,
-                root,
-                new_st,
-                solution=None
-                if solution is None
-                else solution[len(self.text) :],
-                prev_colored=prev_colored,
+            # Escape HTML-special characters
+            text_content = (
+                text_content.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
             )
 
-            f.write(" " * i + st + " -- " + new_st + "\n")
-            num = num + 1
+            # HTML-like table label with win value, visits, and level
+            label = (
+                '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'
+                f'<TR><TD ROWSPAN="3">{_escape(text_content)}</TD>'
+                f'<TD ALIGN="RIGHT"><FONT POINT-SIZE="10">W:{round(node.win_value, 3)}</FONT></TD></TR>'
+                f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">V:{node.visits}</FONT></TD></TR>'
+                f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">L:{node.level}</FONT></TD></TR>'
+                "</TABLE>>"
+            )
+
+            # NOTE(burak): I have tried different colorings but single red color
+            # seems to be sufficient. If we change it to something else, we need
+            # to update default identifier arguments functions in graph.py
+            color = "red"
+            attr = "penwidth=2"
+
+            # Color this node if it lies on the solution path and the
+            # previous node was already coloured.
+            if (
+                node_solution is not None
+                and node_solution[: len(node.text)] == node.text
+                and node_prev_colored
+            ):
+                attr += f",color={color}"
+                new_prev_colored = True
+            else:
+                new_prev_colored = False
+
+            f.write(
+                (" " * node_i) + f"{node_st} [label={label},shape=box,{attr}]\n"
+            )
+
+            # Push child nodes and edges in reverse order so that the
+            # first child is processed first when popped from the stack.
+            children = list(node.children)
+            for idx in range(len(children) - 1, -1, -1):
+                child = children[idx]
+                child_st = node_st + "_" + str(idx)
+                child_solution = (
+                    None
+                    if node_solution is None
+                    else node_solution[len(node.text) :]
+                )
+                # Edge is pushed first but popped *after* the child's
+                # entire subtree because the child ("node" frame) sits
+                # on top.
+                stack.append(("edge", node_i, node_st, child_st))
+                stack.append(
+                    (
+                        "node",
+                        child,
+                        node_i + 2,
+                        child_st,
+                        child_solution,
+                        new_prev_colored,
+                    )
+                )
 
     def most_visited_child(self) -> "Node":
         """
