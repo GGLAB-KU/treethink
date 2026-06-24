@@ -85,7 +85,7 @@ class AsyncBaseEvaluator(ABC):
         pass
 
 
-class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
+class AsyncREPLEvaluator(AsyncBaseEvaluator):
     """Async version of REPL Node Evaluator.
 
     Uses :func:`create_async_client` to build the language-appropriate
@@ -101,7 +101,7 @@ class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
         *args,
         **kwargs,
     ):
-        super().__init__(name="async_lean_repl_evaluator", *args, **kwargs)
+        super().__init__(name="async_repl_evaluator", *args, **kwargs)
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
@@ -149,7 +149,7 @@ class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
             return scores
 
         except Exception as e:
-            logger.error(f"Async Lean REPL evaluation failed: {e}")
+            logger.error(f"Async REPL evaluation failed: {e}")
             return [0.0] * len(nodes)
 
     def _str_fields(self):
@@ -867,67 +867,6 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
             ("system_prompt", self.system_prompt),
         ]
 
-
-class AsyncRocqEvaluator(AsyncBaseEvaluator):
-    """Async evaluation of whole Rocq proofs via rocq-ml-server.
-
-    Wraps the synchronous :class:`RocqClient` using ``asyncio.to_thread``.
-    Returns 1.0 if the proof closes, 0.0 otherwise.
-    """
-
-    def __init__(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 5000,
-        timeout: Optional[float] = 5.0,
-    ) -> None:
-        self.host = host
-        self.port = port
-        self.timeout = timeout
-
-        from treethink.clients.coq.rocq import RocqClient
-
-        self._client = RocqClient(
-            host=self.host,
-            port=self.port,
-        )
-
-        super().__init__(name="async_rocq_evaluator")
-
-    async def __call__(
-        self, code: Union[str, List[str]]
-    ) -> Union[float, List[float]]:
-        snippets = [code] if isinstance(code, str) else code
-        results: List[float] = []
-
-        for snippet in snippets:
-            response = await asyncio.to_thread(
-                self._client.verify_whole_proof, snippet
-            )
-            results.append(1.0 if response.get("proof_finished") else 0.0)
-
-        return results[0] if isinstance(code, str) else results
-
-    def close(self) -> None:
-        self._client.close()
-
-    def __enter__(self) -> "AsyncRocqEvaluator":
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.close()
-
-    def __del__(self) -> None:
-        self.close()
-
-    def _str_fields(self):
-        return super()._str_fields() + [
-            ("host", self.host),
-            ("port", self.port),
-            ("timeout", self.timeout),
-        ]
-
-
 class AsyncRMaxTSEvaluator(AsyncBaseEvaluator):
     """Async twin of :class:`~treethink.evaluators.RMaxTSEvaluator`.
 
@@ -1020,13 +959,12 @@ class AsyncStateLevelRewardEvaluator(_AsyncRewardModelEvaluator):
 
 
 class AsyncEvaluatorType(Enum):
-    ASYNC_LEAN_REPL = AsyncLeanREPLEvaluator
+    ASYNC_REPL = AsyncREPLEvaluator
     ASYNC_LLM_AS_JUDGE = AsyncJudgeEvaluator
     ASYNC_NORMALIZED_LENGTHS = AsyncNormLenEvaluator
     ASYNC_CUMULATIVE_LOGPROB = AsyncCumulativeLogprobEvaluator
     ASYNC_TOURNAMENT = AsyncTournamentEvaluator
     ASYNC_NORMALIZED_LENGTHS_PROBS = AsyncNormLenProbEvaluator
-    ASYNC_ROCQ = AsyncRocqEvaluator
     ASYNC_RMAXTS = AsyncRMaxTSEvaluator
     ASYNC_PROOF_LEVEL_REWARD = AsyncProofLevelRewardEvaluator
     ASYNC_STATE_LEVEL_REWARD = AsyncStateLevelRewardEvaluator

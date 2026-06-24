@@ -12,7 +12,7 @@ from loguru import logger
 from vllm.lora.request import LoRARequest
 
 from treethink.client_factory import create_client
-from treethink.clients.cache import CachedClient, ProofCache
+from treethink.clients.cache import ProofCache
 from treethink.clients.coq.rocq import RocqClient
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
@@ -23,7 +23,12 @@ from treethink.utils import (
     calculate_logprobs,
     extract_result,
 )
-from treethink.utils.enums import FormalLanguage, PoolingTask, ScoreReduction, coerce_enum
+from treethink.utils.enums import (
+    FormalLanguage,
+    PoolingTask,
+    ScoreReduction,
+    coerce_enum,
+)
 
 # Language-agnostic regex: captures content inside any ```<lang>\n...\n``` fence
 _RE_PROOF_FENCE = re.compile(r"```(?:\w+|\n)\s*((?:.|\n)*?)```")
@@ -156,7 +161,7 @@ class ProbEvaluator(BaseEvaluator):
         return super()._str_fields()
 
 
-class LeanREPLEvaluator(BaseEvaluator):
+class REPLEvaluator(BaseEvaluator):
     """Evaluate proof snippets via a proof-assistant REPL client.
 
     Uses :func:`create_client` to build the language-appropriate client
@@ -172,7 +177,7 @@ class LeanREPLEvaluator(BaseEvaluator):
         *args,
         **kwargs,
     ):
-        super().__init__(name="lean_repl_evaluator", *args, **kwargs)
+        super().__init__(name="repl_evaluator", *args, **kwargs)
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
@@ -214,7 +219,7 @@ class LeanREPLEvaluator(BaseEvaluator):
                     1.0 if self.client.is_success_response(entry) else 0.0
                 )
             except Exception as e:
-                logger.error(f"Lean verification error: {e}")
+                logger.error(f"REPL verification error: {e}")
                 results.append(0.0)
 
         return results if isinstance(node, list) else results[0]
@@ -338,7 +343,9 @@ class JudgeEvaluator(BaseEvaluator):
         prompt += f"# Solved Goals:\n{solved_goals}\n"
         prompt += "If goals are not provided, you should judge the quality of the tactic application based on the proof so far. Put your score in \\boxed{}. "
         if error_message:
-            prompt += f"# Error Message from the Proof Assistant:\n{error_message}\n"
+            prompt += (
+                f"# Error Message from the Proof Assistant:\n{error_message}\n"
+            )
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
@@ -445,14 +452,15 @@ class JudgeEvaluator(BaseEvaluator):
             solved_goals = proof_state.closed_goals
             error_msg = proof_state.error_message
 
-            if any(v is not None for v in (current_goals, applied_tactic, solved_goals)):
+            if any(
+                v is not None
+                for v in (current_goals, applied_tactic, solved_goals)
+            ):
                 judge_message = self._prepare_judge_messages(
                     snips[i], current_goals, applied_tactic, solved_goals
                 )
             elif error_msg:
-                logger.warning(
-                    f"Error from proof assistant: {error_msg}"
-                )
+                logger.warning(f"Error from proof assistant: {error_msg}")
                 judge_message = self._prepare_judge_messages(
                     snips[i], None, None, None, error_msg
                 )
@@ -1392,12 +1400,11 @@ class EvaluatorType(Enum):
     """
 
     CUMULATIVE_LOGPROB = LogprobEvaluator
-    LEAN_REPL = LeanREPLEvaluator
+    REPL = REPLEvaluator
     LLM_AS_JUDGE = JudgeEvaluator
     TOURNAMENT = TournamentEvaluator
     NORMALIZED_LENGTHS = NormLenEvaluator
     NORMALIZED_LENGTHS_PROBS = NormLenProbEvaluator
-    ROCQ = RocqEvaluator
     RMAXTS = RMaxTSEvaluator
     PROOF_LEVEL_REWARD = ProofLevelRewardEvaluator
     STATE_LEVEL_REWARD = StateLevelRewardEvaluator
