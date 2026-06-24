@@ -17,7 +17,7 @@ auto-converted to their async equivalents.
 | **Policy** | `vllm_policy` → `async_vllm_policy` |
 | | `vllm_server_policy` → `async_vllm_server_policy` |
 | **Evaluator** | `cumulative_logprob_evaluator` → `async_cumulative_logprob_evaluator` |
-| | `lean_repl_evaluator` → `async_lean_repl_evaluator` |
+| | `repl_evaluator` → `async_repl_evaluator` |
 | | `llm_as_judge_evaluator` → `async_judge_evaluator` |
 | | `norm_len_evaluator` → `async_norm_len_evaluator` |
 | | `rocq_evaluator` → `async_rocq_evaluator` |
