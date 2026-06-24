@@ -867,6 +867,7 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
             ("system_prompt", self.system_prompt),
         ]
 
+
 class AsyncRMaxTSEvaluator(AsyncBaseEvaluator):
     """Async twin of :class:`~treethink.evaluators.RMaxTSEvaluator`.
 

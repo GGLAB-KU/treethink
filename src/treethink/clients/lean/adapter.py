@@ -82,7 +82,9 @@ class LeanClientAdapter(ProofAssistantClient):
                 closed_goals=last.get("goalsBefore"),
             )
         except Exception as exc:
-            logger.warning(f"Failed to extract proof state from infotree: {exc}")
+            logger.warning(
+                f"Failed to extract proof state from infotree: {exc}"
+            )
             return ProofStateInfo(error_message=str(exc))
 
     def close(self) -> None:

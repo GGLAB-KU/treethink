@@ -192,7 +192,7 @@ class RocqClient(ProofAssistantClient):
             proof_commands = self._extract_proof_commands(proof)
             for cmd in proof_commands:
                 state = self._run_command(pet, state, cmd, timeout=timeout)
-            
+
             # We expect the model to put "Qed." or end the proof, no need to force it.
             # if not getattr(state, "proof_finished", False):
             #     state = self._run_command(pet, state, "Qed.", timeout=timeout)
