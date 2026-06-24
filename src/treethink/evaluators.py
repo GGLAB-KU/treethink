@@ -1,6 +1,7 @@
 import hashlib
 import math
 import os
+import re
 from abc import ABC, abstractmethod
 from enum import Enum
 from functools import partial
@@ -10,13 +11,9 @@ import vllm
 from loguru import logger
 from vllm.lora.request import LoRARequest
 
+from treethink.client_factory import create_client
 from treethink.clients.cache import CachedClient, ProofCache
 from treethink.clients.coq.rocq import RocqClient
-from treethink.clients.lean import (
-    extract_data,
-    split_proof_header,
-)
-from treethink.clients.lean.adapter import LeanClientAdapter
 from treethink.methods import BaseMethod, Node
 from treethink.utils import (
     ClientArgs,
@@ -26,7 +23,10 @@ from treethink.utils import (
     calculate_logprobs,
     extract_result,
 )
-from treethink.utils.enums import PoolingTask, ScoreReduction, coerce_enum
+from treethink.utils.enums import FormalLanguage, PoolingTask, ScoreReduction, coerce_enum
+
+# Language-agnostic regex: captures content inside any ```<lang>\n...\n``` fence
+_RE_PROOF_FENCE = re.compile(r"```(?:\w+|\n)\s*((?:.|\n)*?)```")
 
 LLM_AS_JUDGE_SYSTEM_PROMPT = """
 You are a LLM judge who assesses a student's solution. The given solution is not complete,
@@ -157,16 +157,18 @@ class ProbEvaluator(BaseEvaluator):
 
 
 class LeanREPLEvaluator(BaseEvaluator):
-    """Evaluate proof snippets via a Lean 4 REPL (Kimina server).
+    """Evaluate proof snippets via a proof-assistant REPL client.
 
-    Uses :class:`LeanClientAdapter` to wrap the external ``KiminaClient``.
-    If *cache* is provided the client is wrapped with :class:`CachedClient`.
+    Uses :func:`create_client` to build the language-appropriate client
+    (defaults to Lean 4).  If *cache* is provided the client is wrapped
+    with :class:`CachedClient`.
     """
 
     def __init__(
         self,
         client_args: Optional[ClientArgs] = None,
         cache: Optional[ProofCache] = None,
+        language: FormalLanguage = FormalLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -174,13 +176,8 @@ class LeanREPLEvaluator(BaseEvaluator):
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
-        self.lean_client = LeanClientAdapter(
-            lean_server_url=(
-                client_args.lean_server_url or "http://localhost:8000"
-            ),
-        )
-        if cache is not None:
-            self.lean_client = CachedClient(self.lean_client, cache=cache)
+        self.language = language
+        self.client = create_client(language, client_args, cache=cache)
 
     def __call__(self, node: Union[Node, List[Node]], method: BaseMethod):
         """Evaluate node(s) — returns 1.0 for verified, 0.0 otherwise."""
@@ -192,7 +189,7 @@ class LeanREPLEvaluator(BaseEvaluator):
         snips = [n.answer for n in nodes]
 
         try:
-            response = self.lean_client.check(
+            response = self.client.check(
                 snips=snips,
                 timeout=self.client_args.timeout,
                 show_progress=False,
@@ -200,7 +197,7 @@ class LeanREPLEvaluator(BaseEvaluator):
                 max_workers=self.client_args.num_proc,
             )
         except Exception as e:
-            logger.error(f"Lean REPL evaluator failed: {e}")
+            logger.error(f"REPL evaluator failed: {e}")
             return [0.0] * len(nodes)
 
         results = []
@@ -209,12 +206,12 @@ class LeanREPLEvaluator(BaseEvaluator):
                 if response and getattr(response, "results", None):
                     entry = response.results[idx].response
                 else:
-                    logger.warning("No results in Lean server response")
+                    logger.warning("No results in REPL server response")
                     results.append(0.0)
                     continue
 
                 results.append(
-                    1.0 if self.lean_client.is_success_response(entry) else 0.0
+                    1.0 if self.client.is_success_response(entry) else 0.0
                 )
             except Exception as e:
                 logger.error(f"Lean verification error: {e}")
@@ -225,6 +222,7 @@ class LeanREPLEvaluator(BaseEvaluator):
     def _str_fields(self):
         return super()._str_fields() + [
             ("client_args", self.client_args),
+            ("language", self.language),
         ]
 
 
@@ -258,6 +256,7 @@ class JudgeEvaluator(BaseEvaluator):
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
         lora_path: Optional[str] = None,
+        language: FormalLanguage = FormalLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -265,6 +264,7 @@ class JudgeEvaluator(BaseEvaluator):
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
+        self.language = language
 
         if isinstance(llm_as_judge_model, ModelArgs):
             self.model = self.init_model(
@@ -291,15 +291,8 @@ class JudgeEvaluator(BaseEvaluator):
 
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Sync Lean Client
-        raw = LeanClientAdapter(
-            lean_server_url=(
-                client_args.lean_server_url or "http://localhost:8000"
-            ),
-        )
-        self.lean_client = (
-            CachedClient(raw, cache=cache) if cache is not None else raw
-        )
+        # Language-agnostic proof-assistant client
+        self.client = create_client(language, client_args, cache=cache)
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -336,7 +329,7 @@ class JudgeEvaluator(BaseEvaluator):
         current_goals: Optional[str] = None,
         applied_tactic: Optional[str] = None,
         solved_goals: Optional[str] = None,
-        error_message_from_lean: Optional[str] = None,
+        error_message: Optional[str] = None,
     ):
         """Create a prompt for LLM to judge the response."""
         prompt = f"Here you can see the proof so far, the applied tactic, the open goals, and the solved goals.  Depends on these information, you should judge the quality of the tactic application. # Proof So Far:\n{proof_so_far}\n"
@@ -344,8 +337,8 @@ class JudgeEvaluator(BaseEvaluator):
         prompt += f"# Open Goals:\n{current_goals}\n"
         prompt += f"# Solved Goals:\n{solved_goals}\n"
         prompt += "If goals are not provided, you should judge the quality of the tactic application based on the proof so far. Put your score in \\boxed{}. "
-        if error_message_from_lean:
-            prompt += f"# Error Message from Lean:\n{error_message_from_lean}\n"
+        if error_message:
+            prompt += f"# Error Message from the Proof Assistant:\n{error_message}\n"
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
@@ -424,71 +417,52 @@ class JudgeEvaluator(BaseEvaluator):
             snips.append(proof_so_far)
 
         try:
-            response = self.lean_client.check(
+            response = self.client.check(
                 snips=snips,
                 timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
-            logger.error(f"KiminaClient failed: {e}")
-            # Allow downstream code to handle fallback: all infotree=None
+            logger.error(f"REPL client failed: {e}")
             response = None
 
         messages = []
 
         for i in range(len(node)):
-            # If response is available and valid, extract infotree, else fallback
-            if response and getattr(response, "results", None):
-                # Each result is an object with .response; .response is dict
-                result_obj = response.results[i]
-                infotree = (
-                    result_obj.response.get("infotree", None)
-                    if result_obj.response
-                    else None
-                )
-            else:
-                infotree = None
+            # Extract proof state via the language-agnostic client interface
+            result_response = (
+                response.results[i].response
+                if response and getattr(response, "results", None)
+                else None
+            )
+            proof_state = self.client.extract_proof_state(
+                proof_string=snips[i],
+                response=result_response,
+            )
 
-            if infotree:
-                header, body = split_proof_header(snips[i])
-                intervals = extract_data(infotree, body)
-                current_goals = intervals[-1]["goalsAfter"]
-                applied_tactic = intervals[-1]["tactic"]
-                solved_goals = intervals[-1]["goalsBefore"]
+            current_goals = proof_state.open_goals
+            applied_tactic = proof_state.applied_tactic
+            solved_goals = proof_state.closed_goals
+            error_msg = proof_state.error_message
+
+            if any(v is not None for v in (current_goals, applied_tactic, solved_goals)):
+                judge_message = self._prepare_judge_messages(
+                    snips[i], current_goals, applied_tactic, solved_goals
+                )
+            elif error_msg:
+                logger.warning(
+                    f"Error from proof assistant: {error_msg}"
+                )
+                judge_message = self._prepare_judge_messages(
+                    snips[i], None, None, None, error_msg
+                )
             else:
                 logger.warning(
-                    "Failed to get infotree from REPL, giving only the proof itself to judge."
+                    "No proof-state info available, giving only the proof text to judge."
                 )
-                current_goals = None
-                applied_tactic = None
-                solved_goals = None
-                error_message_from_lean = (
-                    result_obj.response.get("error", None)
-                    if response
-                    and getattr(response, "results", None)
-                    and result_obj.response
-                    else None
+                judge_message = self._prepare_judge_messages(
+                    snips[i], None, None, None
                 )
-                if error_message_from_lean:
-                    logger.warning(
-                        f"Error message from Lean: {error_message_from_lean}"
-                    )
-                    judge_message = self._prepare_judge_messages(
-                        snips[i],
-                        current_goals,
-                        applied_tactic,
-                        solved_goals,
-                        error_message_from_lean,
-                    )
-                    messages.append(judge_message)
-                    continue
-
-            judge_message = self._prepare_judge_messages(
-                snips[i],
-                current_goals,
-                applied_tactic,
-                solved_goals,
-            )
             messages.append(judge_message)
 
         judge_answers = self.generate_judge_answer(messages)
@@ -542,14 +516,18 @@ class JudgeEvaluator(BaseEvaluator):
             scores.append(10.0)
         return [score / 20.0 for score in scores]
 
-    def parse_proof(self, proof: str, pattern=None):
-        start = proof.find("import Mathlib")
-        end = proof.find("```", start)
-        if end == -1 and start == -1:
+    def parse_proof(self, proof: str, pattern=None) -> str:
+        """Extract proof content from code-fence delimiters.
+
+        Uses a language-agnostic regex that captures the content inside
+        any ```<lang>\\n...\\n``` fence.  Falls back to the raw proof
+        string if no fence is found.
+        """
+        pattern = pattern or _RE_PROOF_FENCE
+        matches = re.findall(pattern, proof)
+        if not matches:
             return proof
-        elif end == -1:
-            return proof[start:]
-        return proof[start:end]
+        return matches[-1]
 
     def _str_fields(self):
         return super()._str_fields() + [
@@ -558,6 +536,7 @@ class JudgeEvaluator(BaseEvaluator):
             ("lora_path", self.lora_path),
             ("sampling_params", self.sampling_params),
             ("client_args", self.client_args),
+            ("language", self.language),
             ("system_prompt", self.system_prompt),
         ]
 
@@ -590,6 +569,7 @@ class TournamentEvaluator(BaseEvaluator):
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
         prompter: Optional[Callable] = None,
         shuffle_bracket: bool = True,
+        language: FormalLanguage = FormalLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -598,6 +578,7 @@ class TournamentEvaluator(BaseEvaluator):
             client_args = ClientArgs()
         self.client_args = client_args
         self.shuffle_bracket = shuffle_bracket
+        self.language = language
 
         if isinstance(llm_as_judge_model, ModelArgs):
             self.model = self.init_model(
@@ -615,17 +596,8 @@ class TournamentEvaluator(BaseEvaluator):
 
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Sync Lean Client (optionally cached)
-        raw_lean = LeanClientAdapter(
-            lean_server_url=(
-                client_args.lean_server_url or "http://localhost:8000"
-            ),
-        )
-        self.lean_client = (
-            CachedClient(raw_lean, cache=cache)
-            if cache is not None
-            else raw_lean
-        )
+        # Language-agnostic proof-assistant client
+        self.client = create_client(language, client_args, cache=cache)
 
         if isinstance(prompter, Callable):
             self.prompter = prompter
@@ -659,10 +631,11 @@ class TournamentEvaluator(BaseEvaluator):
         info_b: Optional[dict] = None,
     ):
         """Create a prompt for LLM to judge between two proofs."""
+        lang_tag = self.language.value
         prompt = "You are comparing two proof attempts. Choose which one is better.\n\n"
 
         prompt += "# Proof A:\n"
-        prompt += f"```lean\n{proof_a}\n```\n"
+        prompt += f"```{lang_tag}\n{proof_a}\n```\n"
         if info_a:
             if info_a.get("applied_tactic"):
                 prompt += f"Applied Tactic: {info_a['applied_tactic']}\n"
@@ -674,7 +647,7 @@ class TournamentEvaluator(BaseEvaluator):
                 prompt += f"Error: {info_a['error_message']}\n"
 
         prompt += "\n# Proof B:\n"
-        prompt += f"```lean\n{proof_b}\n```\n"
+        prompt += f"```{lang_tag}\n{proof_b}\n```\n"
         if info_b:
             if info_b.get("applied_tactic"):
                 prompt += f"Applied Tactic: {info_b['applied_tactic']}\n"
@@ -694,39 +667,30 @@ class TournamentEvaluator(BaseEvaluator):
 
         return self.prompter(messages)
 
-    def _extract_lean_info(
+    def _extract_proof_info(
         self, snip: str, response, result_idx: int
     ) -> Optional[dict]:
-        """Extract tactic and goal information from Lean REPL response."""
+        """Extract tactic and goal information from the proof-assistant response."""
         if not response or not getattr(response, "results", None):
             return None
 
         result_obj = response.results[result_idx]
-        infotree = (
-            result_obj.response.get("infotree", None)
-            if result_obj.response
-            else None
+        proof_state = self.client.extract_proof_state(
+            proof_string=snip,
+            response=result_obj.response,
         )
 
-        if not infotree:
-            error_message = (
-                result_obj.response.get("error", None)
-                if result_obj.response
-                else None
-            )
-            return {"error_message": error_message} if error_message else None
+        info = {}
+        if proof_state.applied_tactic is not None:
+            info["applied_tactic"] = proof_state.applied_tactic
+        if proof_state.open_goals is not None:
+            info["current_goals"] = proof_state.open_goals
+        if proof_state.closed_goals is not None:
+            info["solved_goals"] = proof_state.closed_goals
+        if proof_state.error_message is not None:
+            info["error_message"] = proof_state.error_message
 
-        try:
-            header, body = split_proof_header(snip)
-            intervals = extract_data(infotree, body)
-            return {
-                "applied_tactic": intervals[-1]["tactic"],
-                "current_goals": intervals[-1]["goalsAfter"],
-                "solved_goals": intervals[-1]["goalsBefore"],
-            }
-        except Exception as e:
-            logger.warning(f"Failed to extract info from infotree: {e}")
-            return None
+        return info if info else None
 
     def _batch_compare_pairs(
         self,
@@ -734,7 +698,7 @@ class TournamentEvaluator(BaseEvaluator):
         nodes: List[Node],
         method: BaseMethod,
         snips: List[str],
-        lean_infos: List[Optional[dict]],
+        proof_infos: List[Optional[dict]],
     ) -> List[int]:
         """Compare pairs of nodes in batch and return winner indices."""
         if not pairs:
@@ -746,8 +710,8 @@ class TournamentEvaluator(BaseEvaluator):
             message = self._prepare_pairwise_judge_messages(
                 snips[idx_a],
                 snips[idx_b],
-                lean_infos[idx_a],
-                lean_infos[idx_b],
+                proof_infos[idx_a],
+                proof_infos[idx_b],
             )
             messages.append(message)
 
@@ -822,22 +786,22 @@ class TournamentEvaluator(BaseEvaluator):
             proof_so_far = self.parse_proof(proof=proof_so_far)
             snips.append(proof_so_far)
 
-        # Get Lean info for all proofs in batch
+        # Get proof-state info for all proofs in batch
         try:
-            response = self.lean_client.check(
+            response = self.client.check(
                 snips=snips,
                 timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
-            logger.error(f"KiminaClient failed: {e}")
+            logger.error(f"REPL client failed: {e}")
             response = None
 
-        # Extract info for all nodes
-        lean_infos = []
+        # Extract proof-state info for all nodes
+        proof_infos = []
         for i in range(n):
-            info = self._extract_lean_info(snips[i], response, i)
-            lean_infos.append(info)
+            info = self._extract_proof_info(snips[i], response, i)
+            proof_infos.append(info)
 
         # Initialize bracket with shuffled or sequential indices
         bracket_indices = list(range(n))
@@ -886,7 +850,7 @@ class TournamentEvaluator(BaseEvaluator):
             # Batch compare only valid pairs
             if valid_pairs:
                 winners_from_comparison = self._batch_compare_pairs(
-                    valid_pairs, node, method, snips, lean_infos
+                    valid_pairs, node, method, snips, proof_infos
                 )
             else:
                 winners_from_comparison = []
@@ -932,20 +896,25 @@ class TournamentEvaluator(BaseEvaluator):
 
         return normalized_scores
 
-    def parse_proof(self, proof: str, pattern=None):
-        start = proof.find("import Mathlib")
-        end = proof.find("```", start)
-        if end == -1 and start == -1:
+    def parse_proof(self, proof: str, pattern=None) -> str:
+        """Extract proof content from code-fence delimiters.
+
+        Uses a language-agnostic regex that captures the content inside
+        any ```<lang>\\n...\\n``` fence.  Falls back to the raw proof
+        string if no fence is found.
+        """
+        pattern = pattern or _RE_PROOF_FENCE
+        matches = re.findall(pattern, proof)
+        if not matches:
             return proof
-        elif end == -1:
-            return proof[start:]
-        return proof[start:end]
+        return matches[-1]
 
     def _str_fields(self):
         return super()._str_fields() + [
             ("model", self.model.__class__.__name__),
             ("sampling_params", self.sampling_params),
             ("client_args", self.client_args),
+            ("language", self.language),
             ("shuffle_bracket", self.shuffle_bracket),
             ("system_prompt", self.system_prompt),
         ]
