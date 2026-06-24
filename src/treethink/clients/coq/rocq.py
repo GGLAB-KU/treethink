@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
-
-from loguru import logger
-
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from loguru import logger
 
-from ..base import CheckResponse, ProofAssistantClient, SnippetResult
+from ..base import (
+    CheckResponse,
+    ProofAssistantClient,
+    ProofStateInfo,
+    SnippetResult,
+)
 
 if TYPE_CHECKING:
     from rocq_ml_toolbox.inference.client import PytanqueExtended
@@ -174,6 +175,141 @@ class RocqClient(ProofAssistantClient):
             else:
                 messages.append(str(item))
         return "\n".join(messages) if messages else None
+
+    # -- Proof-state extraction helpers ---------------------------------------
+
+    @staticmethod
+    def _format_goals(goals: list) -> str:
+        """Pretty-print a list of ``Goal`` objects into a readable string.
+
+        Each goal is rendered as::
+
+            ---
+            Context:
+              h1 : type1
+              h2 : type2
+            Goal:
+              <goal type>
+
+        When no goals are present returns an empty string.
+        """
+        if not goals:
+            return ""
+        parts: list[str] = []
+        for g in goals:
+            hyps_str = "\n".join(
+                f"  {':'.join(h.names)} : {h.ty}"
+                for h in getattr(g, "hyps", [])
+            )
+            goal_str = getattr(g, "pp", str(g))
+            block = ""
+            if hyps_str:
+                block += f"Context:\n{hyps_str}\n"
+            block += f"Goal:\n{goal_str}"
+            parts.append(block)
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _compute_closed_goals(before: list, after: list) -> list:
+        """Return goals present in *before* but absent in *after*.
+
+        Comparison is by pretty-printed type (``.pp``) since evar IDs differ
+        between states.  This is best-effort — bullet/stack manipulation can
+        make exact comparison tricky.
+        """
+        before_pps = {g.pp for g in before if g.pp is not None}
+        after_pps = {g.pp for g in after if g.pp is not None}
+        closed_pps = before_pps - after_pps
+        return [g for g in before if g.pp in closed_pps]
+
+    def extract_proof_state(
+        self,
+        proof_string: str,
+        response: Any = None,
+    ) -> ProofStateInfo:
+        """Extract tactic/goal information from a Rocq proof string.
+
+        Replays the proof command-by-command against the ``rocq-ml-server``,
+        capturing open goals and computing closed goals at each step.
+        Returns the information for the **last** successfully applied tactic.
+        """
+        pet = self._ensure_client()
+        theorem_name = self._parse_theorem_name(proof_string)
+        if not theorem_name:
+            return ProofStateInfo(error_message="Could not parse theorem name")
+        tmp_path = pet.tmp_file(content=proof_string, root=None)
+
+        from pytanque import PetanqueError
+
+        try:
+            state = pet.start(file=str(tmp_path), thm=theorem_name)
+        except PetanqueError as exc:
+            return ProofStateInfo(error_message=f"Failed to start proof: {exc}")
+        except Exception as exc:
+            return ProofStateInfo(
+                error_message=f"Unexpected start error: {exc}"
+            )
+
+        try:
+            proof_commands = self._extract_proof_commands(proof_string)
+        except ValueError as exc:
+            return ProofStateInfo(error_message=str(exc))
+
+        last_applied_tactic: str | None = None
+        last_open_goals: str | None = None
+        last_closed_goals: str | None = None
+        last_error: str | None = None
+
+        _TERMINATORS = {"Qed.", "Admitted.", "Defined.", "Abort."}
+
+        for cmd in proof_commands:
+            stripped_cmd = cmd.strip()
+            # Skip terminator commands — they close the proof
+            if stripped_cmd in _TERMINATORS:
+                continue
+
+            # Capture goals before the tactic
+            try:
+                resp_before = pet.complete_goals(state)
+                goals_before: list = list(
+                    getattr(resp_before, "goals", []) or []
+                )
+            except Exception:
+                goals_before = []
+
+            # Run the tactic
+            try:
+                state = self._run_command(pet, state, cmd)
+            except PetanqueError as exc:
+                last_error = str(exc)
+                break
+            except Exception as exc:
+                last_error = f"Unexpected error: {exc}"
+                break
+
+            # Capture goals after the tactic
+            try:
+                resp_after = pet.complete_goals(state)
+                # If proof finished, complete_goals may raise or return empty
+                goals_after: list = list(getattr(resp_after, "goals", []) or [])
+            except Exception:
+                goals_after = []
+
+            last_applied_tactic = stripped_cmd
+            last_open_goals = self._format_goals(goals_after)
+            closed_goals = self._compute_closed_goals(goals_before, goals_after)
+            last_closed_goals = self._format_goals(closed_goals)
+
+        # If no tactic was applied (e.g. only terminator commands), return empty
+        if last_applied_tactic is None and last_error is None:
+            return ProofStateInfo()
+
+        return ProofStateInfo(
+            applied_tactic=last_applied_tactic,
+            open_goals=last_open_goals,
+            closed_goals=last_closed_goals,
+            error_message=last_error,
+        )
 
     def verify_whole_proof(
         self,
