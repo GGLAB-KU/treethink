@@ -32,6 +32,26 @@ class CheckResponse:
     results: List[SnippetResult] = field(default_factory=list)
 
 
+@dataclass
+class ProofStateInfo:
+    """Per-snippet proof-state information extracted by the client.
+
+    Fields are ``None`` when the information is not available (e.g. the
+    client or language backend does not support fine-grained extraction).
+
+    Attributes:
+        applied_tactic: The tactic applied at the current proof step.
+        open_goals: Goals remaining after applying the tactic.
+        closed_goals: Goals that were solved by the tactic.
+        error_message: Any error message from the proof assistant.
+    """
+
+    applied_tactic: str | None = None
+    open_goals: str | None = None
+    closed_goals: str | None = None
+    error_message: str | None = None
+
+
 class ProofAssistantClient(ABC):
     """Synchronous interface for a proof-assistant REPL client.
 
@@ -65,6 +85,23 @@ class ProofAssistantClient(ABC):
         """Return ``True`` when *response* indicates a fully-verified proof."""
         ...
 
+    def extract_proof_state(
+        self,
+        proof_string: str,
+        response: Any = None,
+    ) -> ProofStateInfo:
+        """Extract tactic/goal information from *proof_string*.
+
+        The optional *response* is the language-specific payload from
+        :meth:`check` — if not provided the client may re-verify the
+        snippet to obtain the information.
+
+        The default implementation returns an empty :class:`ProofStateInfo`
+        (all fields ``None``).  Subclasses that support fine-grained
+        proof-state extraction should override this method.
+        """
+        return ProofStateInfo()
+
     def close(self) -> None:
         """Release any held resources (optional hook)."""
 
@@ -97,13 +134,31 @@ class AsyncProofAssistantClient(ABC):
         """Return ``True`` when *response* indicates a fully-verified proof."""
         ...
 
+    def extract_proof_state(
+        self,
+        proof_string: str,
+        response: Any = None,
+    ) -> ProofStateInfo:
+        """Extract tactic/goal information from *proof_string*.
+
+        The optional *response* is the language-specific payload from
+        :meth:`check` — if not provided the client may re-verify the
+        snippet to obtain the information.
+
+        The default implementation returns an empty :class:`ProofStateInfo`
+        (all fields ``None``).  Subclasses that support fine-grained
+        proof-state extraction should override this method.
+        """
+        return ProofStateInfo()
+
     async def close(self) -> None:
         """Release any held resources (optional hook)."""
 
 
 __all__ = [
-    "ProofAssistantClient",
     "AsyncProofAssistantClient",
-    "SnippetResult",
     "CheckResponse",
+    "ProofAssistantClient",
+    "ProofStateInfo",
+    "SnippetResult",
 ]
