@@ -430,8 +430,16 @@ class TraditionalMCTS(BaseMethod):
         return vllm.SamplingParams(
             max_tokens=max_tokens,
             n=self.rollout_n or self.policy.sampling_params.n,
-            temperature=self.rollout_temperature or self.policy.sampling_params.temperature,
-            top_p=self.rollout_top_p or self.policy.sampling_params.top_p,
+            temperature=(
+                self.rollout_temperature
+                if self.rollout_temperature is not None
+                else self.policy.sampling_params.temperature
+            ),
+            top_p=(
+                self.rollout_top_p
+                if self.rollout_top_p is not None
+                else self.policy.sampling_params.top_p
+            ),
         )
 
     # ------------------------------------------------------------------
