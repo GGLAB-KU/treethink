@@ -10,7 +10,10 @@ from treethink.graph import (  # noqa
     save_tree_to_txt,
 )
 from treethink.methods import AlphaZeroMCTS, Node  # noqa
-from treethink.utils.enums import FinalDecisionMode
+from treethink.utils.enums import BestAnswerReason, FinalDecisionMode
+
+logger.remove(0)
+logger.add(sys.stderr, level="TRACE")
 
 
 class TestAlphaZeroMCTS(unittest.TestCase):
@@ -180,8 +183,209 @@ class TestAlphaZeroMCTS(unittest.TestCase):
             selected_solution=solution,
         )
 
+    # ──────────────────────────────────────────────
+    # Termination-related tests
+    # ──────────────────────────────────────────────
+
+    def test_simulate_termination_valid(self):
+        """Simulate stops when a valid termination node is found.
+
+        The policy creates one termination node (``text == termination_str``)
+        and one regular child.  When the search selects the termination node,
+        ``termination_encountered_fn`` returns a proof → search breaks
+        immediately.
+        """
+        root = Node("root", termination_str="TERM")
+
+        def policy(node, method):
+            term = Node(
+                text="TERM", parent=node, termination_str=node.termination_str
+            )
+            node.add_child(term)
+            regular = Node(
+                text="REG", parent=node, termination_str=node.termination_str
+            )
+            node.add_child(regular)
+
+        def evaluator(x, method):
+            return [1.0, 0.5]
+
+        def termination_encountered_fn(node):
+            return "rootTERM"
+
+        mcts = AlphaZeroMCTS(
+            root_node=None,
+            policy=policy,
+            evaluator=evaluator,
+        )
+        mcts.set_root_node(root)
+        mcts.simulate(
+            expansion_count=10,
+            termination_encountered_fn=termination_encountered_fn,
+        )
+
+        self.assertEqual(mcts.best_answer, "rootTERM")
+        self.assertEqual(
+            mcts.best_answer_reason, BestAnswerReason.CHECKED_AND_TRUE
+        )
+
+        save_tree_to_txt(
+            root_node=mcts.root_node,
+            output_path="tests/outputs/mcts_termination_valid.txt",
+            selected_solution=mcts.best_answer,
+        )
+
+    def test_simulate_termination_invalid(self):
+        """Simulate continues when a termination node turns out wrong.
+
+        ``termination_encountered_fn`` returns ``None`` → the node's
+        ``win_value`` is set to ``-inf`` and the search proceeds to explore
+        other branches.
+        """
+        root = Node("root", termination_str="WRONG")
+
+        def policy(node, method):
+            # Root level: one termination node + one regular child
+            wrong = Node(
+                text="WRONG",
+                parent=node,
+                termination_str=node.termination_str,
+            )
+            node.add_child(wrong)
+            regular = Node(
+                text="REG", parent=node, termination_str=node.termination_str
+            )
+            node.add_child(regular)
+            # Deeper expansions: only regular children (no termination_str)
+            # so we don't keep generating more termination nodes.
+            deeper = Node(text="DEEPER", parent=node)
+            node.add_child(deeper)
+
+        def evaluator(x, method):
+            return [0.5, 0.3, 0.1]
+
+        call_count = 0
+
+        def termination_encountered_fn(node):
+            nonlocal call_count
+            call_count += 1
+            return None  # always invalid
+
+        mcts = AlphaZeroMCTS(
+            root_node=None,
+            policy=policy,
+            evaluator=evaluator,
+        )
+        mcts.set_root_node(root)
+        mcts.simulate(
+            expansion_count=5,
+            termination_encountered_fn=termination_encountered_fn,
+        )
+
+        # The WRONG node should be marked with -inf to avoid reselection
+        wrong_node = root.children[0]
+        self.assertEqual(wrong_node.win_value, float("-inf"))
+        self.assertGreater(wrong_node.visits, 0)
+
+        # termination_encountered_fn was called at least once
+        self.assertGreaterEqual(call_count, 1)
+
+        # The search continued past the wrong termination —
+        # best_answer was computed normally, not set by the callback
+        self.assertIsNotNone(mcts.best_answer)
+        self.assertEqual(mcts.best_answer_reason, BestAnswerReason.CALCULATED)
+
+        save_tree_to_txt(
+            root_node=mcts.root_node,
+            output_path="tests/outputs/mcts_termination_invalid.txt",
+            selected_solution=mcts.best_answer,
+        )
+
+    def test_simulate_termination_mixed(self):
+        """First termination is invalid, second is valid — search recovers
+        and stops at the correct one.
+
+        The tree has an intermediate non-termination level so that
+        ``termination_encountered_fn`` can demonstrate constructing the
+        real proof from the tree (via ``traverse_to_root``) rather than
+        returning a hard-coded placeholder.
+
+        Tree structure::
+
+            Root
+            ├── A          (intermediate, higher score → selected first)
+            │   ├── TERM   (invalid → rejected)
+            │   └── TERM   (valid   → accepted, proof = "RootATERM")
+            └── B          (never reached)
+        """
+        root = Node("Root", termination_str="TERM")
+
+        def policy(node, method):
+            if node is root:
+                # Two intermediate branches — A gets the higher score
+                # so UCT selects it first.
+                path_a = Node(
+                    "A", parent=node, termination_str=node.termination_str
+                )
+                node.add_child(path_a)
+                path_b = Node(
+                    "B", parent=node, termination_str=node.termination_str
+                )
+                node.add_child(path_b)
+            else:
+                # Deeper level: two termination children under the
+                # selected intermediate node.
+                wrong = Node(
+                    text="TERM",
+                    parent=node,
+                    termination_str=node.termination_str,
+                )
+                node.add_child(wrong)
+                valid = Node(
+                    text="TERM",
+                    parent=node,
+                    termination_str=node.termination_str,
+                )
+                node.add_child(valid)
+
+        def evaluator(x, method):
+            # Higher score for the first child so UCT deterministically
+            # picks the invalid termination before the valid one.
+            return [0.9, 0.1]
+
+        call_count = 0
+
+        def termination_encountered_fn(node):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return None  # first termination is invalid
+            # Construct the real proof from the tree structure.
+            return mcts.traverse_to_root(node)
+
+        mcts = AlphaZeroMCTS(
+            root_node=None,
+            policy=policy,
+            evaluator=evaluator,
+        )
+        mcts.set_root_node(root)
+        mcts.simulate(
+            expansion_count=10,
+            termination_encountered_fn=termination_encountered_fn,
+        )
+
+        self.assertEqual(mcts.best_answer, "RootATERM")
+        self.assertEqual(
+            mcts.best_answer_reason, BestAnswerReason.CHECKED_AND_TRUE
+        )
+        self.assertEqual(call_count, 2)
+
+        save_tree_to_txt(
+            root_node=mcts.root_node,
+            output_path="tests/outputs/mcts_termination_mixed.txt",
+            selected_solution=mcts.best_answer,
+        )
+
 
 if __name__ == "__main__":
-    logger.remove(0)
-    logger.add(sys.stderr, level="TRACE")
     unittest.main()
