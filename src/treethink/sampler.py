@@ -347,7 +347,6 @@ class AsyncTreeThinkSampler:
             evaluator_args,
             prompter=self.prompter,
             language=self.treethink_args.language,
-            client_args=self.evaluator_args.client_args,
         )
 
         logger.success(
