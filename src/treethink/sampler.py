@@ -257,13 +257,6 @@ class TreeThinkSampler(SamplerBase):
             prompter=self.prompter,
             lora_path=self.lora_path,
             language=self.treethink_args.language,  # unified language
-            client_args=self.evaluator_args.client_args,
-        )
-        self.evaluator = get_evaluator_from_config(
-            self.evaluator_args,
-            prompter=self.prompter,
-            lora_path=self.lora_path,
-            language=self.treethink_args.language,  # unified language
         )
 
         # Build rollout evaluator if configured
