@@ -26,23 +26,26 @@ class RocqClient(ProofAssistantClient):
         self,
         host: str,
         port: int,
+        batch_size: int = 1,
     ) -> None:
         self.host = host
         self.port = port
-        self._pet: Optional["PytanqueExtended"] = None
+        self.batch_size = batch_size
+        self._pets: List[Optional["PytanqueExtended"]] = [None] * batch_size
 
     def close(self) -> None:
-        if self._pet is not None and hasattr(self._pet, "close"):
-            self._pet.close()
-        self._pet = None
+        for pet in self._pets:
+            if pet is not None and hasattr(pet, "close"):
+                pet.close()
+        self._pets = [None] * self.batch_size
 
-    def _ensure_client(self) -> "PytanqueExtended":
-        if self._pet is None:
+    def _ensure_client(self, idx: int = 0) -> "PytanqueExtended":
+        if self._pets[idx] is None:
             from rocq_ml_toolbox.inference.client import PytanqueExtended
 
-            self._pet = PytanqueExtended(self.host, self.port)
-            self._pet.connect()
-        return self._pet
+            self._pets[idx] = PytanqueExtended(self.host, self.port)
+            self._pets[idx].connect()
+        return self._pets[idx]
 
     def _split_commands(self, code: str) -> List[str]:
         commands: List[str] = []
@@ -182,8 +185,9 @@ class RocqClient(ProofAssistantClient):
         proof: str,
         *,
         timeout: Optional[float] = None,
+        _conn_idx: int = 0,
     ) -> dict[str, Any]:
-        pet = self._ensure_client()
+        pet = self._ensure_client(_conn_idx)
         theorem_name = self._parse_theorem_name(proof)
         tmp_path = pet.tmp_file(content=proof, root=None)
 
@@ -234,13 +238,46 @@ class RocqClient(ProofAssistantClient):
         batch_size: int = 8,
         max_workers: int = 4,
     ) -> CheckResponse:
-        results = [
-            SnippetResult(
-                response=self.verify_whole_proof(snip, timeout=timeout)
-            )
-            for snip in snips
+        if not snips:
+            return CheckResponse(results=[])
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        # Partition snips into groups; each group goes to one connection.
+        groups = [
+            snips[i : i + batch_size] for i in range(0, len(snips), batch_size)
         ]
-        return CheckResponse(results=results)
+        num_groups = len(groups)
+        num_workers = min(self.batch_size, num_groups)
+
+        def _process_group(
+            group: List[str], conn_idx: int
+        ) -> List[SnippetResult]:
+            return [
+                SnippetResult(
+                    response=self.verify_whole_proof(
+                        s, timeout=timeout, _conn_idx=conn_idx
+                    )
+                )
+                for s in group
+            ]
+
+        ordered_results: List[Optional[SnippetResult]] = [None] * len(snips)
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {}
+            for i, group in enumerate(groups):
+                conn_idx = i % self.batch_size
+                fut = executor.submit(_process_group, group, conn_idx)
+                futures[fut] = i
+
+            for fut in as_completed(futures):
+                group_idx = futures[fut]
+                start = group_idx * batch_size
+                for j, r in enumerate(fut.result()):
+                    ordered_results[start + j] = r
+
+        return CheckResponse(results=ordered_results)
 
     def is_success_response(self, response: dict[str, Any]) -> bool:
         return bool(response.get("proof_finished")) and not response.get(
@@ -251,18 +288,26 @@ class RocqClient(ProofAssistantClient):
 class AsyncRocqClient(AsyncProofAssistantClient):
     """Async wrapper around the synchronous :class:`RocqClient`.
 
-    Delegates proof verification to a sync ``RocqClient`` via
-    ``asyncio.to_thread`` so that the rest of TreeThink can treat Rocq
-    identically to Lean (which has a native async client).
-    Multiple snippets are verified concurrently with ``asyncio.gather``.
+    Holds a pre-initialised pool of ``RocqClient`` instances (each with
+    its own ``PytanqueExtended`` connection).  ``check()`` partitions
+    the input snippets into groups and assigns each group to a different
+    pooled client so that concurrent ``asyncio.to_thread`` calls do not
+    corrupt shared proof state.
     """
 
     def __init__(
         self,
         host: str = "127.0.0.1",
         port: int = 5000,
+        batch_size: int = 4,
     ) -> None:
-        self._sync_client = RocqClient(host=host, port=port)
+        self._host = host
+        self._port = port
+        self._batch_size = batch_size
+        self._pool: List[RocqClient] = [
+            RocqClient(host=host, port=port, batch_size=1)
+            for _ in range(batch_size)
+        ]
 
     async def check(
         self,
@@ -273,15 +318,40 @@ class AsyncRocqClient(AsyncProofAssistantClient):
         batch_size: int = 8,
         max_workers: int = 4,
     ) -> CheckResponse:
-        """Async batch-verify proof snippets via ``asyncio.gather``."""
-        coros = [
-            asyncio.to_thread(self._sync_client.verify_whole_proof, snip)
-            for snip in snips
+        """Async batch-verify proof snippets in parallel.
+
+        Partitions *snips* into groups of *batch_size* and verifies
+        each group on a different :class:`RocqClient` from the pool.
+        """
+        if not snips:
+            return CheckResponse(results=[])
+
+        # Partition snips into groups; each group goes to one connection.
+        groups = [
+            snips[i : i + batch_size] for i in range(0, len(snips), batch_size)
         ]
-        responses = await asyncio.gather(*coros)
-        return CheckResponse(
-            results=[SnippetResult(response=r) for r in responses]
-        )
+
+        async def _process_group(
+            group: List[str], conn_idx: int
+        ) -> List[SnippetResult]:
+            client = self._pool[conn_idx % self._batch_size]
+            results = []
+            for snip in group:
+                r = await asyncio.to_thread(
+                    client.verify_whole_proof, snip, timeout=timeout
+                )
+                results.append(SnippetResult(response=r))
+            return results
+
+        group_coros = [_process_group(groups[i], i) for i in range(len(groups))]
+        group_results = await asyncio.gather(*group_coros)
+
+        # Flatten, preserving order.
+        ordered_results = []
+        for gr in group_results:
+            ordered_results.extend(gr)
+
+        return CheckResponse(results=ordered_results)
 
     def is_success_response(self, response: dict[str, Any]) -> bool:
         return bool(response.get("proof_finished")) and not response.get(
@@ -289,4 +359,5 @@ class AsyncRocqClient(AsyncProofAssistantClient):
         )
 
     async def close(self) -> None:
-        self._sync_client.close()
+        for client in self._pool:
+            client.close()
