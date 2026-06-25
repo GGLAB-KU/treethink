@@ -150,39 +150,26 @@ class Node:
 
         return min_val, max_val
 
-    def print_node(self, f, i, root, st, solution=None, prev_colored=False):
+    def print_node(self, f, i, st, solution=None):
+        """Write the tree rooted at this node in graphviz DOT format.
+
+        Args:
+            f: File object to write to.
+            i: Indentation level.
+            st: String identifier for this node (e.g. ``"a"``, ``"a_0"``).
+            solution: If provided, nodes on the solution path are coloured
+                red.  Each node's text must match the corresponding prefix
+                of the solution string.
+        """
+
         def _escape(x):
             return json.dumps(x).strip('"')
 
-        # Explicit stack of frames for iterative DFS traversal.
-        # Each frame is a tuple:
-        #   ("node", node, i, st, solution, prev_colored)  → write node definition
-        #   ("edge", i, parent_st, child_st)               → write edge from parent to child
-        stack = [("node", self, i, st, solution, prev_colored)]
+        stack = [(self, i, st, solution)]
 
         while stack:
-            kind = stack.pop()
-
-            if kind[0] == "edge":
-                _, edge_i, parent_st, child_st = kind
-                f.write(" " * edge_i + parent_st + " -- " + child_st + "\n")
-                continue
-
-            # ── "node" frame ──────────────────────────────────────────────
-            _, node, node_i, node_st, node_solution, node_prev_colored = kind
-
-            # Compute diff text for non-root nodes
-            if node.parent is None:
-                text_content = node.text
-            else:
-                diff = "\n".join(
-                    [
-                        x
-                        for x in node.text.split("\n")
-                        if x not in node.parent.text.split("\n")
-                    ]
-                )
-                text_content = diff
+            node, node_i, node_st, node_solution = stack.pop()
+            text_content = node.text
 
             # Escape HTML-special characters
             text_content = (
@@ -202,53 +189,34 @@ class Node:
                 "</TABLE>>"
             )
 
-            # NOTE(burak): I have tried different colorings but single red color
-            # seems to be sufficient. If we change it to something else, we need
-            # to update default identifier arguments functions in graph.py
-            color = "red"
-            attr = "penwidth=2"
-
-            # Color this node if it lies on the solution path and the
-            # previous node was already coloured.
-            if (
+            # NOTE(burak): I have tried different colorings but single red
+            # color seems to be sufficient.  If we change it to something
+            # else, we need to update default identifier arguments
+            # functions in graph.py
+            on_path = (
                 node_solution is not None
                 and node_solution[: len(node.text)] == node.text
-                and node_prev_colored
-            ):
-                attr += f",color={color}"
-                new_prev_colored = True
-            else:
-                new_prev_colored = False
+            )
+            attr = "penwidth=2"
+            if on_path:
+                attr += ",color=red"
 
             f.write(
                 (" " * node_i) + f"{node_st} [label={label},shape=box,{attr}]\n"
             )
 
-            # Push child nodes and edges in reverse order so that the
-            # first child is processed first when popped from the stack.
+            # Push children in reverse order so the first child is
+            # processed first (LIFO stack).  Write edges immediately —
+            # DOT does not require a particular edge/node order.
             children = list(node.children)
             for idx in range(len(children) - 1, -1, -1):
                 child = children[idx]
                 child_st = node_st + "_" + str(idx)
                 child_solution = (
-                    None
-                    if node_solution is None
-                    else node_solution[len(node.text) :]
+                    None if not on_path else node_solution[len(node.text) :]
                 )
-                # Edge is pushed first but popped *after* the child's
-                # entire subtree because the child ("node" frame) sits
-                # on top.
-                stack.append(("edge", node_i, node_st, child_st))
-                stack.append(
-                    (
-                        "node",
-                        child,
-                        node_i + 2,
-                        child_st,
-                        child_solution,
-                        new_prev_colored,
-                    )
-                )
+                f.write(" " * node_i + node_st + " -- " + child_st + "\n")
+                stack.append((child, node_i + 2, child_st, child_solution))
 
     def most_visited_child(self) -> "Node":
         """
