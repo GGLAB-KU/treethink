@@ -279,8 +279,8 @@ class TreeThinkArgs(BaseArgs):
     rollout_evaluator_args: Optional["EvaluatorArgs"] = None
     rollout_max_tokens: int = 4096
     rollout_n: int = 1
-    rollout_temperature: float = None
-    rollout_top_p: float = None
+    rollout_temperature: Optional[float] = None
+    rollout_top_p: Optional[float] = None
 
     def build_repl_runtime(self):
         from treethink.repl_runtime import ReplRuntime
