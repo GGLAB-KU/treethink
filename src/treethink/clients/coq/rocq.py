@@ -4,6 +4,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from loguru import logger
+from tqdm import tqdm
 
 from ..base import (
     AsyncProofAssistantClient,
@@ -20,6 +21,23 @@ RocqSnippetResult = SnippetResult
 
 
 class RocqClient(ProofAssistantClient):
+    """Synchronous Rocq (Coq) proof-assistant client.
+
+    Maintains a pool of ``PytanqueExtended`` connections (one per slot
+    up to *batch_size*) so that :meth:`check` can verify multiple proofs
+    concurrently without sharing mutable REPL state across threads.
+
+    Parameters
+    ----------
+    host:
+        Rocq ML server host.
+    port:
+        Rocq ML server port.
+    batch_size:
+        Number of pre-allocated connection slots in the pool.
+        Defaults to 1 (single connection).
+    """
+
     backend_name = "rocq"
 
     def __init__(
@@ -34,6 +52,7 @@ class RocqClient(ProofAssistantClient):
         self._pets: List[Optional["PytanqueExtended"]] = [None] * batch_size
 
     def close(self) -> None:
+        """Close all pooled Pytanque connections and reset the pool."""
         for pet in self._pets:
             if pet is not None and hasattr(pet, "close"):
                 pet.close()
@@ -187,6 +206,25 @@ class RocqClient(ProofAssistantClient):
         timeout: Optional[float] = None,
         _conn_idx: int = 0,
     ) -> dict[str, Any]:
+        """Verify a complete Rocq proof string.
+
+        The proof is written to a temporary file, submitted to the
+        server, and stepped through command-by-command.
+
+        Parameters
+        ----------
+        proof:
+            A complete Rocq proof (``Theorem … Proof. … Qed.``).
+        timeout:
+            Per-command timeout in seconds.
+        _conn_idx:
+            Index into the connection pool (internal; defaults to 0).
+
+        Returns
+        -------
+        A dict with keys ``backend``, ``proof_finished``, ``error``,
+        and ``messages``.
+        """
         pet = self._ensure_client(_conn_idx)
         theorem_name = self._parse_theorem_name(proof)
         tmp_path = pet.tmp_file(content=proof, root=None)
@@ -238,6 +276,30 @@ class RocqClient(ProofAssistantClient):
         batch_size: int = 8,
         max_workers: int = 4,
     ) -> CheckResponse:
+        """Batch-verify one or more proof snippets.
+
+        Snippets are partitioned into groups of *batch_size*;
+        each group is verified on a separate pooled connection
+        via a thread-pool executor for concurrency.
+
+        Parameters
+        ----------
+        snips:
+            Proof strings to verify.
+        timeout:
+            Per-command timeout in seconds.
+        show_progress:
+            Whether to display a ``tqdm`` progress bar.
+        batch_size:
+            Number of snippets to send to each connection.
+        max_workers:
+            Ignored (the connection-pool size determines parallelism).
+
+        Returns
+        -------
+        A :class:`CheckResponse` with one :class:`SnippetResult` per
+        input snippet, in order.
+        """
         if not snips:
             return CheckResponse(results=[])
 
@@ -271,15 +333,24 @@ class RocqClient(ProofAssistantClient):
                 fut = executor.submit(_process_group, group, conn_idx)
                 futures[fut] = i
 
+            pbar = tqdm(
+                total=len(snips),
+                desc="Verifying proofs",
+                disable=not show_progress,
+            )
             for fut in as_completed(futures):
                 group_idx = futures[fut]
                 start = group_idx * batch_size
-                for j, r in enumerate(fut.result()):
+                results = fut.result()
+                pbar.update(len(results))
+                for j, r in enumerate(results):
                     ordered_results[start + j] = r
+            pbar.close()
 
         return CheckResponse(results=ordered_results)
 
     def is_success_response(self, response: dict[str, Any]) -> bool:
+        """Return ``True`` when *response* indicates a fully-verified proof."""
         return bool(response.get("proof_finished")) and not response.get(
             "error"
         )
@@ -301,6 +372,20 @@ class AsyncRocqClient(AsyncProofAssistantClient):
         port: int = 5000,
         batch_size: int = 4,
     ) -> None:
+        """Initialise the connection pool.
+
+        Creates *batch_size* internal :class:`RocqClient` instances,
+        each with its own ``PytanqueExtended`` connection.
+
+        Parameters
+        ----------
+        host:
+            Rocq ML server host.
+        port:
+            Rocq ML server port.
+        batch_size:
+            Number of connections in the pool.
+        """
         self._host = host
         self._port = port
         self._batch_size = batch_size
@@ -344,7 +429,15 @@ class AsyncRocqClient(AsyncProofAssistantClient):
             return results
 
         group_coros = [_process_group(groups[i], i) for i in range(len(groups))]
-        group_results = await asyncio.gather(*group_coros)
+
+        from tqdm.asyncio import tqdm_asyncio
+
+        if show_progress:
+            group_results = await tqdm_asyncio.gather(
+                *group_coros, desc="Verifying proofs"
+            )
+        else:
+            group_results = await asyncio.gather(*group_coros)
 
         # Flatten, preserving order.
         ordered_results = []
@@ -354,10 +447,12 @@ class AsyncRocqClient(AsyncProofAssistantClient):
         return CheckResponse(results=ordered_results)
 
     def is_success_response(self, response: dict[str, Any]) -> bool:
+        """Return ``True`` when *response* indicates a fully-verified proof."""
         return bool(response.get("proof_finished")) and not response.get(
             "error"
         )
 
     async def close(self) -> None:
+        """Close all pooled :class:`RocqClient` instances."""
         for client in self._pool:
             client.close()
