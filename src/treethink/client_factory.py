@@ -31,6 +31,7 @@ def _create_raw_client(
             return RocqClient(
                 host=client_args.host or "127.0.0.1",
                 port=client_args.port or 5000,
+                batch_size=client_args.batch_size,
             )
         case FormalLanguage.ISABELLE:
             from .clients.isabelle.client import IsabelleClient
@@ -63,6 +64,7 @@ def _create_raw_async_client(
             return AsyncRocqClient(
                 host=client_args.host or "127.0.0.1",
                 port=client_args.port or 5000,
+                batch_size=client_args.batch_size,
             )
         case FormalLanguage.ISABELLE:
             raise NotImplementedError(
