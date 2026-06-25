@@ -107,14 +107,27 @@ METHODS: List[str] = [m.value for m in MethodType]
 METHOD_TYPE = TypeVar("METHOD_TYPE", bound=BaseMethod)
 
 
-def get_method(treethink_config, root_node, policy, evaluator):
-    """Instantiate a method from config using :class:`MethodType`."""
+def get_method(
+    treethink_config, root_node, policy, evaluator, rollout_evaluator=None
+):
+    """Instantiate a method from config using :class:`MethodType`.
+
+    Args:
+        treethink_config: :class:`TreeThinkArgs` instance.
+        root_node: Root node for the search tree.
+        policy: Policy callable for generating child nodes.
+        evaluator: Main evaluator callable for node scoring.
+        rollout_evaluator: Optional rollout evaluator callable for
+            :class:`TraditionalMCTS`.  Built from
+            ``treethink_config.rollout_evaluator_args`` by the sampler.
+    """
     try:
         method_type = MethodType.from_str(treethink_config.method_name)
         return method_type.initialize(
             root_node=root_node,
             policy=policy,
             evaluator=evaluator,
+            rollout_evaluator=rollout_evaluator,
             **treethink_config,
         )
     except (ValueError, KeyError):
