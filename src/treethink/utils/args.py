@@ -427,14 +427,14 @@ class EvaluatorArgs(BaseArgs):
             :data:`IMPLEMENTED_EVALUATORS` (sync) or
             :data:`ASYNC_IMPLEMENTED_EVALUATORS` (async).
             Common values: ``"cumulative_logprob_evaluator"``,
-            ``"lean_repl_evaluator"``, ``"llm_as_judge_evaluator"``,
+            ``"repl_evaluator"``, ``"llm_as_judge_evaluator"``,
             ``"norm_len_evaluator"``.
             When using ``--async``, sync names are auto-converted
-            (e.g. ``"lean_repl_evaluator"`` →
-            ``"async_lean_repl_evaluator"``).
+            (e.g. ``"repl_evaluator"`` →
+            ``"async_repl_evaluator"``).
         client_args:
             Arguments for the proof-assistant REPL client.  Required when
-            *func_name* involves REPL verification (``lean_repl_evaluator``,
+            *func_name* involves REPL verification (``repl_evaluator``,
             ``llm_as_judge_evaluator``).  See :class:`ClientArgs`.
         length_norm:
             Exponent for length-normalised scoring.  The raw score is

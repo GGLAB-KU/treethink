@@ -256,6 +256,13 @@ class TreeThinkSampler(SamplerBase):
             self.evaluator_args,
             prompter=self.prompter,
             lora_path=self.lora_path,
+            language=self.treethink_args.language,  # unified language
+            client_args=self.evaluator_args.client_args,
+        self.evaluator = get_evaluator_from_config(
+            self.evaluator_args,
+            prompter=self.prompter,
+            lora_path=self.lora_path,
+            language=self.treethink_args.language,  # unified language
         )
         self.method = get_method(
             treethink_config=self.treethink_args,
@@ -339,6 +346,7 @@ class AsyncTreeThinkSampler:
         self.shared_evaluator = get_async_evaluator_from_config(
             evaluator_args,
             prompter=self.prompter,
+            language=self.treethink_args.language,
         )
 
         logger.success(

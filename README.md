@@ -92,7 +92,7 @@ Evaluators assign scores to guide the search toward promising branches.
 | Evaluator | Description |
 |-----------|-------------|
 | `cumulative_logprob_evaluator` | Cumulative log-probability from the LLM |
-| `lean_repl_evaluator` | REPL verification via Kimina server (0/1) |
+| `repl_evaluator` | REPL verification via formal language servers (binary feedback) |
 | `llm_as_judge_evaluator` | Secondary LLM judge scores proof quality |
 | `pairwise_tournament_evaluator` | Single-elimination tournament between siblings |
 | `normalized_lengths_evaluator` | BFS-Prover: logprob / L^alpha |

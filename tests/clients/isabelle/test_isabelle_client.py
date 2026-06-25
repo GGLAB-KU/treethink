@@ -58,6 +58,34 @@ def test_empty_snips(client):
     assert resp.results == []
 
 
+def test_extract_proof_state_on_failure(client):
+    # `apply (rule refl)` cannot solve this goal → Isabelle reports the
+    # remaining goal inside the failure message.
+    proof = 'lemma demo: "rev (rev xs) = xs"\n  apply (rule refl)\n  done'
+    resp = client.check(snips=[proof]).results[0].response
+    assert client.is_success_response(resp) is False
+
+    info = client.extract_proof_state(proof, response=resp)
+    assert info.error_message
+    assert info.open_goals and "rev (rev xs) = xs" in info.open_goals
+
+
+def test_extract_proof_state_on_success(client):
+    proof = 'lemma demo: "(1::nat) + 1 = 2"\n  by simp'
+    resp = client.check(snips=[proof]).results[0].response
+
+    info = client.extract_proof_state(proof, response=resp)
+    assert info.error_message is None
+    assert info.open_goals == ""
+
+
+def test_extract_proof_state_reverifies_when_no_response(client):
+    proof = 'lemma demo: "(1::nat) + 1 = 2"\n  by simp'
+    # response omitted → client re-verifies internally
+    info = client.extract_proof_state(proof)
+    assert info.error_message is None
+
+
 def test_factory_creates_isabelle_client():
     """create_client routes FormalLanguage.ISABELLE to a working client."""
     from treethink.client_factory import create_client

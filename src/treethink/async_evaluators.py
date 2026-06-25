@@ -9,6 +9,7 @@ operations like REPL verification and LLM-as-judge scoring.
 import asyncio
 import math
 import os
+import re
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Callable, List, Optional, Tuple, Union
@@ -22,7 +23,8 @@ except ImportError:
     AsyncEngineArgs = None
     AsyncLLMEngine = None
 
-from treethink.clients.cache import AsyncCachedClient, ProofCache
+from treethink.client_factory import create_async_client
+from treethink.clients.cache import ProofCache
 from treethink.evaluators import (
     LLM_AS_JUDGE_SYSTEM_PROMPT,
     LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
@@ -39,6 +41,10 @@ from treethink.utils import (
     calculate_logprobs,
     extract_result,
 )
+from treethink.utils.enums import FormalLanguage
+
+# Language-agnostic regex: captures content inside any ```<lang>\n...\n``` fence
+_RE_PROOF_FENCE = re.compile(r"```(?:\w+|\n)\s*((?:.|\n)*?)```")
 
 
 class AsyncBaseEvaluator(ABC):
@@ -79,34 +85,29 @@ class AsyncBaseEvaluator(ABC):
         pass
 
 
-class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
-    """Async version of Lean REPL Node Evaluator.
+class AsyncREPLEvaluator(AsyncBaseEvaluator):
+    """Async version of REPL Node Evaluator.
 
-    Uses :class:`AsyncLeanClientAdapter` for parallel proof verification.
-    If *cache* is provided the client is wrapped with :class:`AsyncCachedClient`.
+    Uses :func:`create_async_client` to build the language-appropriate
+    async client (defaults to Lean 4).  If *cache* is provided the client
+    is wrapped with :class:`AsyncCachedClient`.
     """
 
     def __init__(
         self,
         client_args: Optional[ClientArgs] = None,
         cache: Optional[ProofCache] = None,
+        language: FormalLanguage = FormalLanguage.LEAN4,
         *args,
         **kwargs,
     ):
-        super().__init__(name="async_lean_repl_evaluator", *args, **kwargs)
+        super().__init__(name="async_repl_evaluator", *args, **kwargs)
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
-
-        from treethink.clients.lean.adapter import AsyncLeanClientAdapter
-
-        raw = AsyncLeanClientAdapter(
-            lean_server_url=(
-                client_args.lean_server_url or "http://localhost:8000"
-            ),
-        )
-        self.async_client = (
-            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
+        self.language = language
+        self.async_client = create_async_client(
+            language, client_args, cache=cache
         )
 
     async def __call__(
@@ -148,17 +149,22 @@ class AsyncLeanREPLEvaluator(AsyncBaseEvaluator):
             return scores
 
         except Exception as e:
-            logger.error(f"Async Lean REPL evaluation failed: {e}")
+            logger.error(f"Async REPL evaluation failed: {e}")
             return [0.0] * len(nodes)
 
     def _str_fields(self):
         return super()._str_fields() + [
             ("client_args", self.client_args),
+            ("language", self.language),
         ]
 
 
 class AsyncJudgeEvaluator(AsyncBaseEvaluator):
-    """Async version of LLM-as-Judge Evaluator."""
+    """Async version of LLM-as-Judge Evaluator.
+
+    Language-agnostic: uses :func:`create_async_client` to build the
+    proof-assistant client (defaults to Lean 4).
+    """
 
     def __init__(
         self,
@@ -168,6 +174,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
+        language: FormalLanguage = FormalLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -175,18 +182,12 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         if client_args is None:
             client_args = ClientArgs()
         self.client_args = client_args
+        self.language = language
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Async Lean Client (optionally cached)
-        from treethink.clients.lean.adapter import AsyncLeanClientAdapter
-
-        raw = AsyncLeanClientAdapter(
-            lean_server_url=(
-                client_args.lean_server_url or "http://localhost:8000"
-            ),
-        )
-        self.async_lean_client = (
-            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
+        # Language-agnostic async proof-assistant client
+        self.async_client = create_async_client(
+            language, client_args, cache=cache
         )
 
         # Initialize Model (AsyncLLMEngine)
@@ -219,15 +220,17 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         current_goals: Optional[str] = None,
         applied_tactic: Optional[str] = None,
         solved_goals: Optional[str] = None,
-        error_message_from_lean: Optional[str] = None,
+        error_message: Optional[str] = None,
     ):
         prompt = f"Here you can see the proof so far, the applied tactic, the open goals, and the solved goals.  Depends on these information, you should judge the quality of the tactic application. # Proof So Far:\n{proof_so_far}\n"
         prompt += f"# Applied Tactic:\n{applied_tactic}\n"
         prompt += f"# Open Goals:\n{current_goals}\n"
         prompt += f"# Solved Goals:\n{solved_goals}\n"
         prompt += "If goals are not provided, you should judge the quality of the tactic application based on the proof so far. Put your score in \\boxed{}. "
-        if error_message_from_lean:
-            prompt += f"# Error Message from Lean:\n{error_message_from_lean}\n"
+        if error_message:
+            prompt += (
+                f"# Error Message from the Proof Assistant:\n{error_message}\n"
+            )
 
         messages = [
             {"role": "system", "content": self.system_prompt},
@@ -270,17 +273,18 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         await asyncio.gather(*tasks)
         return results
 
-    def parse_proof(self, proof: str):
-        # Same as sync
-        start = proof.find("import Mathlib")
-        end = proof.find("```", start)
-        if end == -1 and start == -1:
-            res = proof
-        elif end == -1:
-            res = proof[start:]
-        else:
-            res = proof[start:end]
-        return res
+    def parse_proof(self, proof: str, pattern=None) -> str:
+        """Extract proof content from code-fence delimiters.
+
+        Uses a language-agnostic regex that captures the content inside
+        any ```<lang>\\n...\\n``` fence.  Falls back to the raw proof
+        string if no fence is found.
+        """
+        pattern = pattern or _RE_PROOF_FENCE
+        matches = re.findall(pattern, proof)
+        if not matches:
+            return proof
+        return matches[-1]
 
     async def __call__(
         self, nodes: Union[Node, List[Node]], method: BaseMethod
@@ -301,55 +305,33 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
             snips.append(parsed_proof)
 
         try:
-            response = await self.async_lean_client.check(
+            response = await self.async_client.check(
                 snips=snips,
                 timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
-            logger.error(f"Async Lean check failed: {e}")
+            logger.error(f"Async REPL check failed: {e}")
             response = None
 
         # 2. Prepare Prompts
         prompts = []
         for i, node in enumerate(nodes):
-            infotree = None
-            result_obj = None
+            # Extract proof state via the language-agnostic client interface
+            result_response = (
+                response.results[i].response
+                if response and getattr(response, "results", None)
+                else None
+            )
+            proof_state = self.async_client.extract_proof_state(
+                proof_string=snips[i],
+                response=result_response,
+            )
 
-            if response and getattr(response, "results", None):
-                result_obj = response.results[i]
-                infotree = (
-                    result_obj.response.get("infotree")
-                    if result_obj.response
-                    else None
-                )
-
-            if infotree:
-                from treethink.clients.lean import (
-                    extract_data,
-                    split_proof_header,
-                )
-
-                header, body = split_proof_header(snips[i])
-                intervals = extract_data(infotree, body)
-                current_goals = (
-                    intervals[-1]["goalsAfter"] if intervals else None
-                )
-                applied_tactic = intervals[-1]["tactic"] if intervals else None
-                solved_goals = (
-                    intervals[-1]["goalsBefore"] if intervals else None
-                )
-                error_msg = None
-            else:
-                current_goals = None
-                applied_tactic = None
-                solved_goals = None
-                error_msg = (
-                    result_obj.response.get("error")
-                    if result_obj and result_obj.response
-                    else None
-                )
-                logger.warning(f"No infotree for node {i}: {error_msg}")
+            current_goals = proof_state.open_goals
+            applied_tactic = proof_state.applied_tactic
+            solved_goals = proof_state.closed_goals
+            error_msg = proof_state.error_message
 
             judge_prompt = self._prepare_judge_messages(
                 snips[i],
@@ -399,6 +381,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
             ("model", self.model.__class__.__name__),
             ("sampling_params", self.sampling_params),
             ("client_args", self.client_args),
+            ("language", self.language),
             ("system_prompt", self.system_prompt),
         ]
 
@@ -546,8 +529,8 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
     pairwise among siblings.  Losers are scored by their elimination round,
     and the winner receives the highest score.  All scores normalized to [0, 1].
 
-    Uses :class:`AsyncLeanClientAdapter` for parallel Lean REPL checks and
-    :class:`AsyncLLMEngine` for batch judge LLM generation.
+    Language-agnostic: uses :func:`create_async_client` to build the
+    proof-assistant client (defaults to Lean 4).
     """
 
     def __init__(
@@ -559,6 +542,7 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
         prompter: Optional[Callable] = None,
         shuffle_bracket: bool = True,
+        language: FormalLanguage = FormalLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -569,18 +553,12 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
             client_args = ClientArgs()
         self.client_args = client_args
         self.shuffle_bracket = shuffle_bracket
+        self.language = language
         self.system_prompt = llm_as_judge_system_prompt
 
-        # Async Lean Client (optionally cached)
-        from treethink.clients.lean.adapter import AsyncLeanClientAdapter
-
-        raw = AsyncLeanClientAdapter(
-            lean_server_url=(
-                client_args.lean_server_url or "http://localhost:8000"
-            ),
-        )
-        self.async_lean_client = (
-            AsyncCachedClient(raw, cache=cache) if cache is not None else raw
+        # Language-agnostic async proof-assistant client
+        self.async_client = create_async_client(
+            language, client_args, cache=cache
         )
 
         # Initialize Model (AsyncLLMEngine)
@@ -614,10 +592,11 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
         info_b: Optional[dict] = None,
     ):
         """Create a prompt for LLM to judge between two proofs."""
+        lang_tag = self.language.value
         prompt = "You are comparing two proof attempts. Choose which one is better.\n\n"
 
         prompt += "# Proof A:\n"
-        prompt += f"```lean\n{proof_a}\n```\n"
+        prompt += f"```{lang_tag}\n{proof_a}\n```\n"
         if info_a:
             if info_a.get("applied_tactic"):
                 prompt += f"Applied Tactic: {info_a['applied_tactic']}\n"
@@ -629,7 +608,7 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
                 prompt += f"Error: {info_a['error_message']}\n"
 
         prompt += "\n# Proof B:\n"
-        prompt += f"```lean\n{proof_b}\n```\n"
+        prompt += f"```{lang_tag}\n{proof_b}\n```\n"
         if info_b:
             if info_b.get("applied_tactic"):
                 prompt += f"Applied Tactic: {info_b['applied_tactic']}\n"
@@ -653,41 +632,30 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
             result = "\n".join([m["content"] for m in messages])
             return result
 
-    def _extract_lean_info(
+    def _extract_proof_info(
         self, snip: str, response, result_idx: int
     ) -> Optional[dict]:
-        """Extract tactic and goal information from Lean REPL response."""
+        """Extract tactic and goal information from the proof-assistant response."""
         if not response or not getattr(response, "results", None):
             return None
 
         result_obj = response.results[result_idx]
-        infotree = (
-            result_obj.response.get("infotree", None)
-            if result_obj.response
-            else None
+        proof_state = self.async_client.extract_proof_state(
+            proof_string=snip,
+            response=result_obj.response,
         )
 
-        if not infotree:
-            error_message = (
-                result_obj.response.get("error", None)
-                if result_obj.response
-                else None
-            )
-            return {"error_message": error_message} if error_message else None
+        info = {}
+        if proof_state.applied_tactic is not None:
+            info["applied_tactic"] = proof_state.applied_tactic
+        if proof_state.open_goals is not None:
+            info["current_goals"] = proof_state.open_goals
+        if proof_state.closed_goals is not None:
+            info["solved_goals"] = proof_state.closed_goals
+        if proof_state.error_message is not None:
+            info["error_message"] = proof_state.error_message
 
-        try:
-            from treethink.clients.lean import extract_data, split_proof_header
-
-            header, body = split_proof_header(snip)
-            intervals = extract_data(infotree, body)
-            return {
-                "applied_tactic": intervals[-1]["tactic"],
-                "current_goals": intervals[-1]["goalsAfter"],
-                "solved_goals": intervals[-1]["goalsBefore"],
-            }
-        except Exception as e:
-            logger.warning(f"Failed to extract info from infotree: {e}")
-            return None
+        return info if info else None
 
     def parse_proof(self, proof: str):
         start = proof.find("import Mathlib")
@@ -704,7 +672,7 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
         nodes: List[Node],
         method: BaseMethod,
         snips: List[str],
-        lean_infos: List[Optional[dict]],
+        proof_infos: List[Optional[dict]],
     ) -> List[int]:
         """Compare pairs of nodes in batch and return winner indices."""
         if not pairs:
@@ -719,8 +687,8 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
             message = self._prepare_pairwise_judge_messages(
                 snips[idx_a],
                 snips[idx_b],
-                lean_infos[idx_a],
-                lean_infos[idx_b],
+                proof_infos[idx_a],
+                proof_infos[idx_b],
             )
             messages.append(message)
 
@@ -797,20 +765,20 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
 
         # Get Lean info for all proofs in batch
         try:
-            response = await self.async_lean_client.check(
+            response = await self.async_client.check(
                 snips=snips,
                 timeout=self.client_args.timeout,
                 show_progress=False,
             )
         except Exception as e:
-            logger.error(f"Async Lean check failed: {e}")
+            logger.error(f"Async REPL check failed: {e}")
             response = None
 
-        # Extract info for all nodes
-        lean_infos = []
+        # Extract proof-state info for all nodes
+        proof_infos = []
         for i in range(n):
-            info = self._extract_lean_info(snips[i], response, i)
-            lean_infos.append(info)
+            info = self._extract_proof_info(snips[i], response, i)
+            proof_infos.append(info)
 
         # Initialize bracket
         bracket_indices = list(range(n))
@@ -851,7 +819,7 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
 
             if valid_pairs:
                 winners_from_comparison = await self._batch_compare_pairs(
-                    valid_pairs, node, method, snips, lean_infos
+                    valid_pairs, node, method, snips, proof_infos
                 )
             else:
                 winners_from_comparison = []
@@ -894,68 +862,9 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
             ("model", self.model.__class__.__name__),
             ("sampling_params", self.sampling_params),
             ("client_args", self.client_args),
+            ("language", self.language),
             ("shuffle_bracket", self.shuffle_bracket),
             ("system_prompt", self.system_prompt),
-        ]
-
-
-class AsyncRocqEvaluator(AsyncBaseEvaluator):
-    """Async evaluation of whole Rocq proofs via rocq-ml-server.
-
-    Wraps the synchronous :class:`RocqClient` using ``asyncio.to_thread``.
-    Returns 1.0 if the proof closes, 0.0 otherwise.
-    """
-
-    def __init__(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 5000,
-        timeout: Optional[float] = 5.0,
-    ) -> None:
-        self.host = host
-        self.port = port
-        self.timeout = timeout
-
-        from treethink.clients.coq.rocq import RocqClient
-
-        self._client = RocqClient(
-            host=self.host,
-            port=self.port,
-        )
-
-        super().__init__(name="async_rocq_evaluator")
-
-    async def __call__(
-        self, code: Union[str, List[str]]
-    ) -> Union[float, List[float]]:
-        snippets = [code] if isinstance(code, str) else code
-        results: List[float] = []
-
-        for snippet in snippets:
-            response = await asyncio.to_thread(
-                self._client.verify_whole_proof, snippet
-            )
-            results.append(1.0 if response.get("proof_finished") else 0.0)
-
-        return results[0] if isinstance(code, str) else results
-
-    def close(self) -> None:
-        self._client.close()
-
-    def __enter__(self) -> "AsyncRocqEvaluator":
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.close()
-
-    def __del__(self) -> None:
-        self.close()
-
-    def _str_fields(self):
-        return super()._str_fields() + [
-            ("host", self.host),
-            ("port", self.port),
-            ("timeout", self.timeout),
         ]
 
 
@@ -1051,13 +960,12 @@ class AsyncStateLevelRewardEvaluator(_AsyncRewardModelEvaluator):
 
 
 class AsyncEvaluatorType(Enum):
-    ASYNC_LEAN_REPL = AsyncLeanREPLEvaluator
+    ASYNC_REPL = AsyncREPLEvaluator
     ASYNC_LLM_AS_JUDGE = AsyncJudgeEvaluator
     ASYNC_NORMALIZED_LENGTHS = AsyncNormLenEvaluator
     ASYNC_CUMULATIVE_LOGPROB = AsyncCumulativeLogprobEvaluator
     ASYNC_TOURNAMENT = AsyncTournamentEvaluator
     ASYNC_NORMALIZED_LENGTHS_PROBS = AsyncNormLenProbEvaluator
-    ASYNC_ROCQ = AsyncRocqEvaluator
     ASYNC_RMAXTS = AsyncRMaxTSEvaluator
     ASYNC_PROOF_LEVEL_REWARD = AsyncProofLevelRewardEvaluator
     ASYNC_STATE_LEVEL_REWARD = AsyncStateLevelRewardEvaluator
