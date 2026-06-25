@@ -42,7 +42,9 @@ class ClientArgs(BaseArgs):
     used at runtime; the rest are quietly ignored.
 
     Common fields:
-        batch_size (int): Batch size for verification requests. Default 8.
+        batch_size (int): Number of pre-initialised Pytanque connections
+            for concurrent proof verification (Rocq only; Lean uses its
+            own internal pool). Default 8.
         num_proc (int): Number of parallel workers. Default 4.
         timeout (int): Per-request timeout in seconds. Default 400.
 
