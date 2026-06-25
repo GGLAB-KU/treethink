@@ -242,9 +242,10 @@ class TreeThinkArgs(BaseArgs):
             when > 1.  Defaults to 1.
         rollout_temperature:
             Sampling temperature for rollout generation.
-            Defaults to 0.8.
+            Defaults to ``None`` (reuse the policy's sampling temperature).
         rollout_top_p:
-            ``top_p`` for rollout generation.  Defaults to 1.0.
+            ``top_p`` for rollout generation.  Defaults to ``None``
+            (reuse the policy's ``top_p``).
     """
 
     method_name: str = "AlphaZeroMCTS"
