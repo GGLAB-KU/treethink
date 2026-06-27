@@ -155,8 +155,6 @@ class AlphaZeroMCTS(BaseMethod):
                     self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
-                # NOTE(burak): this part may require further investigation...
-
                 # If the proof is wrong, only update the visits...
                 current_node.win_value = 0.0
                 self._backpropagate_node_win_value(current_node)
@@ -319,7 +317,15 @@ class AsyncAlphaZeroMCTS(AlphaZeroMCTS):
                     self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
+                # If the proof is wrong, only update the visits...
+                current_node.win_value = 0.0
+                self._backpropagate_node_win_value(current_node)
+
+                # ...and set node's win_value to -inf to avoid selecting it again.
                 current_node.win_value = float("-inf")
+
+                # do not even check for expandability, continue selecting other
+                continue
 
             if current_node.is_expandable:
                 try:
