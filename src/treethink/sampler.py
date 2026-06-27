@@ -293,6 +293,7 @@ class TreeThinkSampler(SamplerBase):
                 datapoint.get("id")
                 or datapoint.get("problem_id")
                 or datapoint.get("custom_id")
+                or datapoint.get("name")
             )
             response = self.model.generate(
                 prompts=prompt, problem_id=problem_id
@@ -403,7 +404,11 @@ class AsyncTreeThinkSampler:
         skip_if_exists: bool,
     ) -> dict:
         problem_id = (
-            datapoint.get("id") or datapoint.get("problem_id") or "unknown"
+            datapoint.get("id")
+            or datapoint.get("problem_id")
+            or datapoint.get("custom_id")
+            or datapoint.get("name")
+            or "unknown"
         )
 
         try:
