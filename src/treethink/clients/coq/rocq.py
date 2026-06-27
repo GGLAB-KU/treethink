@@ -156,6 +156,7 @@ class RocqClient(ProofAssistantClient):
                 "Example, Fact, Remark."
             )
             return ""
+        logger.trace(f"Found theorem: {matches[-1]}")
         return matches[-1]
 
     def _extract_proof_commands(self, code: str) -> List[str]:
@@ -251,7 +252,7 @@ class RocqClient(ProofAssistantClient):
                 "messages": list(getattr(state, "feedback", []) or []),
             }
         except PetanqueError as exc:
-            logger.error(f"Rocq evaluation | PetanqueError: {exc}")
+            logger.error(f"Theorem: {theorem_name} | PetanqueError: {exc}")
             return {
                 "backend": self.backend_name,
                 "proof_finished": False,
@@ -259,7 +260,7 @@ class RocqClient(ProofAssistantClient):
                 "messages": [],
             }
         except Exception as exc:
-            logger.error(f"Unexpected Rocq evaluation: {exc}")
+            logger.error(f"Unexpected: {exc}")
             return {
                 "backend": self.backend_name,
                 "proof_finished": False,
