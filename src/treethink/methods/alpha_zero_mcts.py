@@ -150,14 +150,20 @@ class AlphaZeroMCTS(BaseMethod):
                 logger.trace(f"Termination node encountered: {current_node}")
                 answer = termination_encountered_fn(current_node)
                 termination_checked_nodes.append(id(current_node))
-                if answer:
+                if answer is not None:
                     self.best_answer = answer
                     self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
-                # If the proof is wrong, set node's win_value to -inf to avoid
-                # selecting it again.
+                # If the proof is wrong, only update the visits...
+                current_node.win_value = 0.0
+                self._backpropagate_node_win_value(current_node)
+
+                # ...and set node's win_value to -inf to avoid selecting it again.
                 current_node.win_value = float("-inf")
+
+                # do not even check for expandability, continue selecting other
+                continue
 
             # Expansion logic
             if current_node.is_expandable:
@@ -206,8 +212,13 @@ class AlphaZeroMCTS(BaseMethod):
         return self.traverse_to_root(node, include_root=True)
 
     def _backpropagate_node_win_value(self, node: Node):
-        """Propagate win_value and visits from *parent* of ``node`` to root."""
+        """Propagate win_value and visits from ``node`` up to the root.
+
+        Both ``node`` and every ancestor receive +1 visit.  Every
+        ancestor also gets ``node.win_value`` added to its ``win_value``.
+        """
         val = node.win_value
+        node.visits += 1
 
         while node.parent is not None:
             # start updating from parent as we don't want node to be updated
@@ -306,7 +317,15 @@ class AsyncAlphaZeroMCTS(AlphaZeroMCTS):
                     self.best_answer_reason = BestAnswerReason.CHECKED_AND_TRUE
                     break
 
+                # If the proof is wrong, only update the visits...
+                current_node.win_value = 0.0
+                self._backpropagate_node_win_value(current_node)
+
+                # ...and set node's win_value to -inf to avoid selecting it again.
                 current_node.win_value = float("-inf")
+
+                # do not even check for expandability, continue selecting other
+                continue
 
             if current_node.is_expandable:
                 try:

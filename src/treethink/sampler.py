@@ -257,12 +257,6 @@ class TreeThinkSampler(SamplerBase):
             prompter=self.prompter,
             lora_path=self.lora_path,
             language=self.treethink_args.language,  # unified language
-            client_args=self.evaluator_args.client_args,
-        self.evaluator = get_evaluator_from_config(
-            self.evaluator_args,
-            prompter=self.prompter,
-            lora_path=self.lora_path,
-            language=self.treethink_args.language,  # unified language
         )
 
         # Build rollout evaluator if configured
@@ -299,6 +293,7 @@ class TreeThinkSampler(SamplerBase):
                 datapoint.get("id")
                 or datapoint.get("problem_id")
                 or datapoint.get("custom_id")
+                or datapoint.get("name")
             )
             response = self.model.generate(
                 prompts=prompt, problem_id=problem_id
@@ -409,7 +404,11 @@ class AsyncTreeThinkSampler:
         skip_if_exists: bool,
     ) -> dict:
         problem_id = (
-            datapoint.get("id") or datapoint.get("problem_id") or "unknown"
+            datapoint.get("id")
+            or datapoint.get("problem_id")
+            or datapoint.get("custom_id")
+            or datapoint.get("name")
+            or "unknown"
         )
 
         try:
