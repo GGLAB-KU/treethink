@@ -12,19 +12,29 @@ successful when its theory finishes with no ``error`` messages.
 """
 
 import os
+import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, List, Optional, Tuple
 
 from loguru import logger
 
-from ..base import CheckResponse, ProofAssistantClient, SnippetResult
+from ..base import (
+    CheckResponse,
+    ProofAssistantClient,
+    ProofStateInfo,
+    SnippetResult,
+)
 
 # Back-compat aliases — Isabelle now returns the shared client result types.
 # Each ``SnippetResult.response`` is a dict
 # ``{"ok": bool, "errors": List[str], "theory": Optional[str]}``.
 IsabelleSnippetResult = SnippetResult
 IsabelleCheckResponse = CheckResponse
+
+# Isabelle embeds the remaining goal state inside failure messages, e.g.
+# ``Failed to apply proof method:\ngoal (1 subgoal):\n 1. ...``.
+_GOAL_BLOCK_RE = re.compile(r"goal\s*\(\d+\s+subgoal[s]?\):.*", re.DOTALL)
 
 
 class IsabelleClient(ProofAssistantClient):
@@ -185,6 +195,77 @@ class IsabelleClient(ProofAssistantClient):
         if isinstance(response, dict):
             return bool(response.get("ok"))
         return bool(getattr(response, "ok", False))
+
+    # ------------------------------------------------------------------
+    # Proof-state extraction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _clean_markup(text: str) -> str:
+        """Drop Isabelle's position marker; keep math notation intact."""
+        return text.replace("\\<^here>", "").strip()
+
+    @staticmethod
+    def _last_proof_step(snippet: str) -> Optional[str]:
+        """Best-effort applied tactic: the last non-empty line of the body."""
+        for line in reversed(snippet.splitlines()):
+            stripped = line.strip()
+            if stripped:
+                return stripped
+        return None
+
+    def extract_proof_state(
+        self,
+        proof_string: str,
+        response: Any = None,
+    ) -> ProofStateInfo:
+        """Extract tactic / goal / error info from an Isabelle proof.
+
+        Isabelle's batch ``use_theories`` API does not expose intermediate
+        goal states on success, but its **failure** messages embed the
+        remaining goal (``goal (N subgoals): ...``).  So this is
+        error-focused: on failure it returns the failing ``error_message``
+        and the ``open_goals`` parsed from it; ``applied_tactic`` is the last
+        proof step of *proof_string*.  ``closed_goals`` is not derivable from
+        this API and is left ``None``.
+
+        ``response`` is the per-snippet dict from :meth:`check`
+        (``{"ok", "errors", "theory"}``); if not given, the proof is
+        re-verified.
+        """
+        if isinstance(response, dict):
+            errors = response.get("errors") or []
+        else:
+            try:
+                resp = self.check(snips=[proof_string]).results[0].response
+                errors = resp.get("errors") or []
+            except Exception as exc:
+                logger.warning(f"Isabelle proof-state extraction failed: {exc}")
+                return ProofStateInfo(error_message=str(exc))
+
+        applied_tactic = self._last_proof_step(proof_string)
+
+        if not errors:
+            # No errors → theory processed cleanly, no remaining goals.
+            return ProofStateInfo(applied_tactic=applied_tactic, open_goals="")
+
+        descriptions: List[str] = []
+        open_goals: Optional[str] = None
+        for err in errors:
+            match = _GOAL_BLOCK_RE.search(err)
+            if match and open_goals is None:
+                open_goals = self._clean_markup(match.group(0))
+                desc = self._clean_markup(err[: match.start()]).rstrip(":")
+                descriptions.append(desc)
+            else:
+                descriptions.append(self._clean_markup(err))
+
+        error_message = "\n".join(d for d in descriptions if d) or None
+        return ProofStateInfo(
+            applied_tactic=applied_tactic,
+            open_goals=open_goals,
+            error_message=error_message,
+        )
 
     def close(self) -> None:
         try:

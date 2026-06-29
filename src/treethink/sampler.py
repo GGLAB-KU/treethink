@@ -256,12 +256,30 @@ class TreeThinkSampler(SamplerBase):
             self.evaluator_args,
             prompter=self.prompter,
             lora_path=self.lora_path,
+            language=self.treethink_args.language,  # unified language
+            client_args=self.evaluator_args.client_args,
+        self.evaluator = get_evaluator_from_config(
+            self.evaluator_args,
+            prompter=self.prompter,
+            lora_path=self.lora_path,
+            language=self.treethink_args.language,  # unified language
         )
+
+        # Build rollout evaluator if configured
+        rollout_evaluator = None
+        if self.treethink_args.rollout_evaluator_args is not None:
+            rollout_evaluator = get_evaluator_from_config(
+                self.treethink_args.rollout_evaluator_args,
+                prompter=self.prompter,
+                lora_path=self.lora_path,
+            )
+
         self.method = get_method(
             treethink_config=self.treethink_args,
             root_node=None,
             policy=self.policy,
             evaluator=self.evaluator,
+            rollout_evaluator=rollout_evaluator,
         )
         self.model = TreeThink(self.method, self.treethink_args)
 
@@ -339,6 +357,7 @@ class AsyncTreeThinkSampler:
         self.shared_evaluator = get_async_evaluator_from_config(
             evaluator_args,
             prompter=self.prompter,
+            language=self.treethink_args.language,
         )
 
         logger.success(
@@ -411,11 +430,20 @@ class AsyncTreeThinkSampler:
 
             logger.debug(f"Starting async_simulate for {problem_id}")
 
+            # Build rollout evaluator if configured
+            rollout_evaluator = None
+            if self.treethink_args.rollout_evaluator_args is not None:
+                rollout_evaluator = get_async_evaluator_from_config(
+                    self.treethink_args.rollout_evaluator_args,
+                    prompter=self.prompter,
+                )
+
             method = get_method(
                 treethink_config=self.treethink_args,
                 root_node=None,
                 policy=self.shared_policy,
                 evaluator=self.shared_evaluator,
+                rollout_evaluator=rollout_evaluator,
             )
 
             wrapper = TreeThink(method, self.treethink_args)

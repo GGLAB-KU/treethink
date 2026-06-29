@@ -14,9 +14,8 @@ from kimina_client.models import Infotree
 
 from treethink import (
     ClientArgs,
-    LeanREPLEvaluator,
     Node,
-    RocqEvaluator,
+    REPLEvaluator,
 )
 
 # Mock proofs for testing
@@ -110,7 +109,7 @@ def test_repl_evaluator():
     client_args = ClientArgs(
         lean_server_url="http://localhost:8000", timeout=30
     )
-    evaluator = LeanREPLEvaluator(client_args=client_args)
+    evaluator = REPLEvaluator(client_args=client_args)
     method = MockMethod()
 
     print("\n Testing VALID proofs...")
@@ -139,21 +138,6 @@ def test_repl_evaluator():
         print(f"  Score: {score}")
         print("  Expected: 0.0 (invalid)")
         print(f"  Status: {'✅ PASS' if score == 0.0 else '❌ FAIL'}")
-
-
-def test_rocq_evaluator_uses_shared_client():
-    with patch("treethink.evaluators.RocqClient", FakeRocqClient):
-        evaluator = RocqEvaluator()
-
-        valid_proof = """Theorem test : True.
-Proof. exact I. Qed."""
-        invalid_proof = """Theorem test : True.
-Proof. INVALID tactic. Qed."""
-
-        scores = evaluator([valid_proof, invalid_proof])
-
-        assert scores == [1.0, 0.0]
-        evaluator.close()
 
 
 def test_kimina_client_direct():

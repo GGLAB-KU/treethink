@@ -2,6 +2,7 @@ from treethink.clients.base import (
     AsyncProofAssistantClient,
     CheckResponse,
     ProofAssistantClient,
+    ProofStateInfo,
     SnippetResult,
 )
 from treethink.clients.cache import (
@@ -19,6 +20,7 @@ __all__ = [
     "CheckResponse",
     "ProofAssistantClient",
     "ProofCache",
+    "ProofStateInfo",
     "SnippetResult",
     # Language-specific symbols loaded lazily via __getattr__
 ]

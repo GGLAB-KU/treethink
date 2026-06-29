@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, fields
-from typing import List
+from typing import List, Optional
 
 from .enums import (
     FinalDecisionMode,
@@ -230,6 +230,24 @@ class TreeThinkArgs(BaseArgs):
             score.  See :class:`~treethink.utils.enums.TieBreaker`.
             Options: ``"random"``, ``"deep"``, ``"stable"``.
             Defaults to ``TieBreaker.RANDOM``.
+        rollout_evaluator_args:
+            Configuration for the rollout evaluator used by
+            :class:`~treethink.methods.traditional_mcts.TraditionalMCTS`
+            to score complete rollout proofs.  If ``None`` (default), no
+            rollout is performed and the main ``evaluator`` is used instead
+            (AlphaZero-style behaviour).  See :class:`EvaluatorArgs`.
+        rollout_max_tokens:
+            Maximum number of tokens for rollout generation.
+            Defaults to 4096.
+        rollout_n:
+            Number of independent rollouts per child.  Scores are averaged
+            when > 1.  Defaults to 1.
+        rollout_temperature:
+            Sampling temperature for rollout generation.
+            Defaults to ``None`` (reuse the policy's sampling temperature).
+        rollout_top_p:
+            ``top_p`` for rollout generation.  Defaults to ``None``
+            (reuse the policy's ``top_p``).
     """
 
     method_name: str = "AlphaZeroMCTS"
@@ -259,6 +277,13 @@ class TreeThinkArgs(BaseArgs):
     final_decision_mode: FinalDecisionMode = FinalDecisionMode.NATIVE
     max_concurrent_expansions: int = 8
     tie_breaker: TieBreaker = TieBreaker.RANDOM
+
+    # Rollout (TraditionalMCTS)
+    rollout_evaluator_args: Optional["EvaluatorArgs"] = None
+    rollout_max_tokens: int = 4096
+    rollout_n: int = 1
+    rollout_temperature: Optional[float] = None
+    rollout_top_p: Optional[float] = None
 
     def build_repl_runtime(self):
         from treethink.repl_runtime import ReplRuntime
@@ -429,14 +454,14 @@ class EvaluatorArgs(BaseArgs):
             :data:`IMPLEMENTED_EVALUATORS` (sync) or
             :data:`ASYNC_IMPLEMENTED_EVALUATORS` (async).
             Common values: ``"cumulative_logprob_evaluator"``,
-            ``"lean_repl_evaluator"``, ``"llm_as_judge_evaluator"``,
+            ``"repl_evaluator"``, ``"llm_as_judge_evaluator"``,
             ``"norm_len_evaluator"``.
             When using ``--async``, sync names are auto-converted
-            (e.g. ``"lean_repl_evaluator"`` →
-            ``"async_lean_repl_evaluator"``).
+            (e.g. ``"repl_evaluator"`` →
+            ``"async_repl_evaluator"``).
         client_args:
             Arguments for the proof-assistant REPL client.  Required when
-            *func_name* involves REPL verification (``lean_repl_evaluator``,
+            *func_name* involves REPL verification (``repl_evaluator``,
             ``llm_as_judge_evaluator``).  See :class:`ClientArgs`.
         length_norm:
             Exponent for length-normalised scoring.  The raw score is

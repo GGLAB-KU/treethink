@@ -61,24 +61,29 @@ evaluator:
 
 ---
 
-### LeanREPLEvaluator
+### REPLEvaluator
 
-**Name:** `lean_repl_evaluator`
+**Name:** `repl_evaluator`
 
-Verifies the proof snippet via a **Lean 4 REPL (Kimina server)**.  Returns
+Verifies the proof snippet via a corresponding formal language server.  Returns
 `1.0` if the proof passes the REPL, `0.0` otherwise.
 
-- Requires a running Kimina Lean server.
+- Requires a running formal proof server:
+  - `kimina-lean-server` for lean4.
+  - `rocq-ml-server` for Rocq.
+  - `isabelle-server` for isabelle.
+
 - Optionally wraps the client with `CachedClient` for memoisation.
 
 ```yaml
 evaluator:
-  func_name: "lean_repl_evaluator"
-  repl_args:
+  func_name: "repl_evaluator"
+  client_args:
     lean_server_url: "http://localhost:8000"
     batch_size: 8
     num_proc: 4
     timeout: 400
+    ...
 ```
 
 ---
@@ -162,22 +167,6 @@ evaluator:
 
 ---
 
-### RocqEvaluator
-
-**Name:** `rocq_evaluator`
-
-Evaluates **Rocq (Coq 8.20)** code snippets by running them through a
-`rocq-ml-server` session.  Returns `1.0` if the proof closes, `0.0`
-otherwise.
-
-```yaml
-evaluator:
-  func_name: "rocq_evaluator"
-  # Client args are configured via repl_args
-```
-
----
-
 ## Async Variants
 
 Async evaluators live in `src/treethink/async_evaluators.py`.  When `--async`
@@ -186,7 +175,7 @@ is passed, the evaluator is auto-converted:
 | Sync | Async |
 |------|-------|
 | `cumulative_logprob_evaluator` | `async_cumulative_logprob_evaluator` |
-| `lean_repl_evaluator` | `async_lean_repl_evaluator` |
+| `repl_evaluator` | `async_repl_evaluator` |
 | `llm_as_judge_evaluator` | `async_judge_evaluator` |
 | `norm_len_evaluator` | `async_norm_len_evaluator` |
 | `rocq_evaluator` | `async_rocq_evaluator` |
