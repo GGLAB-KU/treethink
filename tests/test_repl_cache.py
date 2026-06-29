@@ -18,7 +18,6 @@ import pytest
 from treethink import (
     ClientArgs,
     FormalLanguage,
-    LeanClientAdapter,
     ProofCache,
     create_client,
 )
@@ -29,6 +28,7 @@ from treethink.clients.cache import (
     CacheEntry,
     _build_synthetic_response,
 )
+from treethink.clients.lean.adapter import LeanClientAdapter
 
 # ---------------------------------------------------------------------------
 # Helpers

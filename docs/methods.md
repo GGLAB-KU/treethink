@@ -88,10 +88,9 @@ Five phases per iteration:
 3. **Rollout** (new) — for each child, use the LLM to generate a **complete
    formal proof** in a single-shot call with high `max_tokens`.
 4. **Evaluate** — score each complete proof via a **separate rollout
-   evaluator** (e.g. `lean_repl_evaluator` for Lean 4, `rocq_evaluator` for
-   Rocq).  This can be different from the main search evaluator — for
+   evaluator**.  This can be different from the main search evaluator — for
    example, use `cumulative_logprob_evaluator` for fast in-tree decisions
-   and `lean_repl_evaluator` for accurate rollout verification.
+   and `repl_evaluator` for accurate rollout verification.
 5. **Backpropagate** — propagate scores up to the root.
 
 **Async variant:** `AsyncTraditionalMCTS`
@@ -101,7 +100,7 @@ Five phases per iteration:
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `exploration_weight` | 1.414 | UCB exploration constant |
-| `rollout_evaluator` | — | Evaluator for complete proofs (e.g. `"lean_repl_evaluator"`) |
+| `rollout_evaluator` | — | Evaluator for complete proofs (e.g. `"repl_evaluator"`) |
 | `rollout_max_tokens` | 4096 | Max tokens for rollout generation |
 | `rollout_n` | 1 | Number of rollouts per child (scores averaged when > 1) |
 | `rollout_temperature` | 0.8 | Sampling temperature for rollouts |
@@ -112,7 +111,7 @@ treethink:
   method_name: "TraditionalMCTS"
   exploration_weight: 1.414
   rollout_evaluator:
-    func_name: "lean_repl_evaluator"
+    func_name: "repl_evaluator"
     repl_args:
       lean_server_url: "http://localhost:12336"
   rollout_max_tokens: 4096

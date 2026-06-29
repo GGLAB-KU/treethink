@@ -90,8 +90,8 @@ class TraditionalMCTS(BaseMethod):
         rollout_evaluator: Optional[Callable] = None,
         rollout_max_tokens: int = 4096,
         rollout_n: int = 1,
-        rollout_temperature: float = 0.8,
-        rollout_top_p: float = 1.0,
+        rollout_temperature: Optional[float] = None,
+        rollout_top_p: Optional[float] = None,
         *args,
         **kwargs,
     ):
@@ -429,10 +429,17 @@ class TraditionalMCTS(BaseMethod):
 
         return vllm.SamplingParams(
             max_tokens=max_tokens,
-            n=self.rollout_n,
-            temperature=self.rollout_temperature,
-            top_p=self.rollout_top_p,
-            include_stop_str_in_output=True,
+            n=self.rollout_n or self.policy.sampling_params.n,
+            temperature=(
+                self.rollout_temperature
+                if self.rollout_temperature is not None
+                else self.policy.sampling_params.temperature
+            ),
+            top_p=(
+                self.rollout_top_p
+                if self.rollout_top_p is not None
+                else self.policy.sampling_params.top_p
+            ),
         )
 
     # ------------------------------------------------------------------

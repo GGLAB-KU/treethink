@@ -150,76 +150,73 @@ class Node:
 
         return min_val, max_val
 
-    def print_node(self, f, i, root, st, solution=None, prev_colored=False):
+    def print_node(self, f, i, st, solution=None):
+        """Write the tree rooted at this node in graphviz DOT format.
+
+        Args:
+            f: File object to write to.
+            i: Indentation level.
+            st: String identifier for this node (e.g. ``"a"``, ``"a_0"``).
+            solution: If provided, nodes on the solution path are coloured
+                red.  Each node's text must match the corresponding prefix
+                of the solution string.
+        """
+
         def _escape(x):
             return json.dumps(x).strip('"')
 
-        if self.parent is None:
-            text_content = self.text
-        else:
-            diff = "\n".join(
-                [
-                    x
-                    for x in self.text.split("\n")
-                    if x not in self.parent.text.split("\n")
-                ]
-            )
-            text_content = diff
+        stack = [(self, i, st, solution)]
 
-        # Change special symbols to those that HTML like:
-        text_content = (
-            text_content.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-        )
+        while stack:
+            node, node_i, node_st, node_solution = stack.pop()
+            text_content = node.text
 
-        # Create HTML-like table with win value, visits and level of the node
-        label = (
-            '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'
-            f'<TR><TD ROWSPAN="3">{_escape(text_content)}</TD>'
-            f'<TD ALIGN="RIGHT"><FONT POINT-SIZE="10">W:{round(self.win_value, 3)}</FONT></TD></TR>'
-            f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">V:{self.visits}</FONT></TD></TR>'
-            f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">L:{self.level}</FONT></TD></TR>'
-            "</TABLE>>"
-        )
-
-        # NOTE(burak): I have tried different colorings but single red color
-        # seems to be sufficient. If we change it to something else, we need
-        # to update default identifier arguments functions in graph.py
-        color = "red"
-        attr = "penwidth=2"
-
-        # Here we check if the solution is provided, no solution means we are not coloring the path at all
-        if (
-            solution is not None
-            and solution[: len(self.text)] == self.text
-            and prev_colored
-        ):
-            attr += f",color={color}"
-            prev_colored = True
-        else:
-            prev_colored = False
-
-        f.write((" " * i) + f"{st} [label={label},shape=box,{attr}]\n")
-
-        num = 0
-        for child in self.children:
-            new_st = st + "_" + str(num)
-
-            child.print_node(
-                f,
-                i + 2,
-                root,
-                new_st,
-                solution=None
-                if solution is None
-                else solution[len(self.text) :],
-                prev_colored=prev_colored,
+            # Escape HTML-special characters
+            text_content = (
+                text_content.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
             )
 
-            f.write(" " * i + st + " -- " + new_st + "\n")
-            num = num + 1
+            # HTML-like table label with win value, visits, and level
+            label = (
+                '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'
+                f'<TR><TD ROWSPAN="3">{_escape(text_content)}</TD>'
+                f'<TD ALIGN="RIGHT"><FONT POINT-SIZE="10">W:{round(node.win_value, 3)}</FONT></TD></TR>'
+                f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">V:{node.visits}</FONT></TD></TR>'
+                f'<TR><TD ALIGN="RIGHT"><FONT POINT-SIZE="10">L:{node.level}</FONT></TD></TR>'
+                "</TABLE>>"
+            )
+
+            # NOTE(burak): I have tried different colorings but single red
+            # color seems to be sufficient.  If we change it to something
+            # else, we need to update default identifier arguments
+            # functions in graph.py
+            on_path = (
+                node_solution is not None
+                and node_solution[: len(node.text)] == node.text
+            )
+            attr = "penwidth=2"
+            if on_path:
+                attr += ",color=red"
+
+            f.write(
+                (" " * node_i) + f"{node_st} [label={label},shape=box,{attr}]\n"
+            )
+
+            # Push children in reverse order so the first child is
+            # processed first (LIFO stack).  Write edges immediately —
+            # DOT does not require a particular edge/node order.
+            children = list(node.children)
+            for idx in range(len(children) - 1, -1, -1):
+                child = children[idx]
+                child_st = node_st + "_" + str(idx)
+                child_solution = (
+                    None if not on_path else node_solution[len(node.text) :]
+                )
+                f.write(" " * node_i + node_st + " -- " + child_st + "\n")
+                stack.append((child, node_i + 2, child_st, child_solution))
 
     def most_visited_child(self) -> "Node":
         """

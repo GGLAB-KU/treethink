@@ -27,7 +27,7 @@ class TestNode(unittest.TestCase):
         node.win_value = 42
 
         with open(self.temp_file_path, "w") as f:
-            node.print_node(f, 0, node, "root")
+            node.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()
@@ -43,35 +43,13 @@ class TestNode(unittest.TestCase):
         node.win_value = 100
 
         with open(self.temp_file_path, "w") as f:
-            node.print_node(f, 0, node, "root")
+            node.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()
 
         self.assertIn("100", content)
         self.assertIn("Line 1", content)
-
-    def test_child_node_shows_diff(self):
-        """Test that child node only shows lines different from parent."""
-        parent = Node(text="Line 1\nLine 2\nLine 3")
-        parent.win_value = 50
-
-        child = Node(text="Line 1\nLine 2\nLine 3\nLine 4", parent=parent)
-        child.win_value = 75
-        parent.children.append(child)
-
-        with open(self.temp_file_path, "w") as f:
-            child.print_node(f, 2, parent, "root_0")
-
-        with open(self.temp_file_path, "r") as f:
-            content = f.read()
-
-        # Should contain win_value
-        self.assertIn("75", content)
-        # Should contain only the new line
-        self.assertIn("Line 4", content)
-        # Should not contain lines from parent
-        self.assertNotIn("Line 1\\nLine 2\\nLine 3", content)
 
     def test_node_with_special_characters(self):
         """Test printing node with special characters that need escaping."""
@@ -95,7 +73,7 @@ class TestNode(unittest.TestCase):
         node.win_value = 0
 
         with open(self.temp_file_path, "w") as f:
-            node.print_node(f, 0, node, "root")
+            node.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()
@@ -108,7 +86,7 @@ class TestNode(unittest.TestCase):
         node.win_value = -15
 
         with open(self.temp_file_path, "w") as f:
-            node.print_node(f, 0, node, "root")
+            node.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()
@@ -121,7 +99,7 @@ class TestNode(unittest.TestCase):
         node.win_value = 3.14159
 
         with open(self.temp_file_path, "w") as f:
-            node.print_node(f, 0, node, "root")
+            node.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()
@@ -142,7 +120,7 @@ class TestNode(unittest.TestCase):
         root.children = [child1, child2]
 
         with open(self.temp_file_path, "w") as f:
-            root.print_node(f, 0, root, "root")
+            root.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()
@@ -194,7 +172,7 @@ class TestNode(unittest.TestCase):
         child.children = [grandchild]
 
         with open(self.temp_file_path, "w") as f:
-            root.print_node(f, 0, root, "root")
+            root.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()
@@ -219,7 +197,7 @@ class TestNode(unittest.TestCase):
         node.win_value = 5
 
         with open(self.temp_file_path, "w") as f:
-            node.print_node(f, 0, node, "root")
+            node.print_node(f, 0, "root")
 
         with open(self.temp_file_path, "r") as f:
             content = f.read()

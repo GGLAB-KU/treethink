@@ -1,3 +1,4 @@
+import codecs
 import json
 import re
 import subprocess
@@ -64,15 +65,10 @@ def save_tree_to_txt(
 
     with open(str(output_path), "w", encoding="utf-8") as f:
         f.write("graph\n{\n")
-        root_node.print_node(
-            f, 0, root_node, "a", solution=selected_solution, prev_colored=True
-        )
+        root_node.print_node(f, 0, "a", solution=selected_solution)
         f.write("}\n")
 
     logger.info(f"Output tree saved to {output_path}.")
-
-
-import codecs
 
 
 def _unescape_graphviz_label(label_text: str) -> str:
