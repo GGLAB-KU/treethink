@@ -31,6 +31,7 @@ def _create_raw_client(
             return RocqClient(
                 host=client_args.host or "127.0.0.1",
                 port=client_args.port or 5000,
+                batch_size=client_args.batch_size,
             )
         case FormalLanguage.ISABELLE:
             from .clients.isabelle.client import IsabelleClient
@@ -58,7 +59,13 @@ def _create_raw_async_client(
                 or "http://localhost:8000",
             )
         case FormalLanguage.ROCQ:
-            raise NotImplementedError("Rocq async client is not yet supported.")
+            from .clients.coq.rocq import AsyncRocqClient
+
+            return AsyncRocqClient(
+                host=client_args.host or "127.0.0.1",
+                port=client_args.port or 5000,
+                batch_size=client_args.batch_size,
+            )
         case FormalLanguage.ISABELLE:
             raise NotImplementedError(
                 "Isabelle async client is not yet supported."
@@ -105,7 +112,7 @@ def create_async_client(
     Selects the appropriate async client based on the ``FormalLanguage``
     enum and wraps it with :class:`AsyncCachedClient` if caching is enabled.
     Raises ``NotImplementedError`` for languages without async support
-    (Rocq, Isabelle).
+    (Isabelle).
     """
     inner = _create_raw_async_client(language, client_args)
     cache_to_use = (
