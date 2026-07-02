@@ -284,16 +284,17 @@ class IsabelleClient(ProofAssistantClient):
 class AsyncIsabelleClient(AsyncProofAssistantClient):
     """Asynchronous client verifying complete Isabelle/HOL theories.
 
-    The Isabelle server is started during ``__init__`` via a helper that
-    works in **both** synchronous and asynchronous contexts (detecting
-    whether an event loop is already running).  An explicit async
-    :meth:`start` is also available as a public entry point.
+    The server is **not** started in ``__init__`` — it is started lazily on
+    the first :meth:`check` or :meth:`extract_proof_state` call (or
+    explicitly via ``await client.start()``).
 
-    Typical usage::
+    .. note::
 
-        client = AsyncIsabelleClient(...)   # server starts here
-        resp = await client.check(snips=[...])
-        client.close()
+       The underlying ``isabelle_client`` library uses ``asyncio.run()``
+       internally in many of its synchronous methods (``session_start``,
+       ``session_stop``, ``use_theories``), making them incompatible with a
+       running event loop.  This client works around the limitation by
+       offloading those calls to a thread via ``asyncio.to_thread()``.
     """
 
     def __init__(
@@ -313,57 +314,13 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
         self._max_workers = max_workers
         self._semaphore: asyncio.Semaphore | None = None
 
+        # Lazy-initialised by start() / _ensure_connected()
         self._server_info: str | None = None
         self._server_process: Any = None
         self._client: Any = None
         self._session_id: str | None = None
 
-        # Start the server synchronously (handles both sync/async contexts).
-        self._init_server()
-
-    # -- initialisation ---------------------------------------------------
-
-    def _init_server(self) -> None:
-        """Synchronous server startup that works in *any* caller context.
-
-        Detects whether an event loop is already running:
-        * **No running loop** – uses ``asyncio.run()`` directly.
-        * **Running loop** (e.g. inside an async test or Jupyter) – runs the
-          async startup in a throwaway thread with its own event loop,
-          because ``asyncio.run()`` raises ``RuntimeError`` when called from
-          inside a running loop.
-        """
-        from isabelle_client import get_isabelle_client
-
-        try:
-            asyncio.get_running_loop()
-            in_async_context = True
-        except RuntimeError:
-            in_async_context = False
-
-        async def _start() -> tuple[str, Any]:
-            return await self._start_server_async(
-                name=self.server_name,
-                log_file=self.server_log,
-            )
-
-        if in_async_context:
-            # asyncio.run() would fail → run in a separate thread.
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                self._server_info, self._server_process = pool.submit(
-                    asyncio.run, _start()
-                ).result()
-        else:
-            self._server_info, self._server_process = asyncio.run(_start())
-
-        self._client = get_isabelle_client(self._server_info)
-        self._session_id = self._start_session(self.session_dirs)
-        logger.info(
-            f"Isabelle session '{self.session}' ready "
-            f"(id={self._session_id[:8]})."
-        )
+    # -- async initialisation ---------------------------------------------
 
     async def _start_server_async(
         self,
@@ -410,8 +367,15 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
             name=self.server_name,
             log_file=self.server_log,
         )
+
+        # get_isabelle_client is lightweight string parsing — safe sync call.
         self._client = get_isabelle_client(self._server_info)
-        self._session_id = self._start_session(self.session_dirs)
+
+        # Offload _start_session because client.session_start() uses
+        # asyncio.run() internally, which would fail in a running loop.
+        self._session_id = await asyncio.to_thread(
+            self._start_session, self.session_dirs
+        )
         logger.info(
             f"Isabelle session '{self.session}' ready "
             f"(id={self._session_id[:8]})."
@@ -603,7 +567,16 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
             return
         try:
             if self._session_id is not None:
-                self._client.session_stop(session_id=self._session_id)
+                # session_stop() uses asyncio.run() internally → run in thread.
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1
+                ) as pool:
+                    pool.submit(
+                        self._client.session_stop,
+                        session_id=self._session_id,
+                    ).result(timeout=30)
         except Exception as exc:
             logger.warning(f"Failed to stop Isabelle session: {exc}")
         finally:
