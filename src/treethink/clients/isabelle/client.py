@@ -282,7 +282,20 @@ class IsabelleClient(ProofAssistantClient):
 
 
 class AsyncIsabelleClient(AsyncProofAssistantClient):
-    """Asynchronous client verifying complete Isabelle/HOL theories."""
+    """Asynchronous client verifying complete Isabelle/HOL theories.
+
+    Unlike the synchronous sibling, **server startup is deferred** to
+    :meth:`start` so that it can be called from within a running asyncio
+    event loop (the blocking ``start_isabelle_server`` helper uses
+    ``asyncio.run()`` internally, which would fail otherwise).
+
+    Typical usage inside an async context::
+
+        client = AsyncIsabelleClient(...)
+        await client.start()     # starts the server & session
+        resp = await client.check(snips=[...])
+        client.close()
+    """
 
     def __init__(
         self,
@@ -293,21 +306,79 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
         session_dirs: Optional[List[str]] = None,
         max_workers: int = 4,
     ) -> None:
-        from isabelle_client import get_isabelle_client, start_isabelle_server
-
+        # Store parameters — no blocking calls (server startup is async).
         self.session = session
         self.imports = imports
+        self.server_name = server_name
+        self.server_log = server_log
+        self.session_dirs = session_dirs
         self._max_workers = max_workers
         self._semaphore: asyncio.Semaphore | None = None
 
-        self._server_info, self._server_process = start_isabelle_server(
-            name=server_name, log_file=server_log
+        # Lazy-initialised by start()
+        self._server_info: str | None = None
+        self._server_process: Any = None
+        self._client: Any = None
+        self._session_id: str | None = None
+
+    # -- async initialisation ---------------------------------------------
+
+    async def _start_server_async(
+        self,
+        name: Optional[str] = None,
+        log_file: Optional[str] = None,
+    ) -> tuple[str, Any]:
+        """Async equivalent of ``isabelle_client.utils.start_isabelle_server``.
+
+        Starts the Isabelle server subprocess and reads the one-line server
+        info from stdout.  This must be ``await``\ ed from within a running
+        event loop (unlike the upstream helper which calls ``asyncio.run()``).
+        """
+        args_parts = ["isabelle", "server"]
+        if log_file is not None:
+            args_parts.extend(["-L", log_file])
+        if name is not None:
+            args_parts.extend(["-n", name])
+
+        process = await asyncio.create_subprocess_exec(
+            *args_parts,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        if process.stdout is None:
+            raise ValueError("No stdout while starting the Isabelle server.")
+
+        server_info = (await process.stdout.readline()).decode("utf-8").strip()
+        return server_info, process
+
+    async def start(self) -> None:
+        """Start the Isabelle server and session *once*.
+
+        Safe to call multiple times — subsequent calls are no-ops once the
+        client is already connected.
+        """
+        if self._client is not None:
+            return  # already started
+
+        from isabelle_client import get_isabelle_client
+
+        (
+            self._server_info,
+            self._server_process,
+        ) = await self._start_server_async(
+            name=self.server_name,
+            log_file=self.server_log,
         )
         self._client = get_isabelle_client(self._server_info)
-        self._session_id = self._start_session(session_dirs)
+        self._session_id = self._start_session(self.session_dirs)
         logger.info(
-            f"Isabelle session '{session}' ready (id={self._session_id[:8]})."
+            f"Isabelle session '{self.session}' ready "
+            f"(id={self._session_id[:8]})."
         )
+
+    async def _ensure_connected(self) -> None:
+        """Lazily start the server on first use."""
+        if self._client is None:
+            await self.start()
 
     @property
     def semaphore(self) -> asyncio.Semaphore:
@@ -398,6 +469,7 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
         show_progress: bool = False,
         batch_size: int = 8,
     ) -> CheckResponse:
+        await self._ensure_connected()
         indexed = list(enumerate(snips))
         if not indexed:
             return CheckResponse(results=[])
@@ -448,6 +520,7 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
         proof_string: str,
         response: Any = None,
     ) -> ProofStateInfo:
+        await self._ensure_connected()
         if isinstance(response, dict):
             errors = response.get("errors") or []
         else:
@@ -483,15 +556,17 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
         )
 
     def close(self) -> None:
+        if self._client is None:
+            # Server was never started — nothing to clean up.
+            return
         try:
-            if getattr(self, "_session_id", None):
+            if self._session_id is not None:
                 self._client.session_stop(session_id=self._session_id)
         except Exception as exc:
             logger.warning(f"Failed to stop Isabelle session: {exc}")
         finally:
-            process = getattr(self, "_server_process", None)
-            if process is not None:
-                process.terminate()
+            if self._server_process is not None:
+                self._server_process.terminate()
 
 
 __all__ = [
