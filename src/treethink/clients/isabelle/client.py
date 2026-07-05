@@ -17,6 +17,7 @@ import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, List, Optional, Tuple
+from tqdm import tqdm
 
 from loguru import logger
 
@@ -179,6 +180,12 @@ class IsabelleClient(ProofAssistantClient):
             for i in range(0, len(indexed), max(1, batch_size))
         ]
 
+        logger.trace("Prepared verification batches.")
+        pbar = tqdm(
+            total=len(snips),
+            desc="Verifying proofs...",
+            disable=not show_progress,
+        )
         collected: dict = {}
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             for batch_result in executor.map(
@@ -186,6 +193,8 @@ class IsabelleClient(ProofAssistantClient):
             ):
                 for idx, resp in batch_result:
                     collected[idx] = resp
+                
+                pbar.update(len(batch_result))
 
         results = [
             SnippetResult(response=collected[i]) for i in range(len(snips))
