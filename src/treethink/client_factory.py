@@ -67,8 +67,12 @@ def _create_raw_async_client(
                 batch_size=client_args.batch_size,
             )
         case FormalLanguage.ISABELLE:
-            raise NotImplementedError(
-                "Isabelle async client is not yet supported."
+            from .clients.isabelle.client import AsyncIsabelleClient
+
+            return AsyncIsabelleClient(
+                session=client_args.isabelle_session or "HOL",
+                imports=client_args.isabelle_imports or "Main",
+                server_log=client_args.isabelle_server_log,
             )
         case _:
             raise ValueError(f"Unsupported formal language: {language}")

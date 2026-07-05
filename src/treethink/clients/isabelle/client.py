@@ -11,15 +11,18 @@ begin … end`` scaffold and processes it via ``use_theories``.  A snippet is
 successful when its theory finishes with no ``error`` messages.
 """
 
+import asyncio
 import os
 import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, List, Optional, Tuple
+from tqdm import tqdm
 
 from loguru import logger
 
 from ..base import (
+    AsyncProofAssistantClient,
     CheckResponse,
     ProofAssistantClient,
     ProofStateInfo,
@@ -177,6 +180,12 @@ class IsabelleClient(ProofAssistantClient):
             for i in range(0, len(indexed), max(1, batch_size))
         ]
 
+        logger.trace("Prepared verification batches.")
+        pbar = tqdm(
+            total=len(snips),
+            desc="Verifying proofs...",
+            disable=not show_progress,
+        )
         collected: dict = {}
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             for batch_result in executor.map(
@@ -184,6 +193,8 @@ class IsabelleClient(ProofAssistantClient):
             ):
                 for idx, resp in batch_result:
                     collected[idx] = resp
+                
+                pbar.update(len(batch_result))
 
         results = [
             SnippetResult(response=collected[i]) for i in range(len(snips))
@@ -279,4 +290,312 @@ class IsabelleClient(ProofAssistantClient):
                 process.terminate()
 
 
-__all__ = ["IsabelleClient", "IsabelleSnippetResult", "IsabelleCheckResponse"]
+class AsyncIsabelleClient(AsyncProofAssistantClient):
+    """Asynchronous client verifying complete Isabelle/HOL theories.
+
+    The server is **not** started in ``__init__`` — it is started lazily on
+    the first :meth:`check` or :meth:`extract_proof_state` call (or
+    explicitly via ``await client.start()``).
+
+    .. note::
+
+       The underlying ``isabelle_client`` library uses ``asyncio.run()``
+       internally in many of its synchronous methods (``session_start``,
+       ``session_stop``, ``use_theories``), making them incompatible with a
+       running event loop.  This client works around the limitation by
+       offloading those calls to a thread via ``asyncio.to_thread()``.
+    """
+
+    def __init__(
+        self,
+        session: str = "HOL",
+        imports: str = "Main",
+        server_name: str = "treethink",
+        server_log: Optional[str] = None,
+        session_dirs: Optional[List[str]] = None,
+        max_workers: int = 4,
+    ) -> None:
+        self.session = session
+        self.imports = imports
+        self.server_name = server_name
+        self.server_log = server_log
+        self.session_dirs = session_dirs
+        self._max_workers = max_workers
+        self._semaphore: asyncio.Semaphore | None = None
+
+        # Lazy-initialised by start() / _ensure_connected()
+        self._server_info: str | None = None
+        self._server_process: Any = None
+        self._client: Any = None
+        self._session_id: str | None = None
+
+    # -- async initialisation ---------------------------------------------
+
+    async def _start_server_async(
+        self,
+        name: Optional[str] = None,
+        log_file: Optional[str] = None,
+    ) -> tuple[str, Any]:
+        """Async equivalent of ``isabelle_client.utils.start_isabelle_server``.
+
+        Starts the Isabelle server subprocess and reads the one-line server
+        info from stdout.  This must be ``await``\ ed from within a running
+        event loop (unlike the upstream helper which calls ``asyncio.run()``).
+        """
+        args_parts = ["isabelle", "server"]
+        if log_file is not None:
+            args_parts.extend(["-L", log_file])
+        if name is not None:
+            args_parts.extend(["-n", name])
+
+        process = await asyncio.create_subprocess_exec(
+            *args_parts,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        if process.stdout is None:
+            raise ValueError("No stdout while starting the Isabelle server.")
+
+        server_info = (await process.stdout.readline()).decode("utf-8").strip()
+        return server_info, process
+
+    async def start(self) -> None:
+        """Start the Isabelle server and session *once*.
+
+        Safe to call multiple times — subsequent calls are no-ops once the
+        client is already connected.
+        """
+        if self._client is not None:
+            return  # already started
+
+        from isabelle_client import get_isabelle_client
+
+        (
+            self._server_info,
+            self._server_process,
+        ) = await self._start_server_async(
+            name=self.server_name,
+            log_file=self.server_log,
+        )
+
+        # get_isabelle_client is lightweight string parsing — safe sync call.
+        self._client = get_isabelle_client(self._server_info)
+
+        # Offload _start_session because client.session_start() uses
+        # asyncio.run() internally, which would fail in a running loop.
+        self._session_id = await asyncio.to_thread(
+            self._start_session, self.session_dirs
+        )
+        logger.info(
+            f"Isabelle session '{self.session}' ready "
+            f"(id={self._session_id[:8]})."
+        )
+
+    async def _ensure_connected(self) -> None:
+        """Lazily start the server on first use."""
+        if self._client is None:
+            await self.start()
+
+    @property
+    def semaphore(self) -> asyncio.Semaphore:
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(max(1, self._max_workers))
+        return self._semaphore
+
+    def _start_session(self, dirs: Optional[List[str]]) -> str:
+        session_id = None
+        for resp in self._client.session_start(session=self.session, dirs=dirs):
+            session_id = (
+                getattr(resp.response_body, "session_id", None) or session_id
+            )
+        if session_id is None:
+            raise RuntimeError(
+                f"Failed to start Isabelle session '{self.session}'."
+            )
+        return session_id
+
+    def _wrap(self, name: str, snippet: str) -> str:
+        return (
+            f"theory {name}\n  imports {self.imports}\nbegin\n{snippet}\nend\n"
+        )
+
+    async def _run_batch(
+        self,
+        indexed_snips: List[Tuple[int, str]],
+        timeout: Optional[int],
+    ) -> List[Tuple[int, dict]]:
+        master_dir = tempfile.mkdtemp(prefix="treethink_isa_")
+        name_to_idx = {}
+        for idx, snippet in indexed_snips:
+            name = f"TT_{idx}"
+            name_to_idx[name] = idx
+            with open(os.path.join(master_dir, f"{name}.thy"), "w") as fh:
+                fh.write(self._wrap(name, snippet))
+
+        kwargs = {}
+        if timeout is not None:
+            kwargs["watchdog_timeout"] = float(timeout)
+
+        try:
+            # Offload blocking use_theories call
+            responses = await asyncio.to_thread(
+                self._client.use_theories,
+                session_id=self._session_id,
+                theories=list(name_to_idx.keys()),
+                master_dir=master_dir,
+                **kwargs,
+            )
+        except Exception as exc:
+            logger.error(f"Isabelle use_theories failed: {exc}")
+            return [
+                (idx, {"ok": False, "errors": [str(exc)], "theory": None})
+                for idx, _ in indexed_snips
+            ]
+
+        nodes = getattr(responses[-1].response_body, "nodes", []) or []
+        by_idx: dict = {}
+        for node in nodes:
+            short_name = node.theory_name.split(".")[-1]
+            idx = name_to_idx.get(short_name)
+            if idx is None:
+                continue
+            errors = [m.message for m in node.messages if m.kind == "error"]
+            by_idx[idx] = {
+                "ok": not errors,
+                "errors": errors,
+                "theory": node.theory_name,
+            }
+
+        return [
+            (
+                idx,
+                by_idx.get(
+                    idx,
+                    {"ok": False, "errors": ["no node result"], "theory": None},
+                ),
+            )
+            for idx, _ in indexed_snips
+        ]
+
+    async def check(
+        self,
+        *,
+        snips: List[str],
+        timeout: int | None = None,
+        show_progress: bool = False,
+        batch_size: int = 8,
+    ) -> CheckResponse:
+        await self._ensure_connected()
+        indexed = list(enumerate(snips))
+        if not indexed:
+            return CheckResponse(results=[])
+
+        batches = [
+            indexed[i : i + max(1, batch_size)]
+            for i in range(0, len(indexed), max(1, batch_size))
+        ]
+
+        async def _process_batch(
+            batch: List[Tuple[int, str]],
+        ) -> List[Tuple[int, dict]]:
+            async with self.semaphore:
+                return await self._run_batch(batch, timeout)
+
+        tasks = [_process_batch(batch) for batch in batches]
+        batch_results = await asyncio.gather(*tasks)
+
+        collected: dict = {}
+        for batch_result in batch_results:
+            for idx, resp in batch_result:
+                collected[idx] = resp
+
+        results = [
+            SnippetResult(response=collected[i]) for i in range(len(snips))
+        ]
+        return CheckResponse(results=results)
+
+    def is_success_response(self, response: Any) -> bool:
+        if isinstance(response, dict):
+            return bool(response.get("ok"))
+        return bool(getattr(response, "ok", False))
+
+    @staticmethod
+    def _clean_markup(text: str) -> str:
+        return text.replace("\\<^here>", "").strip()
+
+    @staticmethod
+    def _last_proof_step(snippet: str) -> Optional[str]:
+        for line in reversed(snippet.splitlines()):
+            stripped = line.strip()
+            if stripped:
+                return stripped
+        return None
+
+    async def extract_proof_state(
+        self,
+        proof_string: str,
+        response: Any = None,
+    ) -> ProofStateInfo:
+        await self._ensure_connected()
+        if isinstance(response, dict):
+            errors = response.get("errors") or []
+        else:
+            try:
+                check_resp = await self.check(snips=[proof_string])
+                resp_dict = check_resp.results[0].response
+                errors = resp_dict.get("errors") or []
+            except Exception as exc:
+                logger.warning(f"Isabelle proof-state extraction failed: {exc}")
+                return ProofStateInfo(error_message=str(exc))
+
+        applied_tactic = self._last_proof_step(proof_string)
+
+        if not errors:
+            return ProofStateInfo(applied_tactic=applied_tactic, open_goals="")
+
+        descriptions: List[str] = []
+        open_goals: Optional[str] = None
+        for err in errors:
+            match = _GOAL_BLOCK_RE.search(err)
+            if match and open_goals is None:
+                open_goals = self._clean_markup(match.group(0))
+                desc = self._clean_markup(err[: match.start()]).rstrip(":")
+                descriptions.append(desc)
+            else:
+                descriptions.append(self._clean_markup(err))
+
+        error_message = "\n".join(d for d in descriptions if d) or None
+        return ProofStateInfo(
+            applied_tactic=applied_tactic,
+            open_goals=open_goals,
+            error_message=error_message,
+        )
+
+    def close(self) -> None:
+        if self._client is None:
+            # Server was never started — nothing to clean up.
+            return
+        try:
+            if self._session_id is not None:
+                # session_stop() uses asyncio.run() internally → run in thread.
+                import concurrent.futures
+
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=1
+                ) as pool:
+                    pool.submit(
+                        self._client.session_stop,
+                        session_id=self._session_id,
+                    ).result(timeout=30)
+        except Exception as exc:
+            logger.warning(f"Failed to stop Isabelle session: {exc}")
+        finally:
+            if self._server_process is not None:
+                self._server_process.terminate()
+
+
+__all__ = [
+    "IsabelleClient",
+    "AsyncIsabelleClient",
+    "IsabelleSnippetResult",
+    "IsabelleCheckResponse",
+]
