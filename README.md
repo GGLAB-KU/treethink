@@ -10,8 +10,8 @@
     <a href="https://img.shields.io/github/license/GGLAB-KU/treethink"><img alt="License" src="https://img.shields.io/github/license/GGLAB-KU/treethink.svg?color=red"></a>
 </p>
 
-**TreeThink** is a Python library for formal mathematical reasoning with LLMs
-using tree-search methods.  It enables LLMs to explore multiple proof paths in
+**TreeThink** is a Python library for mathematical reasoning with LLMs
+using tree-search methods. It enables LLMs to explore multiple proof paths in
 parallel, verify candidates against formal proof assistants (Lean 4, Rocq,
 Isabelle), and select the most promising solutions.
 
@@ -34,7 +34,7 @@ Isabelle), and select the most promising solutions.
 
 ## What is TreeThink?
 
-TreeThink wraps an LLM-powered generation loop inside a tree search.  Starting
+TreeThink wraps an LLM-powered generation loop inside a tree search. Starting
 from a problem statement (root node), the system repeatedly:
 
 1. **Expands** promising nodes by asking the LLM to generate candidate next
@@ -339,5 +339,3 @@ This project is licensed under the terms of the [LICENSE](LICENSE) file.
 
 ## Citation
 If you use TreeThink in your research, please consider citing:
-
-TODO(burak): Add citation info when we have the paper.
