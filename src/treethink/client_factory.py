@@ -41,6 +41,14 @@ def _create_raw_client(
                 imports=client_args.isabelle_imports or "Main",
                 server_log=client_args.isabelle_server_log,
             )
+        case FormalLanguage.NL:
+            from .clients.nl.client import NLClient
+
+            return NLClient(
+                dataset_path=client_args.nl_dataset_path,
+                problem_key=client_args.nl_problem_key or "problem",
+                answer_key=client_args.nl_answer_key or "answer",
+            )
         case _:
             raise ValueError(f"Unsupported formal language: {language}")
 
@@ -73,6 +81,14 @@ def _create_raw_async_client(
                 session=client_args.isabelle_session or "HOL",
                 imports=client_args.isabelle_imports or "Main",
                 server_log=client_args.isabelle_server_log,
+            )
+        case FormalLanguage.NL:
+            from .clients.nl.client import AsyncNLClient
+
+            return AsyncNLClient(
+                dataset_path=client_args.nl_dataset_path,
+                problem_key=client_args.nl_problem_key or "problem",
+                answer_key=client_args.nl_answer_key or "answer",
             )
         case _:
             raise ValueError(f"Unsupported formal language: {language}")

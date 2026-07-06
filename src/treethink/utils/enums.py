@@ -47,11 +47,16 @@ class TieBreaker(Enum):
 
 
 class FormalLanguage(Enum):
-    """Supported formal proof assistants for termination / REPL clients."""
+    """Languages/backends for termination / REPL(-style) verification.
+
+    ``NL`` is not a formal language: it verifies natural-language answers by
+    extraction + ground-truth comparison, reusing the same client interface.
+    """
 
     LEAN4 = "lean4"
     ROCQ = "rocq"
     ISABELLE = "isabelle"
+    NL = "nl"
 
 
 class PoolingTask(Enum):

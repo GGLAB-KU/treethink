@@ -68,6 +68,14 @@ class ClientArgs(BaseArgs):
         isabelle_imports (str): Imports clause for each generated theory.
             Default ``"Main"``.
         isabelle_server_log (str | None): Optional Isabelle server log path.
+
+    Natural language (NL):
+        nl_dataset_path (str | None): Path to a JSON/JSONL dataset with the
+            problem statements and ground-truth answers.
+        nl_problem_key (str | None): Dataset field for the problem statement.
+            Default ``"problem"``.
+        nl_answer_key (str | None): Dataset field for the ground-truth answer.
+            Default ``"answer"``.
     """
 
     # Common
@@ -90,6 +98,11 @@ class ClientArgs(BaseArgs):
     isabelle_session: str | None = None
     isabelle_imports: str | None = None
     isabelle_server_log: str | None = None
+
+    # Natural language (NL)
+    nl_dataset_path: str | None = None
+    nl_problem_key: str | None = None
+    nl_answer_key: str | None = None
 
 
 # ---------------------------------------------------------------------------
