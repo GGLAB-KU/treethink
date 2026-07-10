@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from .enums import (
     FinalDecisionMode,
-    FormalLanguage,
+    ProofLanguage,
     PoolingTask,
     ScoreReduction,
     TieBreaker,
@@ -38,7 +38,7 @@ class BaseArgs:
 class ClientArgs(BaseArgs):
     """Arguments for any proof-assistant REPL client.
 
-    Only the fields relevant to the selected :class:`FormalLanguage` are
+    Only the fields relevant to the selected :class:`ProofLanguage` are
     used at runtime; the rest are quietly ignored.
 
     Common fields:
@@ -209,8 +209,8 @@ class TreeThinkArgs(BaseArgs):
             provide a `parse_tag`.
         language:
             The formal proof language to use for REPL verification.
-            One of :class:`~treethink.utils.enums.FormalLanguage`.
-            Defaults to ``FormalLanguage.LEAN4``.
+            One of :class:`~treethink.utils.enums.ProofLanguage`.
+            Defaults to ``ProofLanguage.LEAN4``.
         client_args:
             Arguments for the language-specific REPL client
             (server URL, batch size, timeouts, etc.).  See
@@ -275,7 +275,7 @@ class TreeThinkArgs(BaseArgs):
     parse_tag: str = "\n"
 
     # REPL / termination
-    language: FormalLanguage = FormalLanguage.LEAN4
+    language: ProofLanguage = ProofLanguage.LEAN4
     client_args: ClientArgs = field(default_factory=ClientArgs)
     termination_on_encounter: TerminationOnEncounterConfig = field(
         default_factory=TerminationOnEncounterConfig,

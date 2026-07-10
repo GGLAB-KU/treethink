@@ -109,21 +109,21 @@ implement the ABCs in `src/treethink/clients/base.py`.
 1. Create a new directory `src/treethink/clients/my_lang/`.
 2. Implement `ProofAssistantClient` (and optionally
    `AsyncProofAssistantClient`) from `src/treethink/clients/base.py`.
-3. Add the language to the `FormalLanguage` enum in
+3. Add the language to the `ProofLanguage` enum in
    `src/treethink/utils/enums.py`.
 4. Add match arms in `_create_raw_client()` and
    `_create_raw_async_client()` in `src/treethink/client_factory.py`.
 
 ```python
 # src/treethink/utils/enums.py
-class FormalLanguage(Enum):
+class ProofLanguage(Enum):
     LEAN4 = "lean4"
     ROCQ = "rocq"
     ISABELLE = "isabelle"
     MY_LANG = "my_lang"  # ← add yours
 
 # src/treethink/client_factory.py
-case FormalLanguage.MY_LANG:
+case ProofLanguage.MY_LANG:
     return MyLangClient(...)
 ```
 
@@ -141,7 +141,7 @@ case FormalLanguage.MY_LANG:
 | Async policy | `AsyncPolicyType` enum | `src/treethink/async_policies.py` |
 | Sync evaluator | `EvaluatorType` enum | `src/treethink/evaluators.py` |
 | Async evaluator | `AsyncEvaluatorType` enum | `src/treethink/async_evaluators.py` |
-| Language client | `FormalLanguage` enum + `client_factory.py` | `src/treethink/utils/enums.py`, `src/treethink/client_factory.py` |
+| Language client | `ProofLanguage` enum + `client_factory.py` | `src/treethink/utils/enums.py`, `src/treethink/client_factory.py` |
 
 For the actual class signatures and method contracts, always refer to the
 source code — it is the authoritative API reference.

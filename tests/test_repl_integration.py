@@ -21,7 +21,7 @@ from treethink.graph import (  # noqa
     save_tree_to_txt,
 )
 from treethink.methods import BFTS, AlphaZeroMCTS, Node  # noqa
-from treethink.utils.enums import FinalDecisionMode, FormalLanguage
+from treethink.utils.enums import FinalDecisionMode, ProofLanguage
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_LEAN_TESTS", "0") == "0",
@@ -45,7 +45,7 @@ class TestREPLIntegration(unittest.TestCase):
             timeout=60,
             graph_path=None,
             termination_str="```\n",
-            language=FormalLanguage.LEAN4,
+            language=ProofLanguage.LEAN4,
             store_method_class=False,
             store_graph_stats=True,
             remove_duplicate_children=True,

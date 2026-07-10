@@ -35,14 +35,14 @@ snippets **without knowing which formal language is in use**.
 **File:** `src/treethink/client_factory.py`
 
 `create_client()` and `create_async_client()` are factory functions that build
-the appropriate client based on the `FormalLanguage` enum:
+the appropriate client based on the `ProofLanguage` enum:
 
 ```python
 from treethink.client_factory import create_client
-from treethink.utils.enums import FormalLanguage
+from treethink.utils.enums import ProofLanguage
 
 client = create_client(
-    language=FormalLanguage.LEAN4,
+    language=ProofLanguage.LEAN4,
     client_args=my_client_args,
     cache=my_cache,  # optional
 )
@@ -131,7 +131,7 @@ treethink:
 1. Implement `ProofAssistantClient` (and optionally
    `AsyncProofAssistantClient`) in a new directory under
    `src/treethink/clients/`.
-2. Add the language to the `FormalLanguage` enum in
+2. Add the language to the `ProofLanguage` enum in
    `src/treethink/utils/enums.py`.
 3. Add the match arm in `_create_raw_client()` and
    `_create_raw_async_client()` in `src/treethink/client_factory.py`.

@@ -46,7 +46,7 @@ class TieBreaker(Enum):
     STABLE = "stable"
 
 
-class FormalLanguage(Enum):
+class ProofLanguage(Enum):
     """Languages/backends for termination / REPL(-style) verification.
 
     ``NL`` is not a formal language: it verifies natural-language answers by

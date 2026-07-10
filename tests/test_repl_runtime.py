@@ -8,7 +8,7 @@ from treethink import (
     TerminationOnPathsConfig,
     TreeThinkArgs,
 )
-from treethink.utils.enums import FormalLanguage
+from treethink.utils.enums import ProofLanguage
 
 
 class TestReplRuntime(unittest.TestCase):
@@ -56,13 +56,13 @@ class TestReplRuntime(unittest.TestCase):
     def test_rocq_language_client_created(self):
         args = TreeThinkArgs(
             termination_str="```",
-            language=FormalLanguage.ROCQ,
+            language=ProofLanguage.ROCQ,
             client_args=ClientArgs(host="127.0.0.1", port=5000),
         )
 
         runtime = args.build_repl_runtime()
 
-        self.assertEqual(runtime.language, FormalLanguage.ROCQ)
+        self.assertEqual(runtime.language, ProofLanguage.ROCQ)
         self.assertTrue(runtime.needs_repl)
 
     def test_needs_repl_false_when_all_disabled(self):
