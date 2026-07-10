@@ -1,6 +1,6 @@
 """Shared UCT (Upper Confidence bounds applied to Trees) helper.
 
-Used by both :class:`~treethink.methods.alpha_zero_mcts.AlphaZeroMCTS`
+Used by both :class:`~treethink.methods.rf_mcts.RFMCTS`
 and :class:`~treethink.methods.traditional_mcts.TraditionalMCTS`.
 """
 

@@ -105,7 +105,7 @@ class TestPrintDryRunSummary(TestCase):
     def _capture(self, **kwargs) -> str:
         """Call _print_dry_run_summary with defaults + overrides, return stderr."""
         defaults = dict(
-            method_display="AlphaZeroMCTS",
+            method_display="RFMCTS",
             policy_display="vllm_policy",
             evaluator_display="cumulative_logprob_evaluator",
             dataset_name="test_dataset",
@@ -194,9 +194,9 @@ class TestPrintDryRunSummary(TestCase):
 
     def test_method_display_no_async_hint_in_sync_mode(self):
         """Without --async, no async conversion hints appear."""
-        output = self._capture(method_display="AlphaZeroMCTS")
-        self.assertIn("AlphaZeroMCTS", output)
-        self.assertNotIn("AsyncAlphaZeroMCTS", output)
+        output = self._capture(method_display="RFMCTS")
+        self.assertIn("RFMCTS", output)
+        self.assertNotIn("AsyncRFMCTS", output)
 
     def test_language_shown_when_provided(self):
         output = self._capture(language="lean4")
@@ -256,7 +256,7 @@ class TestDryRunCLIIntegration(TestCase):
         # ── Generation YAML ─────────────────────────────────────────────
         gen_config = {
             "treethink": {
-                "method_name": "AlphaZeroMCTS",
+                "method_name": "RFMCTS",
                 "max_children": 2,
                 "expansion_count": 4,
                 "timeout": 10,
@@ -368,8 +368,8 @@ class TestDryRunCLIIntegration(TestCase):
 
             output = result.stderr or result.stdout
             self.assertEqual(result.exit_code, 85)
-            # Should mention async mapping for AlphaZeroMCTS → AsyncAlphaZeroMCTS
-            self.assertIn("AsyncAlphaZeroMCTS", output)
+            # Should mention async mapping for RFMCTS → AsyncRFMCTS
+            self.assertIn("AsyncRFMCTS", output)
 
     def test_dry_run_without_flag_does_not_dry_run(self):
         """Without ``--dry-run``, the CLI does NOT exit with 85 — it fails

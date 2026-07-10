@@ -25,7 +25,7 @@ Controls how the best answer is selected from the tree after search:
 
 | Mode | Behaviour |
 |------|-----------|
-| `native` | Method-specific default (e.g. root's best child for AlphaZeroMCTS) |
+| `native` | Method-specific default (e.g. root's best child for RFMCTS) |
 | `maximize_visits` | Pick the most-visited leaf |
 | `maximize_value` | Pick the highest-valued leaf |
 | `clear_frontier` | Re-score all frontier nodes and pick the best |
@@ -46,9 +46,9 @@ When multiple nodes have equal scores, the tie breaker (`tie_breaker`) decides:
 
 ## Implemented Methods
 
-### AlphaZeroMCTS — AlphaZero-Style Monte Carlo Tree Search
+### RFMCTS — AlphaZero-Style Monte Carlo Tree Search
 
-**Class:** `AlphaZeroMCTS` in `src/treethink/methods/alpha_zero_mcts.py`
+**Class:** `RFMCTS` in `src/treethink/methods/rf_mcts.py`
 
 AlphaZero-style MCTS with four phases per iteration — **no rollout** phase.
 Evaluation happens directly on expanded children via a learned value function
@@ -61,12 +61,12 @@ Evaluation happens directly on expanded children via a learned value function
 3. **Evaluate** — score each child via the evaluator.
 4. **Backpropagate** — propagate scores up to the root.
 
-**Async variant:** `AsyncAlphaZeroMCTS` — same logic but with async callbacks.
+**Async variant:** `AsyncRFMCTS` — same logic but with async callbacks.
 
 **YAML:**
 ```yaml
 treethink:
-  method_name: "AlphaZeroMCTS"
+  method_name: "RFMCTS"
   exploration_weight: 1.414  # sqrt(2)
 ```
 
@@ -83,7 +83,7 @@ a formal language REPL (Lean 4 or Rocq).
 Five phases per iteration:
 
 1. **Select** — walk from root to a leaf using UCB1 (same UCT formula as
-   `AlphaZeroMCTS`).
+   `RFMCTS`).
 2. **Expand** — generate candidate next-step children via the policy.
 3. **Rollout** (new) — for each child, use the LLM to generate a **complete
    formal proof** in a single-shot call with high `max_tokens`.
@@ -167,13 +167,13 @@ These parameters apply to all methods (set under the `treethink:` YAML key):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `method_name` | — | `"AlphaZeroMCTS"`, `"TraditionalMCTS"`, `"BFTS"`, or `"BeamSearch"` |
+| `method_name` | — | `"RFMCTS"`, `"TraditionalMCTS"`, `"BFTS"`, or `"BeamSearch"` |
 | `expansion_count` | 128 | Number of tree expansions |
 | `max_children` | 4 | Maximum branching factor |
 | `timeout` | — | Total timeout in seconds |
 | `final_decision_mode` | `"native"` | See above |
 | `tie_breaker` | `"random"` | See above |
-| `exploration_weight` | 1.414 | UCB exploration constant (AlphaZeroMCTS and TraditionalMCTS) |
+| `exploration_weight` | 1.414 | UCB exploration constant (RFMCTS and TraditionalMCTS) |
 | `store_graph_stats` | true | Enable graph statistics |
 
 ---

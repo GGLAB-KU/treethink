@@ -89,7 +89,7 @@ def run(
         "--async",
         help="Enable fully asynchronous tree search. "
         "Automatically converts method/policy/evaluator to their async variants "
-        "(e.g. AlphaZeroMCTS → AsyncAlphaZeroMCTS, "
+        "(e.g. RFMCTS → AsyncRFMCTS, "
         "vllm_policy → async_vllm_policy). "
         "Requires compatible async components.",
     ),
@@ -118,7 +118,7 @@ def run(
         help="Logging level (debug, info, warning, error, critical).",
     ),
 ):
-    """Run tree-search inference (AlphaZeroMCTS / TraditionalMCTS / BFTS / BeamSearch).
+    """Run tree-search inference (RFMCTS / TraditionalMCTS / BFTS / BeamSearch).
 
     Example::
 

@@ -24,7 +24,7 @@ New methods go in `src/treethink/methods/` and must inherit from `BaseMethod`.
 ```python
 # src/treethink/methods/__init__.py
 class MethodType(Enum):
-    ALPHA_ZERO_MCTS = "AlphaZeroMCTS"
+    RF_MCTS = "RFMCTS"
     BFTS = "BFTS"
     BEAM_SEARCH = "BeamSearch"
     TRADITIONAL_MCTS = "TraditionalMCTS"
@@ -36,7 +36,7 @@ For async variants, subclass the sync method and override `simulate()` with
 (e.g. `ASYNC_MY_METHOD = "AsyncMyMethod"`).
 
 **Reference:** `src/treethink/methods/`
-**Example:** `src/treethink/methods/alpha_zero_mcts.py`, `traditional_mcts.py`, `bfts.py`, `beam.py`
+**Example:** `src/treethink/methods/rf_mcts.py`, `traditional_mcts.py`, `bfts.py`, `beam.py`
 
 ---
 

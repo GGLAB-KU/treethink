@@ -26,7 +26,7 @@ search.  Starting from a problem statement (root node), the system repeatedly:
         └──────┬───────┘
                │
         ┌──────┴───────┐
-        │  Tree Search │  (AlphaZeroMCTS / TraditionalMCTS / BFTS / BeamSearch)
+        │  Tree Search │  (RFMCTS / TraditionalMCTS / BFTS / BeamSearch)
         │  Method      │
         └──────┬───────┘
                │
@@ -46,7 +46,7 @@ search.  Starting from a problem statement (root node), the system repeatedly:
 | Component | Responsibility | Source |
 |-----------|---------------|--------|
 | **TreeThink** | Top-level orchestrator — wires method, policy, evaluator, and termination together | `src/treethink/treethink.py` |
-| **Methods** | Search strategy (AlphaZeroMCTS, TraditionalMCTS, BFTS, BeamSearch) | `src/treethink/methods/` |
+| **Methods** | Search strategy (RFMCTS, TraditionalMCTS, BFTS, BeamSearch) | `src/treethink/methods/` |
 | **Policies** | LLM-driven child node generation | `src/treethink/policies.py` |
 | **Evaluators** | Node scoring / fitness estimation | `src/treethink/evaluators.py` |
 | **Termination** | Proof verification via REPL clients | `src/treethink/termination.py` |
@@ -76,7 +76,7 @@ search.  Starting from a problem statement (root node), the system repeatedly:
 
 TreeThink supports fully asynchronous execution for maximum throughput:
 
-- Methods auto-convert (AlphaZeroMCTS → AsyncAlphaZeroMCTS, BFTS → AsyncBFTS, etc.)
+- Methods auto-convert (RFMCTS → AsyncRFMCTS, BFTS → AsyncBFTS, etc.)
 - Policies and evaluators switch to async equivalents
 - The sampler uses `AsyncTreeThinkSampler` for concurrent problem processing
 

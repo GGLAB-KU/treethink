@@ -153,10 +153,10 @@ class TreeThinkArgs(BaseArgs):
 
     Args:
         method_name:
-            One of the registered method names — ``"AlphaZeroMCTS"``,
+            One of the registered method names — ``"RFMCTS"``,
             ``"TraditionalMCTS"``, ``"BFTS"``, ``"BeamSearch"`` (or their
             ``Async*`` counterparts when using ``--async``).
-            Defaults to ``"AlphaZeroMCTS"``.
+            Defaults to ``"RFMCTS"``.
         max_children:
             Maximum branching factor (children per node).  Should match
             ``sampling.n`` in the policy config.  Defaults to 4.
@@ -226,7 +226,7 @@ class TreeThinkArgs(BaseArgs):
             ``max_children`` is used.  Defaults to ``None``.
         exploration_weight:
             Exploration constant for the UCB formula used by
-            ``AlphaZeroMCTS`` and ``TraditionalMCTS``.  Typical value
+            ``RFMCTS`` and ``TraditionalMCTS``.  Typical value
             is ``sqrt(2) ≈ 1.414``.  ``None`` means the method default
             is used.  Defaults to ``None``.
         final_decision_mode:
@@ -263,7 +263,7 @@ class TreeThinkArgs(BaseArgs):
             (reuse the policy's ``top_p``).
     """
 
-    method_name: str = "AlphaZeroMCTS"
+    method_name: str = "RFMCTS"
     max_children: int = 4
     expansion_count: int = 128
     timeout: int = None

@@ -16,7 +16,7 @@ Attributes:
     policy: Function to generate child nodes.
     evaluator: Function to evaluate node quality.
 
-Async variant: :class:`AsyncAlphaZeroMCTS`
+Async variant: :class:`AsyncRFMCTS`
 """
 
 import asyncio
@@ -31,7 +31,7 @@ from .base_method import BaseMethod
 from .node import Node
 
 
-class AlphaZeroMCTS(BaseMethod):
+class RFMCTS(BaseMethod):
     """AlphaZero-style Monte Carlo Tree Search — no rollout, direct evaluation.
 
     Four phases per iteration:
@@ -109,7 +109,7 @@ class AlphaZeroMCTS(BaseMethod):
         remove_duplicate_children: bool = False,
         termination_encountered_fn: Optional[Callable[[Node], str]] = None,
     ) -> None:
-        """Run the AlphaZero MCTS search for ``expansion_count`` iterations.
+        """Run the RFMCTS search for ``expansion_count`` iterations.
 
         Args:
             expansion_count: Number of expansion iterations to perform.
@@ -122,7 +122,7 @@ class AlphaZeroMCTS(BaseMethod):
 
         termination_checked_nodes = []
 
-        logger.debug("AlphaZero MCTS simulation started.")
+        logger.debug("RFMCTS simulation started.")
         while expansion_count is None or i < expansion_count:
             logger.debug(f"Expansion: {i}")
             i += 1
@@ -232,15 +232,15 @@ class AlphaZeroMCTS(BaseMethod):
         ]
 
 
-class AsyncAlphaZeroMCTS(AlphaZeroMCTS):
-    """Async variant of :class:`AlphaZeroMCTS`.
+class AsyncRFMCTS(RFMCTS):
+    """Async variant of :class:`RFMCTS`.
 
     Uses asynchronous node expansion (``async_expand`` and
     ``async_expand_rm_dupes`` from :class:`BaseMethod`) for concurrent
     evaluation of children during the expansion phase.
 
     Maintains the same UCT selection and backpropagation semantics as
-    :class:`AlphaZeroMCTS`.
+    :class:`RFMCTS`.
     """
 
     def __init__(
@@ -281,9 +281,9 @@ class AsyncAlphaZeroMCTS(AlphaZeroMCTS):
 
         termination_checked_nodes = []
 
-        logger.debug("Async AlphaZero MCTS simulation started.")
+        logger.debug("Async RFMCTS simulation started.")
         while expansion_count is None or i < expansion_count:
-            logger.debug(f"Async AlphaZero MCTS expansion: {i}")
+            logger.debug(f"Async RFMCTS expansion: {i}")
             i += 1
 
             if timeout is not None:
@@ -345,11 +345,11 @@ class AsyncAlphaZeroMCTS(AlphaZeroMCTS):
 
     async def async_expand(self, node):
         """Async expand using ``BaseMethod.async_expand``."""
-        await super(AlphaZeroMCTS, self).async_expand(node)
+        await super(RFMCTS, self).async_expand(node)
 
     async def async_expand_rm_dupes(self, node):
         """Async expand with dedup using ``BaseMethod.async_expand_rm_dupes``."""
-        await super(AlphaZeroMCTS, self).async_expand_rm_dupes(node)
+        await super(RFMCTS, self).async_expand_rm_dupes(node)
 
     def simulate(
         self,
@@ -362,7 +362,7 @@ class AsyncAlphaZeroMCTS(AlphaZeroMCTS):
         try:
             loop = asyncio.get_running_loop()
             logger.warning(
-                "AsyncAlphaZeroMCTS.simulate() called from within async "
+                "AsyncRFMCTS.simulate() called from within async "
                 "context. Consider using async_simulate() directly."
             )
             return loop.create_task(
