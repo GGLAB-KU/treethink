@@ -40,11 +40,23 @@ class TestDefaultExtraction(unittest.TestCase):
 
 
 class TestDefaultCompare(unittest.TestCase):
+    """default_compare == math grade_answer (normalisation + sympy)."""
+
     def test_normalization(self):
         self.assertTrue(default_compare("42", " 42 "))
         self.assertTrue(default_compare("$1,000$", "1000"))
-        self.assertTrue(default_compare("Yes.", "yes"))
+
+    def test_fraction_decimal_equivalence(self):
+        self.assertTrue(default_compare("1/2", "0.5"))
+
+    def test_symbolic_equivalence(self):
+        self.assertTrue(default_compare("2x", "x+x"))
+
+    def test_not_equal(self):
         self.assertFalse(default_compare("42", "43"))
+
+    def test_none_prediction(self):
+        self.assertFalse(default_compare(None, "42"))
 
 
 class TestNLClientGroundTruthOverride(unittest.TestCase):
@@ -164,10 +176,10 @@ class TestFactoryWiring(unittest.TestCase):
     def test_create_client_routes_nl(self):
         from treethink.client_factory import create_client
         from treethink.utils.args import ClientArgs
-        from treethink.utils.enums import FormalLanguage
+        from treethink.utils.enums import ProofLanguage
 
         client = create_client(
-            FormalLanguage.NL, ClientArgs(enable_cache=False)
+            ProofLanguage.NL, ClientArgs(enable_cache=False)
         )
         self.assertIsInstance(client, NLClient)
 

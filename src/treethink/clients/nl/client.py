@@ -17,6 +17,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
+from tqdm import tqdm
 
 from ..base import (
     AsyncProofAssistantClient,
@@ -24,12 +25,12 @@ from ..base import (
     ProofAssistantClient,
     SnippetResult,
 )
+from .grading import extract_boxed_answer, grade_answer
 
 # ---------------------------------------------------------------------------
 # Default answer extraction / comparison (override via extract_fn/compare_fn)
 # ---------------------------------------------------------------------------
 
-_BOXED_RE = re.compile(r"\\boxed\{([^{}]*)\}")
 _ANSWER_RE = re.compile(
     r"(?:final answer|the answer is|answer)\s*[:=]?\s*\$?([^\n$]+)",
     re.IGNORECASE,
@@ -40,15 +41,15 @@ _NUMBER_RE = re.compile(r"-?\d[\d,]*\.?\d*")
 def default_extract_answer(text: str) -> Optional[str]:
     """Best-effort final-answer extraction from a natural-language solution.
 
-    Tries, in order: the last ``\\boxed{...}``, then a trailing
+    Tries, in order: the last ``\\boxed{...}`` block, then a trailing
     ``"Answer: ..."`` phrase, then the last number in the text.  Returns
     ``None`` when nothing is found.
     """
     if not text:
         return None
-    boxed = _BOXED_RE.findall(text)
-    if boxed:
-        return boxed[-1].strip()
+    boxed = extract_boxed_answer(text)
+    if boxed is not None:
+        return boxed.strip()
     phrased = _ANSWER_RE.findall(text)
     if phrased:
         return phrased[-1].strip()
@@ -58,17 +59,13 @@ def default_extract_answer(text: str) -> Optional[str]:
     return None
 
 
-def _normalize_answer(value: str) -> str:
-    """Loose normalisation for comparing answers."""
-    value = value.strip().lower()
-    for token in ("$", " ", ","):
-        value = value.replace(token, "")
-    return value.rstrip(".")
-
-
 def default_compare(predicted: str, ground_truth: str) -> bool:
-    """Normalised string equality (case / spaces / ``$`` / commas / dot)."""
-    return _normalize_answer(predicted) == _normalize_answer(ground_truth)
+    """Math-aware answer comparison (normalisation + sympy equivalence).
+
+    Uses :func:`~treethink.clients.nl.grading.grade_answer` (adapted from the
+    Hendrycks MATH / PRM800K grader).
+    """
+    return grade_answer(predicted, ground_truth)
 
 
 class NLClient(ProofAssistantClient):
@@ -127,30 +124,21 @@ class NLClient(ProofAssistantClient):
         return " ".join(problem.split()).strip().lower()
 
     def _load_dataset(self, path: str) -> None:
-        import json
         from pathlib import Path
 
-        file_path = Path(path)
+        from treethink.utils.load import load_dataset
+
+        # Pass the format explicitly: ``_infer_format`` treats any path with a
+        # "/" as a HuggingFace dataset name, so a local file must be typed.
+        suffix = Path(path).suffix.lower()
+        fmt = "jsonl" if suffix in (".jsonl", ".ndjson") else "json"
         try:
-            text = file_path.read_text()
+            data = load_dataset(path, format_type=fmt)
         except Exception as exc:
-            logger.error(f"NLClient failed to read dataset '{path}': {exc}")
+            logger.error(f"NLClient failed to load dataset '{path}': {exc}")
             return
 
-        try:
-            if file_path.suffix in (".jsonl", ".ndjson"):
-                rows = [
-                    json.loads(line)
-                    for line in text.splitlines()
-                    if line.strip()
-                ]
-            else:  # .json (a list of rows, or {"data": [...]})
-                data = json.loads(text)
-                rows = data if isinstance(data, list) else data.get("data", [])
-        except Exception as exc:
-            logger.error(f"NLClient failed to parse dataset '{path}': {exc}")
-            return
-
+        rows = data if isinstance(data, list) else data.get("data", [])
         count = 0
         for row in rows:
             if not isinstance(row, dict):
@@ -203,7 +191,9 @@ class NLClient(ProofAssistantClient):
     ) -> CheckResponse:
         """Extract each answer and compare it to the ground truth."""
         results: List[SnippetResult] = []
-        for snip in snips:
+        for snip in tqdm(
+            snips, desc="Grading answers", disable=not show_progress
+        ):
             predicted = self.extract_fn(snip)
             ground_truth = self._resolve_ground_truth(snip)
             correct = bool(
