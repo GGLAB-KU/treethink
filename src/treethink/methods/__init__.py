@@ -4,7 +4,7 @@ import lazy_loader
 __getattr__, __dir__, __all__ = lazy_loader.attach(
     __name__,
     submodules={
-        "alpha_zero_mcts",
+        "rf_mcts",
         "base_method",
         "beam",
         "bfts",
@@ -13,9 +13,9 @@ __getattr__, __dir__, __all__ = lazy_loader.attach(
         "traditional_mcts",
     },
     submod_attrs={
-        "alpha_zero_mcts": [
-            "AlphaZeroMCTS",
-            "AsyncAlphaZeroMCTS",
+        "rf_mcts": [
+            "RFMCTS",
+            "AsyncRFMCTS",
         ],
         "base_method": [
             "BaseMethod",
@@ -46,8 +46,8 @@ __getattr__, __dir__, __all__ = lazy_loader.attach(
 )
 
 __all__ = [
-    "AlphaZeroMCTS",
-    "AsyncAlphaZeroMCTS",
+    "RFMCTS",
+    "AsyncRFMCTS",
     "AsyncBFTS",
     "AsyncBeamSearch",
     "AsyncTraditionalMCTS",
@@ -59,7 +59,7 @@ __all__ = [
     "MethodType",
     "Node",
     "TraditionalMCTS",
-    "alpha_zero_mcts",
+    "rf_mcts",
     "base_method",
     "beam",
     "bfts",

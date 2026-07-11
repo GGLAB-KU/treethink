@@ -87,12 +87,12 @@ def test_extract_proof_state_reverifies_when_no_response(client):
 
 
 def test_factory_creates_isabelle_client():
-    """create_client routes FormalLanguage.ISABELLE to a working client."""
+    """create_client routes ProofLanguage.ISABELLE to a working client."""
     from treethink.client_factory import create_client
     from treethink.utils.args import ClientArgs
-    from treethink.utils.enums import FormalLanguage
+    from treethink.utils.enums import ProofLanguage
 
-    c = create_client(FormalLanguage.ISABELLE, ClientArgs())
+    c = create_client(ProofLanguage.ISABELLE, ClientArgs())
     try:
         resp = c.check(snips=['lemma "True" by simp'])
         assert c.is_success_response(resp.results[0].response) is True

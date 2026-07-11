@@ -11,7 +11,7 @@ import unittest
 from tests.common import SimpleChildPolicy
 from treethink.async_evaluators import AsyncRMaxTSEvaluator
 from treethink.evaluators import RMaxTSEvaluator
-from treethink.methods import AlphaZeroMCTS, Node
+from treethink.methods import RFMCTS, Node
 
 
 class _FakeMethod:
@@ -91,7 +91,7 @@ class TestRMaxTSEvaluator(unittest.TestCase):
 
     def test_integration_with_mcts(self):
         root = Node("root")
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=SimpleChildPolicy(num_child=3),
             evaluator=RMaxTSEvaluator(),

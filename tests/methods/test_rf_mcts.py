@@ -9,14 +9,14 @@ from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
     save_tree_to_txt,
 )
-from treethink.methods import AlphaZeroMCTS, Node  # noqa
+from treethink.methods import RFMCTS, Node  # noqa
 from treethink.utils.enums import BestAnswerReason, FinalDecisionMode
 
 logger.remove(0)
 logger.add(sys.stderr, level="TRACE")
 
 
-class TestAlphaZeroMCTS(unittest.TestCase):
+class TestRFMCTS(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
         self.temp_file = tempfile.NamedTemporaryFile(
@@ -32,7 +32,7 @@ class TestAlphaZeroMCTS(unittest.TestCase):
         evaluator_func = RandomNodeEvaluator()
         policy_func = SimpleChildPolicy()
 
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=policy_func,
             evaluator=evaluator_func,
@@ -56,7 +56,7 @@ class TestAlphaZeroMCTS(unittest.TestCase):
         evaluator_func = RandomNodeEvaluator()
         policy_func = SimpleChildPolicy()
 
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=policy_func,
             evaluator=evaluator_func,
@@ -80,7 +80,7 @@ class TestAlphaZeroMCTS(unittest.TestCase):
         evaluator_func = RandomNodeEvaluator()
         policy_func = SimpleChildPolicy()
 
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=policy_func,
             evaluator=evaluator_func,
@@ -145,7 +145,7 @@ class TestAlphaZeroMCTS(unittest.TestCase):
             # return win values in the same order (DUP, UNIQ, PARENT)
             return [5, 3, 2]
 
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=policy,
             evaluator=evaluator,
@@ -213,7 +213,7 @@ class TestAlphaZeroMCTS(unittest.TestCase):
         def termination_encountered_fn(node):
             return "rootTERM"
 
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=policy,
             evaluator=evaluator,
@@ -271,7 +271,7 @@ class TestAlphaZeroMCTS(unittest.TestCase):
             call_count += 1
             return None  # always invalid
 
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=policy,
             evaluator=evaluator,
@@ -363,7 +363,7 @@ class TestAlphaZeroMCTS(unittest.TestCase):
             # Construct the real proof from the tree structure.
             return mcts.traverse_to_root(node)
 
-        mcts = AlphaZeroMCTS(
+        mcts = RFMCTS(
             root_node=None,
             policy=policy,
             evaluator=evaluator,

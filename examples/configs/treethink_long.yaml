@@ -1,5 +1,5 @@
 treethink:
-  method_name: "AlphaZeroMCTS"
+  method_name: "RFMCTS"
   max_children: 8
   expansion_count: 512
   timeout: 600

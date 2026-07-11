@@ -20,8 +20,8 @@ from treethink.graph import (  # noqa
     extract_solution_from_graphviz,
     save_tree_to_txt,
 )
-from treethink.methods import BFTS, AlphaZeroMCTS, Node  # noqa
-from treethink.utils.enums import FinalDecisionMode, FormalLanguage
+from treethink.methods import BFTS, RFMCTS, Node  # noqa
+from treethink.utils.enums import FinalDecisionMode, ProofLanguage
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_LEAN_TESTS", "0") == "0",
@@ -45,7 +45,7 @@ class TestREPLIntegration(unittest.TestCase):
             timeout=60,
             graph_path=None,
             termination_str="```\n",
-            language=FormalLanguage.LEAN4,
+            language=ProofLanguage.LEAN4,
             store_method_class=False,
             store_graph_stats=True,
             remove_duplicate_children=True,
@@ -68,7 +68,7 @@ class TestREPLIntegration(unittest.TestCase):
         proof_begin = "Complete the following lean code:\n```\nimport Mathlib\nimport Aesop\n\n\nopen BigOperators\nopen Real\nopen Nat\nopen Topology\ntheorem mathd_algebra_478\n  (b h v : \u211d)\n  (h\u2080 : 0 < b \u2227 0 < h \u2227 0 < v)\n  (h\u2081 : v = 1 / 3 * (b * h))\n  (h\u2082 : b = 30)\n  (h\u2083 : h = 13 / 2) :\n  v = 65 := by\n"
         proof_cont = "  rw [h\u2081]\n  norm_num [h\u2082, h\u2083]\n  <;> ring\n  <;> norm_num\n  <;> linarith\n```\n"
 
-        method = AlphaZeroMCTS(
+        method = RFMCTS(
             root_node=Node(
                 "root", termination_str=self.treethink_args.termination_str
             ),

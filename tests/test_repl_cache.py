@@ -17,7 +17,7 @@ import pytest
 
 from treethink import (
     ClientArgs,
-    FormalLanguage,
+    ProofLanguage,
     ProofCache,
     create_client,
 )
@@ -198,7 +198,7 @@ class TestCachedClient:
 class TestFactoryCacheIntegration:
     def test_enable_cache_true_returns_cached_client(self):
         client = create_client(
-            FormalLanguage.LEAN4,
+            ProofLanguage.LEAN4,
             ClientArgs(
                 lean_server_url="http://localhost:8000", enable_cache=True
             ),
@@ -209,7 +209,7 @@ class TestFactoryCacheIntegration:
 
     def test_enable_cache_false_returns_raw_client(self):
         client = create_client(
-            FormalLanguage.LEAN4,
+            ProofLanguage.LEAN4,
             ClientArgs(
                 lean_server_url="http://localhost:8000", enable_cache=False
             ),

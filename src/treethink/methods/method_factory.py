@@ -3,7 +3,7 @@ from typing import List, TypeVar
 
 from loguru import logger
 
-from .alpha_zero_mcts import AlphaZeroMCTS, AsyncAlphaZeroMCTS
+from .rf_mcts import RFMCTS, AsyncRFMCTS
 from .base_method import BaseMethod
 from .beam import AsyncBeamSearch, BeamSearch
 from .bfts import BFTS, AsyncBFTS
@@ -19,7 +19,7 @@ class MethodType(Enum):
     """Enum mapping method config names to their implementation classes.
 
     Members are accessed via ``from_str()`` which normalises the config
-    ``method_name`` (e.g. ``"AlphaZeroMCTS"`` → ``MethodType.ALPHA_ZERO_MCTS``).
+    ``method_name`` (e.g. ``"RFMCTS"`` → ``MethodType.RF_MCTS``).
 
     To add a new method, add a member here and ensure the value is a
     ``BaseMethod`` subclass.  Both sync and async variants are listed
@@ -27,13 +27,13 @@ class MethodType(Enum):
     """
 
     # ── Sync methods ───────────────────────────────────────────────────
-    ALPHA_ZERO_MCTS = "AlphaZeroMCTS"
+    RF_MCTS = "RFMCTS"
     BEAM_SEARCH = "BeamSearch"
     BFTS = "BFTS"
     TRADITIONAL_MCTS = "TraditionalMCTS"
 
     # ── Async methods ──────────────────────────────────────────────────
-    ASYNC_ALPHA_ZERO_MCTS = "AsyncAlphaZeroMCTS"
+    ASYNC_RF_MCTS = "AsyncRFMCTS"
     ASYNC_BEAM_SEARCH = "AsyncBeamSearch"
     ASYNC_BFTS = "AsyncBFTS"
     ASYNC_TRADITIONAL_MCTS = "AsyncTraditionalMCTS"
@@ -76,7 +76,7 @@ class MethodType(Enum):
 # ── Internal: mapping from MethodType → implementation classes ──────────
 
 try:
-    from .alpha_zero_mcts import AlphaZeroMCTS, AsyncAlphaZeroMCTS
+    from .rf_mcts import RFMCTS, AsyncRFMCTS
     from .beam import AsyncBeamSearch, BeamSearch
     from .bfts import BFTS, AsyncBFTS
     from .traditional_mcts import AsyncTraditionalMCTS, TraditionalMCTS
@@ -87,7 +87,7 @@ except ImportError as e:
     _ASYNC_AVAILABLE = False
 
 _METHOD_CLASSES = {
-    MethodType.ALPHA_ZERO_MCTS: AlphaZeroMCTS,
+    MethodType.RF_MCTS: RFMCTS,
     MethodType.BEAM_SEARCH: BeamSearch,
     MethodType.BFTS: BFTS,
     MethodType.TRADITIONAL_MCTS: TraditionalMCTS,
@@ -96,7 +96,7 @@ _METHOD_CLASSES = {
 if _ASYNC_AVAILABLE:
     _METHOD_CLASSES.update(
         {
-            MethodType.ASYNC_ALPHA_ZERO_MCTS: AsyncAlphaZeroMCTS,
+            MethodType.ASYNC_RF_MCTS: AsyncRFMCTS,
             MethodType.ASYNC_BEAM_SEARCH: AsyncBeamSearch,
             MethodType.ASYNC_BFTS: AsyncBFTS,
             MethodType.ASYNC_TRADITIONAL_MCTS: AsyncTraditionalMCTS,

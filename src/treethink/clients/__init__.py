@@ -87,4 +87,9 @@ def __getattr__(name):
 
         return getattr(isabelle_module, name)
 
+    if name in ("NLClient", "AsyncNLClient", "nl"):
+        import treethink.clients.nl as nl_module
+
+        return getattr(nl_module, name)
+
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

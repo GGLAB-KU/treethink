@@ -18,7 +18,7 @@ from .utils.args import (
     TerminationOnPathsConfig,
     TreeThinkArgs,
 )
-from .utils.enums import FormalLanguage
+from .utils.enums import ProofLanguage
 
 
 @dataclass
@@ -30,7 +30,7 @@ class ReplRuntime:
     :class:`ProofCache` when caching is enabled.
     """
 
-    language: FormalLanguage
+    language: ProofLanguage
     client_args: ClientArgs
     encountered_config: TerminationOnEncounterConfig
     paths_config: TerminationOnPathsConfig

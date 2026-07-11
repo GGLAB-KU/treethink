@@ -9,7 +9,7 @@ Four phases per iteration:
    (typically a formal language REPL)
 5. **Backpropagate** — propagate scores up to the root
 
-This differs from :class:`~treethink.methods.alpha_zero_mcts.AlphaZeroMCTS`
+This differs from :class:`~treethink.methods.rf_mcts.RFMCTS`
 in that the rollout phase generates a *complete* proof (not just a single
 next step), which is then verified by a formal REPL.  The main evaluator
 (e.g. logprob-based) can be different from the rollout evaluator (e.g.
@@ -68,7 +68,7 @@ class TraditionalMCTS(BaseMethod):
     rollout_evaluator : Callable, optional
         A :class:`BaseEvaluator` (or async variant) that scores complete
         rollout proofs.  If ``None``, falls back to ``evaluator`` (behaves
-        like AlphaZeroMCTS).
+        like RFMCTS).
     rollout_max_tokens : int
         ``max_tokens`` for rollout generation.  Default 4096.
     rollout_n : int
@@ -124,7 +124,7 @@ class TraditionalMCTS(BaseMethod):
             )
 
     # ------------------------------------------------------------------
-    # Selection (same UCT as AlphaZeroMCTS)
+    # Selection (same UCT as RFMCTS)
     # ------------------------------------------------------------------
 
     def make_choice(self, node: Optional[Node] = None) -> Node:
@@ -443,7 +443,7 @@ class TraditionalMCTS(BaseMethod):
         )
 
     # ------------------------------------------------------------------
-    # Backpropagation (same as AlphaZeroMCTS)
+    # Backpropagation (same as RFMCTS)
     # ------------------------------------------------------------------
 
     def _backpropagate_node_win_value(self, node: Node):

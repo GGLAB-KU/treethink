@@ -18,8 +18,9 @@ dependencies = [
 lean = ["kimina-client"]
 rocq = ["rocq-ml-toolbox", "pytanque"]
 isabelle = ["isabelle-client"]
+nl = ["sympy", "pylatexenc"]
 dev = ["pytest>=9.0.3", "pytest-asyncio>=0.25"]
-full = ["treethink[lean,rocq,isabelle,dev]"]
+full = ["treethink[lean,rocq,isabelle,nl,dev]"]
 
 [project.scripts]
 treethink = "treethink.cli.main:main"

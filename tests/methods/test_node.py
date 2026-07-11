@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from treethink.graph import extract_solution_from_graphviz, save_tree_to_txt
-from treethink.methods import AlphaZeroMCTS, Node
+from treethink.methods import RFMCTS, Node
 
 
 class TestNode(unittest.TestCase):
@@ -59,7 +59,7 @@ class TestNode(unittest.TestCase):
         )
         node.win_value = 10
 
-        method = AlphaZeroMCTS(None, None, None)
+        method = RFMCTS(None, None, None)
         method.root_node = node
 
         save_tree_to_txt(
@@ -220,7 +220,7 @@ class TestNode(unittest.TestCase):
         grandchild.win_value = random.random()
         child.children = [grandchild]
 
-        method = AlphaZeroMCTS(None, None, None)
+        method = RFMCTS(None, None, None)
         method.root_node = root
 
         save_tree_to_txt(
@@ -244,9 +244,9 @@ class TestNode(unittest.TestCase):
         grandchild.win_value = random.random()
         child.children = [grandchild]
 
-        from treethink import AlphaZeroMCTS
+        from treethink import RFMCTS
 
-        method = AlphaZeroMCTS(None, None, None)
+        method = RFMCTS(None, None, None)
         method.root_node = root
 
         save_tree_to_txt(
@@ -270,7 +270,7 @@ class TestNode(unittest.TestCase):
         grandchild.win_value = random.random()
         child1.children = [grandchild]
 
-        method = AlphaZeroMCTS(None, None, None)
+        method = RFMCTS(None, None, None)
         method.root_node = root
 
         solution = root.text + child1.text + grandchild.text
@@ -297,9 +297,9 @@ class TestNode(unittest.TestCase):
         grandchild.win_value = random.random()
         child1.children = [grandchild]
 
-        from treethink import AlphaZeroMCTS
+        from treethink import RFMCTS
 
-        method = AlphaZeroMCTS(None, None, None)
+        method = RFMCTS(None, None, None)
         method.root_node = root
 
         solution = root.text + child1.text + grandchild.text
@@ -338,9 +338,9 @@ class TestNode(unittest.TestCase):
         child1.children = [grandchild1]
         child2.children = [grandchild2, grandchild3]
 
-        from treethink import AlphaZeroMCTS
+        from treethink import RFMCTS
 
-        method = AlphaZeroMCTS(None, None, None)
+        method = RFMCTS(None, None, None)
         method.root_node = root
 
         solution = root.text + child1.text + grandchild1.text
@@ -369,7 +369,7 @@ class TestNode(unittest.TestCase):
         child1.children = [grandchild1]
         child2.children = [grandchild2, grandchild3]
 
-        method = AlphaZeroMCTS(None, None, None)
+        method = RFMCTS(None, None, None)
         self.assertEqual(
             method.traverse_to_root(grandchild2),
             "RootChild2Grandchild2",

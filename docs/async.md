@@ -10,7 +10,7 @@ auto-converted to their async equivalents.
 
 | Component | Sync → Async |
 |-----------|-------------|
-| **Method** | `AlphaZeroMCTS` → `AsyncAlphaZeroMCTS` |
+| **Method** | `RFMCTS` → `AsyncRFMCTS` |
 | | `TraditionalMCTS` → `AsyncTraditionalMCTS` |
 | | `BFTS` → `AsyncBFTS` |
 | | `BeamSearch` → `AsyncBeamSearch` |
@@ -35,7 +35,7 @@ function names).
 1. **AsyncLLMEngine** — instead of `vllm.LLM`, async policies use
    `vllm.AsyncLLMEngine`, which can serve multiple generation requests
    concurrently without blocking.
-2. **Async methods** — `AsyncAlphaZeroMCTS.simulate()`, `AsyncTraditionalMCTS.simulate()`, `AsyncBFTS.simulate()`, etc.
+2. **Async methods** — `AsyncRFMCTS.simulate()`, `AsyncTraditionalMCTS.simulate()`, `AsyncBFTS.simulate()`, etc.
    use `asyncio` for non-blocking tree expansion and evaluation.
 3. **Async evaluators** — I/O-bound operations (REPL verification,
    LLM-as-judge scoring) run concurrently via `asyncio`.
@@ -85,7 +85,7 @@ Async variants follow a simple pattern:
 2. **Evaluators:** subclass `AsyncBaseEvaluator` (in
    `src/treethink/async_evaluators.py`) and implement `__call__` with
    `async def`.
-3. **Methods:** subclass the sync method (e.g. `AlphaZeroMCTS`) and override
+3. **Methods:** subclass the sync method (e.g. `RFMCTS`) and override
    `simulate()` to use `async def` with async callbacks.
 
 Register async variants in their respective `*Type` enums.  The async

@@ -9,23 +9,23 @@ from .clients.cache import (
     ProofCache,
 )
 from .utils.args import ClientArgs
-from .utils.enums import FormalLanguage
+from .utils.enums import ProofLanguage
 
 
 def _create_raw_client(
-    language: FormalLanguage,
+    language: ProofLanguage,
     client_args: ClientArgs,
 ) -> ProofAssistantClient:
     """Build a synchronous client **without** cache wrapping."""
     match language:
-        case FormalLanguage.LEAN4:
+        case ProofLanguage.LEAN4:
             from .clients.lean.adapter import LeanClientAdapter
 
             return LeanClientAdapter(
                 lean_server_url=client_args.lean_server_url
                 or "http://localhost:8000",
             )
-        case FormalLanguage.ROCQ:
+        case ProofLanguage.ROCQ:
             from .clients.coq.rocq import RocqClient
 
             return RocqClient(
@@ -33,7 +33,7 @@ def _create_raw_client(
                 port=client_args.port or 5000,
                 batch_size=client_args.batch_size,
             )
-        case FormalLanguage.ISABELLE:
+        case ProofLanguage.ISABELLE:
             from .clients.isabelle.client import IsabelleClient
 
             return IsabelleClient(
@@ -41,24 +41,32 @@ def _create_raw_client(
                 imports=client_args.isabelle_imports or "Main",
                 server_log=client_args.isabelle_server_log,
             )
+        case ProofLanguage.NL:
+            from .clients.nl.client import NLClient
+
+            return NLClient(
+                dataset_path=client_args.nl_dataset_path,
+                problem_key=client_args.nl_problem_key or "problem",
+                answer_key=client_args.nl_answer_key or "answer",
+            )
         case _:
             raise ValueError(f"Unsupported formal language: {language}")
 
 
 def _create_raw_async_client(
-    language: FormalLanguage,
+    language: ProofLanguage,
     client_args: ClientArgs,
 ) -> AsyncProofAssistantClient:
     """Build an asynchronous client **without** cache wrapping."""
     match language:
-        case FormalLanguage.LEAN4:
+        case ProofLanguage.LEAN4:
             from .clients.lean.adapter import AsyncLeanClientAdapter
 
             return AsyncLeanClientAdapter(
                 lean_server_url=client_args.lean_server_url
                 or "http://localhost:8000",
             )
-        case FormalLanguage.ROCQ:
+        case ProofLanguage.ROCQ:
             from .clients.coq.rocq import AsyncRocqClient
 
             return AsyncRocqClient(
@@ -66,13 +74,21 @@ def _create_raw_async_client(
                 port=client_args.port or 5000,
                 batch_size=client_args.batch_size,
             )
-        case FormalLanguage.ISABELLE:
+        case ProofLanguage.ISABELLE:
             from .clients.isabelle.client import AsyncIsabelleClient
 
             return AsyncIsabelleClient(
                 session=client_args.isabelle_session or "HOL",
                 imports=client_args.isabelle_imports or "Main",
                 server_log=client_args.isabelle_server_log,
+            )
+        case ProofLanguage.NL:
+            from .clients.nl.client import AsyncNLClient
+
+            return AsyncNLClient(
+                dataset_path=client_args.nl_dataset_path,
+                problem_key=client_args.nl_problem_key or "problem",
+                answer_key=client_args.nl_answer_key or "answer",
             )
         case _:
             raise ValueError(f"Unsupported formal language: {language}")
@@ -82,13 +98,13 @@ def _create_raw_async_client(
 
 
 def create_client(
-    language: FormalLanguage,
+    language: ProofLanguage,
     client_args: ClientArgs,
     cache: Optional[ProofCache] = None,
 ) -> ProofAssistantClient:
     """Build a synchronous proof-assistant client for *language*.
 
-    Selects the appropriate client based on the ``FormalLanguage`` enum
+    Selects the appropriate client based on the ``ProofLanguage`` enum
     and wraps it with :class:`CachedClient` if caching is enabled.
     """
     inner = _create_raw_client(language, client_args)
@@ -107,13 +123,13 @@ def create_client(
 
 
 def create_async_client(
-    language: FormalLanguage,
+    language: ProofLanguage,
     client_args: ClientArgs,
     cache: Optional[ProofCache] = None,
 ) -> AsyncProofAssistantClient:
     """Build an async proof-assistant client for *language*.
 
-    Selects the appropriate async client based on the ``FormalLanguage``
+    Selects the appropriate async client based on the ``ProofLanguage``
     enum and wraps it with :class:`AsyncCachedClient` if caching is enabled.
     Raises ``NotImplementedError`` for languages without async support
     (Isabelle).
