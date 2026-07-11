@@ -11,6 +11,7 @@ from ..base import (
     CheckResponse,
     ProofAssistantClient,
     SnippetResult,
+    ProofStateInfo
 )
 
 if TYPE_CHECKING:
