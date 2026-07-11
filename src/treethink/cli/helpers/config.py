@@ -20,7 +20,7 @@ from treethink.utils.parser import (
 def _async_method_name(sync_name: str) -> str:
     """Convert a sync method name to its async variant.
 
-    Convention: prepend ``\"Async\"``, e.g. ``AlphaZeroMCTS`` → ``AsyncAlphaZeroMCTS``.
+    Convention: prepend ``\"Async\"``, e.g. ``RFMCTS`` → ``AsyncRFMCTS``.
     """
     return f"Async{sync_name}"
 

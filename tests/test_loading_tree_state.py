@@ -42,7 +42,7 @@ class TestLoadingTreeState(unittest.TestCase):
 
         metadata = {
             "treethink_args": {
-                "method_name": "AlphaZeroMCTS",
+                "method_name": "RFMCTS",
                 "max_children": 2,
                 "exploration_weight": 0.5,
             }

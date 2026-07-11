@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from .enums import (
     FinalDecisionMode,
-    FormalLanguage,
+    ProofLanguage,
     PoolingTask,
     ScoreReduction,
     TieBreaker,
@@ -38,7 +38,7 @@ class BaseArgs:
 class ClientArgs(BaseArgs):
     """Arguments for any proof-assistant REPL client.
 
-    Only the fields relevant to the selected :class:`FormalLanguage` are
+    Only the fields relevant to the selected :class:`ProofLanguage` are
     used at runtime; the rest are quietly ignored.
 
     Common fields:
@@ -68,6 +68,14 @@ class ClientArgs(BaseArgs):
         isabelle_imports (str): Imports clause for each generated theory.
             Default ``"Main"``.
         isabelle_server_log (str | None): Optional Isabelle server log path.
+
+    Natural language (NL):
+        nl_dataset_path (str | None): Path to a JSON/JSONL dataset with the
+            problem statements and ground-truth answers.
+        nl_problem_key (str | None): Dataset field for the problem statement.
+            Default ``"problem"``.
+        nl_answer_key (str | None): Dataset field for the ground-truth answer.
+            Default ``"answer"``.
     """
 
     # Common
@@ -90,6 +98,11 @@ class ClientArgs(BaseArgs):
     isabelle_session: str | None = None
     isabelle_imports: str | None = None
     isabelle_server_log: str | None = None
+
+    # Natural language (NL)
+    nl_dataset_path: str | None = None
+    nl_problem_key: str | None = None
+    nl_answer_key: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -140,10 +153,10 @@ class TreeThinkArgs(BaseArgs):
 
     Args:
         method_name:
-            One of the registered method names — ``"AlphaZeroMCTS"``,
+            One of the registered method names — ``"RFMCTS"``,
             ``"TraditionalMCTS"``, ``"BFTS"``, ``"BeamSearch"`` (or their
             ``Async*`` counterparts when using ``--async``).
-            Defaults to ``"AlphaZeroMCTS"``.
+            Defaults to ``"RFMCTS"``.
         max_children:
             Maximum branching factor (children per node).  Should match
             ``sampling.n`` in the policy config.  Defaults to 4.
@@ -196,8 +209,8 @@ class TreeThinkArgs(BaseArgs):
             provide a `parse_tag`.
         language:
             The formal proof language to use for REPL verification.
-            One of :class:`~treethink.utils.enums.FormalLanguage`.
-            Defaults to ``FormalLanguage.LEAN4``.
+            One of :class:`~treethink.utils.enums.ProofLanguage`.
+            Defaults to ``ProofLanguage.LEAN4``.
         client_args:
             Arguments for the language-specific REPL client
             (server URL, batch size, timeouts, etc.).  See
@@ -213,7 +226,7 @@ class TreeThinkArgs(BaseArgs):
             ``max_children`` is used.  Defaults to ``None``.
         exploration_weight:
             Exploration constant for the UCB formula used by
-            ``AlphaZeroMCTS`` and ``TraditionalMCTS``.  Typical value
+            ``RFMCTS`` and ``TraditionalMCTS``.  Typical value
             is ``sqrt(2) ≈ 1.414``.  ``None`` means the method default
             is used.  Defaults to ``None``.
         final_decision_mode:
@@ -250,7 +263,7 @@ class TreeThinkArgs(BaseArgs):
             (reuse the policy's ``top_p``).
     """
 
-    method_name: str = "AlphaZeroMCTS"
+    method_name: str = "RFMCTS"
     max_children: int = 4
     expansion_count: int = 128
     timeout: int = None
@@ -262,7 +275,7 @@ class TreeThinkArgs(BaseArgs):
     parse_tag: str = "\n"
 
     # REPL / termination
-    language: FormalLanguage = FormalLanguage.LEAN4
+    language: ProofLanguage = ProofLanguage.LEAN4
     client_args: ClientArgs = field(default_factory=ClientArgs)
     termination_on_encounter: TerminationOnEncounterConfig = field(
         default_factory=TerminationOnEncounterConfig,

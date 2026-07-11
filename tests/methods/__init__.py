@@ -1,6 +1,6 @@
-from tests.methods import test_alpha_zero_mcts, test_beam, test_bfts, test_node
-from tests.methods.test_alpha_zero_mcts import (
-    TestAlphaZeroMCTS,
+from tests.methods import test_rf_mcts, test_beam, test_bfts, test_node
+from tests.methods.test_rf_mcts import (
+    TestRFMCTS,
 )
 from tests.methods.test_beam import (
     TestBeamSearch,
@@ -13,11 +13,11 @@ from tests.methods.test_node import (
 )
 
 __all__ = [
-    "TestAlphaZeroMCTS",
+    "TestRFMCTS",
     "TestBFTS",
     "TestBeamSearch",
     "TestNode",
-    "test_alpha_zero_mcts",
+    "test_rf_mcts",
     "test_beam",
     "test_bfts",
     "test_node",

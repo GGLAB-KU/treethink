@@ -16,9 +16,10 @@ from tenacity import (
     wait_exponential,
 )
 from tqdm.asyncio import tqdm_asyncio
+from treethink.clients import ProofAssistantClient
 
 
-class Lean4Client(object):
+class Lean4Client(ProofAssistantClient):
     """Client for interacting with the Lean 4 verification server.
 
     This client handles communication with a Lean 4 server for verifying proofs
@@ -252,7 +253,7 @@ async def process_batches(
 
 
 def batch_verify_proof(
-    client: KiminaClient,
+    client,
     samples: List[dict],
     timeout: int = 60,
     num_proc: int = 8,

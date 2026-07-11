@@ -21,7 +21,7 @@ treethink [OPTIONS] COMMAND [ARGS]...
 
 ### `treethink run`
 
-Run tree-search inference (AlphaZeroMCTS / TraditionalMCTS / BFTS / BeamSearch).
+Run tree-search inference (RFMCTS / TraditionalMCTS / BFTS / BeamSearch).
 
 ```bash
 treethink run --config path/to/config.yaml [OPTIONS]

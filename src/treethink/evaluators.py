@@ -24,7 +24,7 @@ from treethink.utils import (
     extract_result,
 )
 from treethink.utils.enums import (
-    FormalLanguage,
+    ProofLanguage,
     PoolingTask,
     ScoreReduction,
     coerce_enum,
@@ -173,7 +173,7 @@ class REPLEvaluator(BaseEvaluator):
         self,
         client_args: Optional[ClientArgs] = None,
         cache: Optional[ProofCache] = None,
-        language: FormalLanguage = FormalLanguage.LEAN4,
+        language: ProofLanguage = ProofLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -261,7 +261,7 @@ class JudgeEvaluator(BaseEvaluator):
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
         lora_path: Optional[str] = None,
-        language: FormalLanguage = FormalLanguage.LEAN4,
+        language: ProofLanguage = ProofLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -577,7 +577,7 @@ class TournamentEvaluator(BaseEvaluator):
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
         prompter: Optional[Callable] = None,
         shuffle_bracket: bool = True,
-        language: FormalLanguage = FormalLanguage.LEAN4,
+        language: ProofLanguage = ProofLanguage.LEAN4,
         *args,
         **kwargs,
     ):

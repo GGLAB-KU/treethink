@@ -41,7 +41,7 @@ from treethink.utils import (
     calculate_logprobs,
     extract_result,
 )
-from treethink.utils.enums import FormalLanguage
+from treethink.utils.enums import ProofLanguage
 
 # Language-agnostic regex: captures content inside any ```<lang>\n...\n``` fence
 _RE_PROOF_FENCE = re.compile(r"```(?:\w+|\n)\s*((?:.|\n)*?)```")
@@ -97,7 +97,7 @@ class AsyncREPLEvaluator(AsyncBaseEvaluator):
         self,
         client_args: Optional[ClientArgs] = None,
         cache: Optional[ProofCache] = None,
-        language: FormalLanguage = FormalLanguage.LEAN4,
+        language: ProofLanguage = ProofLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -174,7 +174,7 @@ class AsyncJudgeEvaluator(AsyncBaseEvaluator):
         cache: Optional[ProofCache] = None,
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT,
         prompter: Optional[Callable] = None,
-        language: FormalLanguage = FormalLanguage.LEAN4,
+        language: ProofLanguage = ProofLanguage.LEAN4,
         *args,
         **kwargs,
     ):
@@ -542,7 +542,7 @@ class AsyncTournamentEvaluator(AsyncBaseEvaluator):
         llm_as_judge_system_prompt: str = LLM_AS_JUDGE_SYSTEM_PROMPT_PAIRWISE,
         prompter: Optional[Callable] = None,
         shuffle_bracket: bool = True,
-        language: FormalLanguage = FormalLanguage.LEAN4,
+        language: ProofLanguage = ProofLanguage.LEAN4,
         *args,
         **kwargs,
     ):
