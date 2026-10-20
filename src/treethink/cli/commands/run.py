@@ -117,6 +117,12 @@ def run(
         "--verbosity",
         help="Logging level (debug, info, warning, error, critical).",
     ),
+    deduce_graph_path: bool = typer.Option(
+        True,
+        "--auto-graph-path",
+        help="Automatically deduce the graph path from the given output directory. "
+        / "If graph path is not given in the treethink args, we use the output directory.",
+    ),
 ):
     """Run tree-search inference (RFMCTS / TraditionalMCTS / BFTS / BeamSearch).
 
@@ -187,6 +193,10 @@ def run(
         use_async=use_async,
         max_concurrent=max_concurrent,
     )
+
+    # deduce_graph_path
+    if deduce_graph_path and model.treethink_args.graph_path is None:
+        model.treethink_args.graph_path = output_dir
 
     # ── Run inference ───────────────────────────────────────────────────
     run_inference_loop(
