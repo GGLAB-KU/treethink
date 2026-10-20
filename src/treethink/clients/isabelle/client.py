@@ -483,6 +483,7 @@ class AsyncIsabelleClient(AsyncProofAssistantClient):
         timeout: int | None = None,
         show_progress: bool = False,
         batch_size: int = 8,
+        max_workers: int = 4,
     ) -> CheckResponse:
         await self._ensure_connected()
         indexed = list(enumerate(snips))
