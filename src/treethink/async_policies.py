@@ -1,5 +1,6 @@
 import asyncio
 from enum import Enum
+from functools import partial
 from typing import Callable, Optional, TypeVar, Union
 
 import openai
@@ -507,6 +508,7 @@ class AsyncVLLMServerPolicy(BasePolicy):
         sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
         server: Optional[ServerArgs] = None,
         system_prompt: str = "You are a helpful math assistant.",
+        prompter: Optional[Callable] = None,
         parse_tag: str = "\n",
         *args,
         **kwargs,
@@ -550,6 +552,22 @@ class AsyncVLLMServerPolicy(BasePolicy):
             self.sampling_dict["stop"] = [self._derive_closing_tag()]
 
         self.system_prompt = system_prompt
+        if isinstance(prompter, Callable):
+            logger.debug("Using custom prompter.")
+            self.prompter = prompter
+        else:
+            from transformers import AutoTokenizer
+            
+            self.prompter = partial(
+                AutoTokenizer.from_pretrained(
+                    self.model_name
+                ).apply_chat_template,
+                tokenize=False,
+                add_generation_prompt=False,
+                continue_final_message=True,
+                enable_thinking=False,
+            )
+
         logger.info("AsyncVLLMServerPolicy initialized.")
 
     async def __call__(self, node: Node, method):
@@ -563,9 +581,9 @@ class AsyncVLLMServerPolicy(BasePolicy):
             messages.append({"role": "assistant", "content": proof_so_far})
 
         try:
-            response = await self.client.chat.completions.create(
+            response = await self.client.completions.create(
                 model=self.model_name,
-                messages=messages,
+                prompt=self.prompter(messages),
                 **self.sampling_dict,
             )
 

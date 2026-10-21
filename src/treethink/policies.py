@@ -488,6 +488,7 @@ class VLLMServerPolicy(BasePolicy):
         sampling: Optional[Union[vllm.SamplingParams, SamplingArgs]] = None,
         server: Optional[ServerArgs] = None,
         system_prompt: str = "You are a helpful math assistant.",
+        prompter: Optional[Callable] = None,
         parse_tag: str = "\n",
         *args,
         **kwargs,
@@ -509,6 +510,23 @@ class VLLMServerPolicy(BasePolicy):
         else:
             self.model_name = model or "default"
 
+        if isinstance(prompter, Callable):
+            logger.debug("Using custom prompter for VLLMServerPolicy.")
+            self.prompter = prompter
+        else:
+            from transformers import AutoTokenizer
+
+            logger.debug("Using default prompter for VLLMServerPolicy.")
+            self.prompter = partial(
+                AutoTokenizer.from_pretrained(
+                    self.model_name
+                ).apply_chat_template,
+                tokenize=False,
+                add_generation_prompt=False,
+                continue_final_message=True,
+                enable_thinking=False,
+            )
+
         self.sampling_params = (
             self.set_sampling_params(sampling)
             if sampling
@@ -524,14 +542,13 @@ class VLLMServerPolicy(BasePolicy):
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": method.root_node.text},
+            {"role": "assistant", "content": proof_so_far},
         ]
-        if proof_so_far.strip():
-            messages.append({"role": "assistant", "content": proof_so_far})
 
         try:
-            response = self.client.chat.completions.create(
+            response = self.client.completions.create(
                 model=self.model_name,
-                messages=messages,
+                prompt=self.prompter(messages),
                 max_tokens=self.sampling_params.max_tokens,
                 temperature=self.sampling_params.temperature,
                 top_p=self.sampling_params.top_p,
@@ -539,8 +556,7 @@ class VLLMServerPolicy(BasePolicy):
                 stop=self.sampling_params.stop,
                 n=self.sampling_params.n,
                 # In the Chat API, logprobs is a boolean and top_logprobs specifies the count
-                logprobs=True,
-                top_logprobs=self.sampling_params.logprobs,
+                logprobs=self.sampling_params.logprobs,
             )
 
             children = []
