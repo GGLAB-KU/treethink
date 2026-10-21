@@ -458,6 +458,9 @@ class AsyncTreeThinkSampler:
             if result.graph_stats:
                 datapoint["graph_stats"] = result.graph_stats
 
+            if hasattr(result, "checked_and_true"):
+                datapoint["checked_and_true"] = result.checked_and_true
+
             return datapoint
 
         except Exception as e:

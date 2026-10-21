@@ -1,8 +1,14 @@
 [project]
 name = "treethink"
 version = "0.1.0"
-description = "Formal Mathematical Reasoning of LLMs with Tree Search Methods"
+description = "TreeThink: A Modular Tree Search Library for Mathematical Reasoning with LLMs"
 readme = "README.md"
+authors = [
+  { name="Burak S. Akbudak", email="buraksinaakbudak@gmail.com" },
+  { name="Zeynel A.", email="zulusan23@ku.edu.tr" },
+  { name="Can S. Erer", email="erer.can.work@gmail.com" },
+]
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "datasets>=4.8.5",

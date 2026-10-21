@@ -190,6 +190,10 @@ class BaseMethod(ABC):
         stat["widen_count"] = self.get_widen_count()
 
         values, visits, expected_values = self.get_values_and_visits()
+
+        if len(values) == 0 or len(visits) == 0 or len(expected_values) == 0:
+            return stat
+
         stat["mean_value"] = sum(values) / len(values)
         stat["max_value"] = max(values)
         stat["min_value"] = min(values)
