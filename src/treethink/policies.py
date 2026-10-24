@@ -561,7 +561,7 @@ class VLLMServerPolicy(BasePolicy):
 
             children = []
             for choice in response.choices:
-                raw_text = choice.message.content
+                raw_text = choice.text
                 logger.trace(f"Model response: {raw_text}")
                 _child_node = Node(
                     text=self._clean_text(raw_text),
