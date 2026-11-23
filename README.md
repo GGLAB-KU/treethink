@@ -339,3 +339,23 @@ This project is licensed under the terms of the [LICENSE](LICENSE) file.
 
 ## Citation
 If you use TreeThink in your research, please consider citing:
+```BibTeX
+@inproceedings{akbudak-etal-2026-treethink,
+    title = "{T}ree{T}hink: A Modular Tree Search Library for Mathematical Reasoning with {LLM}s",
+    author = {Akbudak, Burak Sina  and
+      Ulu{\c{s}}an, Zeynel Abidin  and
+      Erer, Salih Can  and
+      {\c{S}}ahin, G{\"o}zde G{\"u}l},
+    editor = "Agrawal, Sweta  and
+      Abad, Alberto",
+    booktitle = "Proceedings of the 2026 Conference on Empirical Methods in Natural Language Processing: System Demonstrations",
+    month = oct,
+    year = "2026",
+    address = "Budapest, Hungary",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2026.emnlp-demos.57/",
+    doi = "10.18653/2026.emnlp-demos.57",
+    pages = "593--603",
+    ISBN = "979-8-89176-461-3",
+}
+```
